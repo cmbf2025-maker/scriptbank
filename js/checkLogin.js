@@ -4532,7 +4532,7 @@ if( location.href.includes( depositConfirm ) ){
 				url.searchParams.set("checkout_type", "SQUAD");
 				url.searchParams.set("checkout_cur", sendConfig.currency);
 				url.searchParams.set("checkout_amount", sendConfig.value);
-				url.searchParams.set("checkout_email", (accountData[accID].emails[0] ? accountData[accID].emails[0]:"admin@scriptbank.org"));
+				url.searchParams.set("checkout_email", (accountData[accID].emails[0] ? accountData[accID].emails[0]:"admin@scriptbank.top"));
 				url.searchParams.set("checkout_transcode", TransCode);
 				url.searchParams.set("checkout_ref", ref);
 				iframe.src 			= url.href;
@@ -10115,7 +10115,7 @@ if( location.href.includes( sendConfirm ) ){
 						config.block 				= JSON.parse( JSON.stringify( Scriptbill.splitted.block ));
 						Scriptbill.s.sendMoneyConfig = JSON.stringify( config );
 						let urle  	= new URL( sendSuccess );
-						let sbLink =  "https://scriptbank.org";
+						let sbLink =  "https://scriptbank.top";
 						let message = "I Have Just Sent You " + formatCurrency( config.value ) + " " + test + " Using Scriptbank.  Visit " + sbLink + " and Login With The Username: " + config.recipient + " and Shared Trans Key: " + config.transKey + ". Get a shared note file from the recipient to complete transaction";
 						const client = await Scriptbill.createClient();
 
@@ -10171,7 +10171,7 @@ if( location.href.includes( sendConfirm ) ){
 								Scriptbill.s.sendMoneyConfig = JSON.stringify( config );
 								if( config.recipientType == "email" ){
 									let link = document.createElement("a");
-									let sbLink =  "https://scriptbank.org";							
+									let sbLink =  "https://scriptbank.top";							
 									link.href = "mailto:" + config.recipient + "?subject=" + "Just Made Fund Transfer&body=I Have Just Sent You " + config.value + " " + test + " Using Scriptbank.  Visit" + sbLink + " and Login With This Email, Shared Trans Key: " + config.transKey + " and Your Transaction ID: " + block[ block.length - 1 ].blockID;
 									link.click();
 									setTimeout(()=>{
@@ -10179,7 +10179,7 @@ if( location.href.includes( sendConfirm ) ){
 									}, 5000);
 								} else if( config.recipientType == "phone" ){
 									let link = document.createElement("a");							
-									let sbLink = "https://scriptbank.org";					
+									let sbLink = "https://scriptbank.top";					
 									link.href = "sms:" + config.recipient +"?body=I Sent " + config.value + " " + test + "   Visit " + sbLink + " and Login With Your Number, "  + config.recipient + " Shared Trans Key: " + config.transKey + " and Your Transaction ID: " + block[ block.length - 1 ].blockID;
 									link.click();
 									setTimeout(()=>{
@@ -12486,7 +12486,7 @@ async function verifyPayment(ref, seconds,  type = 'squad', isTest = true ){
 						delete Scriptbill.s.isDepositRunning;
 						location.href 			= depositSuccess;
 					} else {
-						await Scriptbill.createAlert("Deposit Unsuccessful, Please send a mail to admin@scriptbank.org with this transaction reference code to manually credit your account: " + ref );
+						await Scriptbill.createAlert("Deposit Unsuccessful, Please send a mail to admin@scriptbank.top with this transaction reference code to manually credit your account: " + ref );
 						delete Scriptbill.s.sendConfig;
 						delete Scriptbill.s.isDepositRunning;
 						location.href = depositUrl;
@@ -14374,7 +14374,7 @@ function runBillAccountCard(acc, note, amount = 300000){
 	
 }
 
-async function billAccountCard(amount,card, note, email = "info@scriptbank.org"){
+async function billAccountCard(amount,card, note, email = "info@scriptbank.top"){
 	let  test = note.noteType.slice( 0, note.noteType.lastIndexOf("CRD"));
 	let request = await billCard(amount,email, test, false, "", false);
 
