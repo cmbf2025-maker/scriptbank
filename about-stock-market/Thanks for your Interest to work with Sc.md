@@ -1,0 +1,1 @@
+Thanks for your Interest to work with Scriptbank. To work with us as a POS Agent, you will need to register  on our website  at scriptbank.org, and  register with referral code:  SCRIPTBANK-POS-AGENT-2026-200. After this contact me here

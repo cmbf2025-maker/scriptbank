@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1.0, shrink-to-fit=no">
+<link href="/../scriptbill/images/icon32x32.png" rel="icon" />
+<title>Scriptbank - Bringing Out the Financial Giant in You</title>
+<meta name="description" content="A app used to manage Scriptbill, a Cryptocurrency built against financial mishandling and misappropraition..">
+<meta name="author" content="scriptbank.com.ng">
+
+<!-- Web Fonts
+============================================= -->
+<link rel='stylesheet' href='https://fonts.googleapis.com/css?family=Rubik:300,300i,400,400i,500,500i,700,700i,900,900i' type='text/css'>
+
+<!-- Stylesheet
+============================================= -->
+<link rel="stylesheet" type="text/css" href="/vendor/bootstrap/css/bootstrap.min.css" />
+<link rel="stylesheet" type="text/css" href="/vendor/font-awesome/css/all.min.css" />
+<link rel="stylesheet" type="text/css" href="/vendor/bootstrap-select/css/bootstrap-select.min.css" />
+<link rel="stylesheet" type="text/css" href="/vendor/currency-flags/css/currency-flags.min.css" />
+<link rel="stylesheet" type="text/css" href="/vendor/owl.carousel/assets/owl.carousel.min.css" />
+<link rel="stylesheet" type="text/css" href="/vendor/daterangepicker/daterangepicker.css" />
+<link rel="stylesheet" type="text/css" href="/css/stylesheet.css" />
+</head>
+<body>
+
+<!-- Preloader -->
+<div id="preloader">
+  <div data-loader="dual-ring"></div>
+</div>
+<!-- Preloader End --> 
+
+<!-- Document Wrapper   
+============================================= -->
+<div id="main-wrapper"> 
+  <!-- Header
+  ============================================= -->
+  <header id="header">
+    <div class="container">
+      <div class="header-row">
+        <div class="header-column justify-content-start"> 
+          <!-- Logo
+          ============================= -->
+          <div class="logo"> <a class="d-flex" href="/" title="Scriptbill Cryptonote"><img src="/images/scriptbankLogo2.png" alt="Scriptbank" /></a> </div>
+          <!-- Logo end --> 
+          <!-- Collapse Button
+          ============================== -->
+          <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#header-nav"> <span></span> <span></span> <span></span> </button>
+          <!-- Collapse Button end --> 
+          
+             <!-- Primary Navigation
+          ============================== -->
+          <nav class="primary-menu navbar navbar-expand-lg">
+            <div id="header-nav" class="collapse navbar-collapse">
+              <ul class="navbar-nav mr-auto">
+                <li><a href="/dashboard">Dashboard</a></li>
+                <li><a href="/transactions">Transactions</a></li>
+                <li><a href="/send-money">Send/Request</a></li>
+                <li><a href="/help">Help</a></li>                
+                <li><a href="/login?loggout=TRUE">Logout</a></li>                
+              </ul>
+            </div>
+          </nav>
+          <!-- Primary Navigation end -->  
+        </div>
+        <div class="header-column justify-content-end"> 
+          <!-- Login & Signup Link
+          ============================== -->
+          <nav class="login-signup navbar navbar-expand">
+            <ul class="navbar-nav">
+              <li><a href="/profile">Settings</a> </li>
+              <li class="align-items-center h-auto ml-sm-3"><a class="btn btn-outline-primary shadow-none d-none d-sm-block" href="/">Sign out</a></li>
+            </ul>
+          </nav>
+          <!-- Login & Signup Link end --> 
+        </div>
+      </div>
+    </div>
+  </header>
+  <!-- Header End -->
+  
+  <!-- Page Header
+  ============================================= -->
+  <section class="hero-wrap section">
+    <div class="hero-mask opacity-9 bg-primary"></div>
+    <div class="hero-bg" style="background-image:url('./images/bg/image-2.jpg');"></div>
+    <div class="hero-content">
+      <div class="container">
+        <div class="row align-items-center text-center">
+          <div class="col-12">
+            <h1 class="text-11 text-white mb-3">How can we help you?</h1>
+          </div>
+          <div class="col-md-10 col-lg-8 col-xl-6 mx-auto">
+            <div class="input-group">
+              <input class="form-control shadow-none border-0" type="search" id="search-input" placeholder="Search for answer..." value="">
+              <div class="input-group-append"> <span class="input-group-text bg-white border-0 p-0">
+                <button class="btn text-muted px-3 border-0" type="button"><i class="fa fa-search"></i></button>
+                </span> </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+  <!-- Page Header end --> 
+  
+  <!-- Content
+  ============================================= -->
+  <div id="content">
+    
+    <!-- Main Topics
+    ============================================= -->
+    <section class="section py-3 my-3 py-sm-5 my-sm-5">
+      <div class="container">
+        <div class="row">
+          <div class="col-sm-6 col-lg-3 mb-4 mb-lg-0">
+            <div class="bg-light shadow-sm rounded p-4 text-center"> <span class="d-block text-17 text-primary mt-2 mb-3"><i class="fas fa-user-circle"></i></span>
+              <h3 class="text-body text-4">My Account</h3>
+              <p class="mb-0"><a class="text-muted btn-link" href="/">See articles<span class="text-1 ml-1"><i class="fas fa-chevron-right"></i></span></a></p>
+            </div>
+          </div>
+          <div class="col-sm-6 col-lg-3 mb-4 mb-lg-0">
+            <div class="bg-light shadow-sm rounded p-4 text-center"> <span class="d-block text-17 text-primary mt-2 mb-3"><i class="fas fa-money-check-alt"></i></span>
+              <h3 class="text-body text-4">Payment</h3>
+              <p class="mb-0"><a class="text-muted btn-link" href="/">See articles<span class="text-1 ml-1"><i class="fas fa-chevron-right"></i></span></a></p>
+            </div>
+          </div>
+          <div class="col-sm-6 col-lg-3 mb-4 mb-sm-0">
+            <div class="bg-light shadow-sm rounded p-4 text-center"> <span class="d-block text-17 text-primary mt-2 mb-3"><i class="fas fa-shield-alt"></i></span>
+              <h3 class="text-body text-4">Security</h3>
+              <p class="mb-0"><a class="text-muted btn-link" href="/">See articles<span class="text-1 ml-1"><i class="fas fa-chevron-right"></i></span></a></p>
+            </div>
+          </div>
+          <div class="col-sm-6 col-lg-3">
+            <div class="bg-light shadow-sm rounded p-4 text-center"> <span class="d-block text-17 text-primary mt-2 mb-3"><i class="fas fa-credit-card"></i></span>
+              <h3 class="text-body text-4">Payment Methods</h3>
+              <p class="mb-0"><a class="text-muted btn-link" href="/">See articles<span class="text-1 ml-1"><i class="fas fa-chevron-right"></i></span></a></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <!-- Main Topics end -->
+    
+    <!-- Popular Topics
+    ============================================= -->
+    <section class="section bg-white">
+      <div class="container">
+        <h2 class="text-9 text-center">Popular Topics</h2>
+        <p class="text-4 text-center mb-5">You can also visit <a href="/http://scriptbank.com.ng">Scriptbank</a> for latest updates about Scriptbill.</p>
+        <div class="row">
+          <div class="col-md-10 mx-auto">
+            <div class="row">
+              <div class="col-md-6">
+                <div class="accordion accordion-alternate" id="popularTopics">
+                  <div class="card">
+                    <div class="card-header" id="heading1">
+                      <h5 class="mb-0"> <a href="/#" class="collapsed" data-toggle="collapse" data-target="#collapse1" aria-expanded="false" aria-controls="collapse1">I forgot the password for my Note.</a> </h5>
+                    </div>
+                    <div id="collapse1" class="collapse" aria-labelledby="heading1" data-parent="#popularTopics">
+                      <div class="card-body"> Please note that Scriptbill Note Password are not used to verify your accounts like your regular bank accounts, But are used to decrypt and parse your Scriptbill Note file. This means when you forget your password, there is no way to verify that you own the note and you may not be able to do any transaction with that note again. The only way to salvage things is to make use of a Password manager like Google Password Manager to save your note's password. It's very recommended you use a unique password for each note you manage in the Scriptbill Netowrk. </div>
+                    </div>
+                  </div>
+                  <div class="card">
+                    <div class="card-header" id="heading2">
+                      <h5 class="mb-0"> <a href="/#" class="collapsed" data-toggle="collapse" data-target="#collapse2" aria-expanded="false" aria-controls="collapse2">How do I withdraw funds from my account?</a> </h5>
+                    </div>
+                    <div id="collapse2" class="collapse" aria-labelledby="heading2" data-parent="#popularTopics">
+                      <div class="card-body"> To Withdraw Fund from your account make sure you are using a pure Scriptbill Credit note gotten from a verified deposit transaction in the network. Some Scriptbill Credit like the Bond Credit will only withdraw to a connected Scriptbill Credit note. Request Credits only withdraw to the Request notes. To Withdraw, Simply visit <a href="/withdraw">Withdrawal Page</a> and Make your Withdrawal. Ensure you have set a Withdrawal Account in your <a href="/profile">Profile page</a> before visiting.  Also, You can withdraw your funds automatically if you link your Bank Accounts with Scriptbank. The concept behind this is still a decentralized deposit and withdrawal process, Scriptbank only use linked account to make the process more smoother and easier for users who need quick and fast withdrawal process.</div>
+                    </div>
+                  </div>
+                  <div class="card">
+                    <div class="card-header" id="heading3">
+                      <h5 class="mb-0"> <a href="/#" class="collapsed" data-toggle="collapse" data-target="#collapse3" aria-expanded="false" aria-controls="collapse3">How do I link bank account to my Scriptbill Note?</a> </h5>
+                    </div>
+                    <div id="collapse3" class="collapse" aria-labelledby="heading3" data-parent="#popularTopics">
+                      <div class="card-body"> Simply visit your <a href="/profile-cards-and-bank-accounts">Profile Page</a> to set your bank account to your Scriptbill Note after you've logged in your note. Whenever you make a Withdrawal, Scriptbank and other depositor will find this account details to make a deposit to your account. Only make sure that you have set the correct account and all neccessary details to ensure the depositors do not experience problems in depositing to your account. Note you need to login to your bank's web portal to verify your account details with Scriptbank. Verified account will enjoy automatic deposit and withdrawal process, and your bank acount will become more secure when linked with Scriptbank.</div>
+                    </div>
+                  </div>
+                  <div class="card">
+                    <div class="card-header" id="heading4">
+                      <h5 class="mb-0"> <a href="/#" class="collapsed" data-toggle="collapse" data-target="#collapse4" aria-expanded="false" aria-controls="collapse4">How can i recieve Money to My Scriptbill Note Using Email?</a> </h5>
+                    </div>
+                    <div id="collapse4" class="collapse" aria-labelledby="heading4" data-parent="#popularTopics">
+                      <div class="card-body"> Ensure you set your personal email on your note using your <a href="/profile">profile page</a>. After this, people can send you money using an encoded transaction in an email through a file that will be delivered to your email address using your email. Download this file and login your note that have this email. Visit <a href="/request"> Request Money Page</a> and Upload the Email file. If the email is registered on your note, your note will decode the transaction and recieve the funds. You can associate as many emails as you have access to, to your note, and can also associate as many notes as you want to an email. The security to this transaction is solely dependent on the security around your email application. So ensure you use very secure emails with your Scriptbill Note Accounts.</div>
+                    </div>
+                  </div>
+                  <div class="card">
+                    <div class="card-header" id="heading5">
+                      <h5 class="mb-0"> <a href="/#" class="collapsed" data-toggle="collapse" data-target="#collapse5" aria-expanded="false" aria-controls="collapse5">How do I receive payments?</a> </h5>
+                    </div>
+                    <div id="collapse5" class="collapse" aria-labelledby="heading5" data-parent="#popularTopics">
+                      <div class="card-body"> To recieve Payment from any user, that user must create a transaction with any public Key registered with your note. Your note has lots of Public Keys registered with it and many public Keys can be created and registered with your note as you want. Once the transaction is created, the Private Key on your Scriptbill note is what you will use to accept transaction from your users. You must have the Scriptbill note logged in before you can recieve any transaction in the network. Once the transaction is received, a prompt for the agreement will come up, except the agreement is created by you, before you recieve the transaction, because once you receive the transaction, you Scriptbill note is bond to go by the agreement set by the sender except cancelled. To cancel such transaction, you must return any bond in the agreement. This is a Scriptbill protocol to protect transactions in the network. </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="accordion accordion-alternate" id="popularTopics2">
+                  <div class="card">
+                    <div class="card-header" id="heading6">
+                      <h5 class="mb-0"> <a href="/#" class="collapsed" data-toggle="collapse" data-target="#collapse6" aria-expanded="false" aria-controls="collapse6">How Can I View My Payments History?</a> </h5>
+                    </div>
+                    <div id="collapse6" class="collapse" aria-labelledby="heading6" data-parent="#popularTopics2">
+                      <div class="card-body"> All Payment History are displayed on your note's <a href="/transactions">Transaction Page</a>. </div>
+                    </div>
+                  </div>
+                  <div class="card">
+                    <div class="card-header" id="heading7">
+                      <h5 class="mb-0"> <a href="/#" class="collapsed" data-toggle="collapse" data-target="#collapse7" aria-expanded="false" aria-controls="collapse7">Where is my refund?</a> </h5>
+                    </div>
+                    <div id="collapse7" class="collapse" aria-labelledby="heading7" data-parent="#popularTopics2">
+                      <div class="card-body"> To get a refund for any transaction you make in the network, you visit the transaction and click on it to bring up the transaction detail pop up. When viewed and the agreement is active on the transaction the cancel and sign appears button. You can alternatively click the check agreement on the dashboard page to directly manage all agreements connected to your note. Once the cancel button is clicked an CANCEL request is created on the database for the recipeint to sign. With this request, the recipient have the options of accepting the cancellation or appealing it. If the request is not appealled the funds will be reverted to the senders account. </div>
+                    </div>
+                  </div>
+                  <div class="card">
+                    <div class="card-header" id="heading8">
+                      <h5 class="mb-0"> <a href="/#" class="collapsed" data-toggle="collapse" data-target="#collapse8" aria-expanded="false" aria-controls="collapse8">How do I request payments or send an invoice?</a> </h5>
+                    </div>
+                    <div id="collapse8" class="collapse" aria-labelledby="heading8" data-parent="#popularTopics2">
+                      <div class="card-body"> Using the request payment page, you can create valid credit in the Scriptbill Network. The credit will be backed with an agreement that must be signed by the recipient, once signed, the credit will either be linked to your account or the recipients account for source base on the agreement. If the credit is linked to your account, the recipient of the credit transaction will be able to use credits from your account based on the value of the credit request transaction. If linked to the recipient account and the recipient accepts the agreement in the transaction, the sender can use credits from the recipients account based on the value of the transaction. This way, businesses can send valid payment invoices to their clients to request payment from them. This is also valuable for customers who want to make payment to businesses on a future date. </div>
+                    </div>
+                  </div>
+                  <div class="card">
+                    <div class="card-header" id="heading9">
+                      <h5 class="mb-0"> <a href="/#" class="collapsed" data-toggle="collapse" data-target="#collapse9" aria-expanded="false" aria-controls="collapse9">What is a Scriptbill Note Key?</a> </h5>
+                    </div>
+                    <div id="collapse9" class="collapse" aria-labelledby="heading9" data-parent="#popularTopics2">
+                      <div class="card-body"> A Scriptbill note key is your transaction token, you will always need to authorize a Scriptbill transaction. The purpose of the note key is to avoid an authorize use of a Scriptbill Note. </div>
+                    </div>
+                  </div>
+                  <div class="card">
+                    <div class="card-header" id="heading10">
+                      <h5 class="mb-0"> <a href="/#" class="collapsed" data-toggle="collapse" data-target="#collapse10" aria-expanded="false" aria-controls="collapse10">Closing Your Account</a> </h5>
+                    </div>
+                    <div id="collapse10" class="collapse" aria-labelledby="heading10" data-parent="#popularTopics2">
+                      <div class="card-body"> Closing a Scriptbill account seems impossible because your Scriptbill note is not just an account once active, it becomes an asset because it will be connected to an unlimited amount of resource both intentionally and protocol wise. For instance, with the Profit Sharing Protocol, your note becomes automatically connected to a large number of notes in the network, who will be sharing you profits. However an account will be closed if a Scriptbill note becomes inactive for a very long time in the network - long enough to allow all transaction blocks in the network connected to the note to expire. A transaction block connected to a note is what makes a Scriptbill Note valid in the network. This makes the possession of note a Scriptbill Protocol within the Crypto network. </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="text-center mt-4"><a href="/https://scriptbank.com.ng/blog" class="btn-link text-4">See more topics<i class="fas fa-chevron-right text-2 ml-2"></i></a></div>
+      </div>
+    </section>
+    <!-- Popular Topics end -->
+    
+    <!-- Can't find
+    ============================================= -->
+    <section class="section py-4 my-4 py-sm-5 my-sm-5">
+      <div class="container">
+        <div class="row">
+          <div class="col-lg-6">
+            <div class="bg-white shadow-sm rounded pl-4 pl-sm-0 pr-4 py-4">
+              <div class="row no-gutters">
+                <div class="col-12 col-sm-auto text-13 text-light d-flex align-items-center justify-content-center"> <span class="px-4 ml-3 mr-2 mb-4 mb-sm-0"><i class="far fa-envelope"></i></span> </div>
+                <div class="col text-center text-sm-left">
+                  <div class="">
+                    <h5 class="text-3 text-body">Can't find what you're looking for?</h5>
+                    <p class="text-muted mb-0">We want to answer all of your queries. Get in touch and we'll get back to you as soon as we can. <a class="btn-link" href="/https://scriptbank.com.ng/contact-us">Contact us<span class="text-1 ml-1"><i class="fas fa-chevron-right"></i></span></a></p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-lg-6 mt-4 mt-lg-0">
+            <div class="bg-white shadow-sm rounded pl-4 pl-sm-0 pr-4 py-4">
+              <div class="row no-gutters">
+                <div class="col-12 col-sm-auto text-13 text-light d-flex align-items-center justify-content-center"> <span class="px-4 ml-3 mr-2 mb-4 mb-sm-0"><i class="far fa-comment-alt"></i></span> </div>
+                <div class="col text-center text-sm-left">
+                  <div class="">
+                    <h5 class="text-3 text-body">Technical questions</h5>
+                    <p class="text-muted mb-0">Have some technical questions? Chat with us on whatsapp. <a class="btn-link" href="/https://wa.me/+2348074171908">Click here<span class="text-1 ml-1"><i class="fas fa-chevron-right"></i></span></a></p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <!-- Can't find end -->
+    
+  </div>
+  <!-- Content end --> 
+  
+   <!-- Footer
+  ============================================= -->
+  <footer id="footer">
+    <div class="container">
+      <div class="row">
+        <div class="col-lg d-lg-flex align-items-center">
+          <ul class="nav justify-content-center justify-content-lg-start text-3">
+            <li class="nav-item"> <a class="nav-link active" href="/about-us">About Us</a></li>
+            <li class="nav-item"> <a class="nav-link" href="/https://scriptbank.com.ng/contact-us">Support</a></li>
+            <li class="nav-item"> <a class="nav-link" href="/help">Help</a></li>
+            <li class="nav-item"> <a class="nav-link" href="/https://scriptbank.com.ng/careers">Careers</a></li>
+            <li class="nav-item"> <a class="nav-link" href="/https://scriptbank.com.ng/business-manager">Affiliate</a></li>
+            <li class="nav-item"> <a class="nav-link" href="/fees">Fees</a></li>
+          </ul>
+        </div>
+        <div class="col-lg d-lg-flex justify-content-lg-end mt-3 mt-lg-0">
+          <ul class="social-icons justify-content-center">
+            <li class="social-icons-facebook"><a data-toggle="tooltip" href="/http://www.facebook.com/" target="_blank" title="Facebook"><i class="fab fa-facebook-f"></i></a></li>
+            <li class="social-icons-twitter"><a data-toggle="tooltip" href="/http://www.twitter.com/" target="_blank" title="Twitter"><i class="fab fa-twitter"></i></a></li>
+            <li class="social-icons-google"><a data-toggle="tooltip" href="/http://www.google.com/" target="_blank" title="Google"><i class="fab fa-google"></i></a></li>
+            <li class="social-icons-youtube"><a data-toggle="tooltip" href="/http://www.youtube.com/" target="_blank" title="Youtube"><i class="fab fa-youtube"></i></a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-copyright pt-3 pt-lg-2 mt-2">
+        <div class="row">
+          <div class="col-lg">
+            <p class="text-center text-lg-left mb-2 mb-lg-0">Copyright &copy; 2023 <a href="/https://scriptbank.com.ng">Scriptbank</a>. All Rights Reserved.</p>
+          </div>
+          <div class="col-lg d-lg-flex align-items-center justify-content-lg-end">
+            <ul class="nav justify-content-center">
+              <li class="nav-item"> <a class="nav-link active" href="/security">Security</a></li>
+              <li class="nav-item"> <a class="nav-link" href="/term">Terms</a></li>
+              <li class="nav-item"> <a class="nav-link" href="/privacy">Privacy</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </footer>
+  <!-- Footer end -->
+  
+</div>
+<!-- Document Wrapper end --> 
+
+<!-- Back to Top
+============================================= --> 
+<a id="back-to-top" data-toggle="tooltip" title="Back to Top" href="/javascript:void(0)"><i class="fa fa-chevron-up"></i></a> 
+
+<!-- Script --> 
+<script src="/vendor/jquery/jquery.min.js"></script> 
+<script src="/vendor/bootstrap/js/bootstrap.bundle.min.js"></script> 
+<script src="/js/theme.js"></script>
+</body>
+</html>

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1.0, shrink-to-fit=no">
+<link href="/images/icon512x512.png" rel="icon" />
+<title>Scriptbill Cryptocurrency Systems From Scriptbank</title>
+<meta name="description" content="A Cryptocurrency Based On Cryptonote Technology, for an Unlimited and Secure financial lifestyle.">
+<meta name="author" content="harnishdesign.net">
+
+<!-- Web Fonts
+============================================= -->
+<link rel='stylesheet' href='https://fonts.googleapis.com/css?family=Rubik:300,300i,400,400i,500,500i,700,700i,900,900i' type='text/css'>
+
+<!-- Stylesheet
+============================================= -->
+<link rel="stylesheet" type="text/css" href="/vendor/bootstrap/css/bootstrap.min.css" />
+<link rel="stylesheet" type="text/css" href="/vendor/font-awesome/css/all.min.css" />
+<link rel="stylesheet" type="text/css" href="/css/stylesheet.css" />
+</head>
+<body>
+
+<!-- Preloader -->
+<div id="preloader">
+  <div data-loader="dual-ring"></div>
+</div>
+<!-- Preloader End -->
+
+<div id="main-wrapper" class="h-100">
+  <div class="container-fluid px-0 h-100">
+    <div class="row no-gutters h-100">
+      <!-- Welcome Text
+      ============================================= -->
+      <div class="col-md-6">
+        <div class="hero-wrap d-flex align-items-center h-100">
+          <div class="hero-mask opacity-8 bg-primary"></div>
+          <div class="hero-bg hero-bg-scroll" style="background-image:url('./images/bg/image-3.jpg');"></div>
+          <div class="hero-content mx-auto w-100 h-100 d-flex flex-column">
+            <div class="row no-gutters">
+              <div class="col-10 col-lg-9 mx-auto">
+                <div class="logo mt-5 mb-5 mb-md-0"> <a class="d-flex" href="/" title="Scriptbank Decentralized Banking Systems"><img src="/images/scriptbankLogoLight2.png" alt="Scriptbank"></a> </div>
+              </div>
+            </div>
+              <div class="row no-gutters my-auto">
+                <div class="col-10 col-lg-9 mx-auto">
+                  <h1 class="text-11 text-white mb-4" id="welcomeMes">Welcome back!</h1>
+                  <p class="text-4 text-white line-height-4 mb-5" id="welcomeDesc">We are glad to see you again! Instant deposits, withdrawals & payouts trusted by millions worldwide.</p>
+                </div>
+              </div>
+          </div>
+        </div>
+      </div>
+      <!-- Welcome Text End -->
+      
+      <!-- Login Form
+      ============================================= -->
+      <div class="col-md-6 d-flex align-items-center">
+        <div class="container my-4">
+          <div class="row">
+            <div class="col-11 col-lg-9 col-xl-8 mx-auto">
+              <h3 class="font-weight-400 mb-4">Log In</h3>
+              <form id="loginForm" method="post">
+                <div class="form-group">
+                  <label for="noteAddress">Note Address</label>
+                  <input type="text" class="form-control" id="noteAddress" placeholder="Enter Your Note Address for additional verification">
+				  <i class="text-3 text-muted">Not Required But Can Be Used to Login Without Uploading a Note.</i>
+                </div>
+                <div class="form-group">
+                  <label for="loginPassword">Note's Password</label>
+                  <div style="display:flex; justify-content: space-between;"><input type="password" class="form-control" id="loginPassword" required placeholder="Enter Note's Password"><span id="clickReveal" style="cursor:pointer; align-self:center;"><i class="fa fa-eye"></i></span></div>
+                </div><!--<button type="button" class="btn btn-primary btn-sm">Small Button</button>-->
+				 <div class="form-group">
+                  <label for="scriptUpload">Upload a Scriptbill note</label><br>
+				  <button type="button" class="btn btn-primary btn-sm" id="clickUpload">Click to Upload</button><br>
+				  <i>The please ensure you enter your note address before opening the directory and the note is stored on the directory you have picked.</i>
+                  <input type="file" style="display:none;" class="form-control" id="scriptUpload"  required placeholder="Upload Note">
+                </div>
+                <div class="row">
+                  <div class="col-sm">
+                    <div class="form-check custom-control custom-checkbox">
+                      <input id="remember-me" name="remember" class="custom-control-input" type="checkbox">
+                      <label class="custom-control-label" for="remember-me">Remember Me</label>
+                    </div>
+                  </div>
+                  <div class="col-sm text-right"><a class="btn-link" href="/#" data-target="#forgot-password-modal" data-toggle="modal">Forgot Password ?</a></div>
+                </div>
+                <button id="signinBtn" class="btn btn-primary btn-block my-4" type="submit">Login</button>
+              </form>
+			  <div id="error"></div>
+              <p class="text-3 text-center text-muted">Don't have an account? <a class="btn-link" href="/signup">Sign Up</a></p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Login Form End -->
+	  <!--Merge Note Modal Start -->
+		<div id="forgot-password-modal" class="modal fade" role="dialog" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered" role="document">
+                <div class="modal-content">
+                  <div class="modal-body">
+				  <div class="" style="width:100%;">
+				  <div class="d-flex justify-content-center rounded-left py-4" style="padding:20px 40px;width:100%;">
+					<form id="retrieveForm" method="post">
+						<div class="form-group">
+						  <label for="userTextID">User Name</label>
+						  <input type="text" class="form-control" id="userTextID" required placeholder="Connected User Name">
+						  <p>Please enter the user name you used in registering on this device. Note this action will not work on any other device.</p>
+						</div>
+						<div class="form-group">
+						  <label for="noteAddID">Note Address</label>
+						  <input type="password" class="form-control" id="noteAddID" required placeholder="password">
+						  <p>The note Address of the password you will like to retrieve</p>
+						</div>						
+						<div style="display:flex; justify-content:center;"><button type="button" class="btn btn-primary btn-sm" id="passwordRetrieve">Retrieve Password</button></div>
+					</form>
+					
+					</div>
+				  </div>
+				  </div>
+				</div>
+			</div>
+		</div>
+        <!--Merge Note Modal End -->
+    </div>
+  </div>
+</div>
+
+<!-- Back to Top
+============================================= --> 
+<a id="back-to-top" data-toggle="tooltip" title="Back to Top" href="/javascript:void(0)"><i class="fa fa-chevron-up"></i></a> 
+
+<!-- Script -->
+<script src="/vendor/jquery/jquery.min.js"></script> 
+<script src="/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+<script src="/vendor/bootstrap-select/js/bootstrap-select.min.js"></script>  
+<script src="/js/theme.js"></script>
+<script src="/vendor/daterangepicker/moment.min.js"></script> 
+<script src="/vendor/daterangepicker/daterangepicker.js"></script>
+<script src="/js/supabase.js"></script>
+   <script src="/js/crypto-js.js"></script>
+<script src="/js/scriptbill.js"></script>
+<script src="/qrcode.min.js"></script>	
+<script src="/content.js"></script>
+<script src="/js/checkLogin.js"></script>
+</body>
+</html>

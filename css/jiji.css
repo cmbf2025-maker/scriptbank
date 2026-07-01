@@ -1,0 +1,30 @@
+
+.fw-button--type-bloated-success{
+  background-color: #28363e !important;
+}
+
+.b-app-header.b-app-header--invert-color.b-app-header--active, .b-request-callback__button {
+	background-color: #fff !important;
+}
+
+a.b-list-advert-base.b-list-advert-base--vip.b-list-advert-base--gallery {
+	border: 2px solid #28363e !important;
+}
+
+.b-seller-page-header__button,.b-product-plate__label.qa-premium-label.b-advert-carousel__badge,.b-button--primary, a.b-button--primary, button.b-button--primary {
+	background-color: #28363e !important;
+}
+
+
+.b-adverts-listing-change-view__icon, .b-adverts-nav__sort-group__element svg, .b-list-advert__price, .b-seller-mobile-info-block__navigation-item--active span, .h-dflex.qa-header-back-button.h-increase-click-size.h-pointer > svg, .b-app-header__icon-wrapper--invert-icons-color .b-fav-button-advert__text, .b-app-header__icon-wrapper--invert-icons-color .b-mobile-filter-screen__title, .b-app-header__icon-wrapper--invert-icons-color>svg, .b-app-header__icon-wrapper--invert-icons-color .b-mobile-button-increase-square>svg, .b-app-header__icon-wrapper--invert-icons-color .b-fav-button-advert__text, .b-app-header__icon-wrapper--invert-icons-color .b-mobile-filter-screen__title, .b-app-header__icon-wrapper--invert-icons-color>svg,.b-advert-mobile-price, .fw-button--type-bloated-success.fw-button--plain,.fw-button--type-bloated-success.fw-button--plain, .b-quick-chat__messages-container__item, .fw-button--type-bloated-success.fw-button--plain,.fw-button--type-bloated-success.fw-button--plain, .b-seller-advert-info__adverts, .b-seller-advert-info__last-feedback__link, .icons.h-ml-12{
+	color: #28363e !important;
+}
+
+.b-list-advert-base--gallery, .fw-button--type-bloated-success.fw-button--plain, .b-quick-chat__messages-container__item,.b-button--primary, a.b-button--primary, button.b-button--primary, .fw-button--type-bloated-success.fw-button--plain {
+	border: 1px solid #28363e !important;
+}
+
+.b-seller-info-tiles, .b-seller-mobile-info-block__header-photo .b-static-image, .b-seller-advert-info__image, .b-advert-seller-block,.h-dflex.h-pb-20.h-flex-dir-column, div.qa-show-adsense.h-max-width-100p.h-mv-10, .active.b-mobile-bar.b-mobile-bar-new.js-mobile-bar-new {
+	display:none;
+}
+

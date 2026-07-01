@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+<title>KPI Dashboard</title>
+
+<link rel="stylesheet" href="/vendor/bootstrap/css/bootstrap.min.css">
+<link rel="stylesheet" href="/vendor/font-awesome/css/all.min.css">
+<link rel="stylesheet" href="/css/stylesheet.css">
+<link rel="stylesheet" type="text/css" href="/vendor/daterangepicker/daterangepicker.css" />
+
+<style>
+
+body{
+background:#f5f6fa;
+padding:20px;
+}
+
+.kpi-card{
+background:#fff;
+padding:20px;
+border-radius:4px;
+box-shadow:0 2px 5px rgba(0,0,0,0.1);
+margin-bottom:20px;
+text-align:center;
+}
+.kpi-card.link {
+    cursor: pointer;
+}
+
+.kpi-title{
+font-size:14px;
+color:#777;
+}
+
+.kpi-title.icon {
+    font-size:18px;
+    font-weight:bolder;
+}
+
+.kpi-value{
+font-size:28px;
+font-weight:bold;
+}
+
+.kpi-value.text{
+font-size:22px;
+font-weight:300px;
+}
+
+.chart-box{
+background:#fff;
+padding:20px;
+margin-bottom:20px;
+box-shadow:0 2px 5px rgba(0,0,0,0.1);
+}
+
+
+
+</style>
+
+</head>
+
+<body>
+
+<div class="container-fluid">
+
+<h2>KPI Dashboard</h2>
+
+<div class="row">
+
+<div class="col-md-3">
+<div class="kpi-card">
+<div class="kpi-title">Total Revenue</div>
+<div class="kpi-value" id="revenue">$0</div>
+</div>
+</div>
+
+<div class="col-md-3">
+<div class="kpi-card">
+<div class="kpi-title">Total Leads</div>
+<div class="kpi-value" id="leads">0</div>
+</div>
+</div>
+
+<div class="col-md-3">
+<div class="kpi-card">
+<div class="kpi-title">Total Sales</div>
+<div class="kpi-value" id="sales">0</div>
+</div>
+</div>
+
+<div class="col-md-3">
+<div class="kpi-card">
+<div class="kpi-title">Conversion Rate</div>
+<div class="kpi-value" id="conversion">0%</div>
+</div>
+</div>
+
+</div>
+
+<div class="row">
+
+<div class="col-md-3">
+<div class="kpi-card link" data-toggle="modal" data-target="#add-business">
+<div class="kpi-title icon"><i class="fas fa-plus-circle"></i></div>
+<div class="kpi-value text">Add Business</div>
+</div>
+
+<!-- Add Business -->
+  <div class="modal fade" id="add-business" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title fw-semibold">Add Business</h5>
+          <button type="button" class="close font-weight-400" data-dismiss="modal"> <span aria-hidden="true">&times;</span></button>
+        </div>
+        <div class="modal-body">
+          <form>
+            <div class="mb-3">
+              <label class="form-label-custom">Business Type</label>
+              <select class="form-select form-select-custom" id="bizType">
+                <option value="">Select Business Type</option>
+                <option value="service-business">Service Business</option>
+                <option value="manufacturer">Manufacturer</option>
+                <option value="traders">Traders</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label-custom">Business name</label>
+              <input type="text" class="form-control form-control-custom" placeholder="Enter Business Name" id="bizName">
+            </div>
+             <div class="mb-3">
+              <label class="form-label-custom">Business Address</label>
+              <textarea name="bizAdd" id="bizAdd" cols="30" rows="10"></textarea>
+            </div>
+            <div class="mb-3">
+              <label class="form-label-custom">Business Email</label>
+              <input type="email" class="form-control form-control-custom" placeholder="Enter Business Email" id="bizEmail">
+            </div>
+            <div class="mb-3">
+              <label class="form-label-custom">Business Phone</label>
+              <input type="phone" class="form-control form-control-custom" placeholder="Enter Business Phone" id="bizPhone">
+            </div>
+            <div class="mb-3">
+              <label class="form-label-custom">Business ID</label>
+              <input type="text" class="form-control form-control-custom" placeholder="Enter Business ID" id="bizID">
+              <i class="text-3">This is the budget or note address of the business when registered with Scriptbank.</i>
+            </div>
+            <button type="submit" class="btn btn-primary w-100" onclick="handleAddBusiness(this)">Add Business</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="col-md-3">
+<div class="kpi-card link" data-toggle="modal" data-target="#add-budget">
+<div class="kpi-title icon"><i class="fas fa-plus-circle"></i></div>
+<div class="kpi-value text">Add Budget</div>
+</div>
+<!-- Add Budget -->
+  <div class="modal fade" id="add-budget" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title fw-semibold">Add Operational Budget</h5>
+          <button type="button" class="close font-weight-400" data-dismiss="modal"> <span aria-hidden="true">&times;</span></button>
+        </div>
+        <div class="modal-body">
+          <form>
+            <div class="mb-3">
+              <label class="form-label-custom">Budget Type</label>
+              <select class="form-select form-select-custom" id="budType">
+                <option value="">Select Budget Type</option>
+                <option value="internet-budget">Internet Budget</option>
+                <option value="business-promotion">Business Promotion</option>
+                <option value="transpoartation">Transportation</option>
+                <option value="business-material">Business Material</option>
+                <option value="development-budget">Development Budget</option>
+                <option value="investment-monitoring">Investment Monitoring</option>
+                <option value="hardware">Hardware Budget</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label-custom">Budget Name</label>
+              <input type="text" class="form-control form-control-custom" placeholder="Enter Budget Name" id="budName">
+              <i class="text-3">The should be an highlight of what the budget is for e.g "Buy Internet Data 3GB"</i>
+            </div>
+            <div class="mb-3">
+              <label class="form-label-custom">Budget Amount</label>
+              <input type="number" class="form-control form-control-custom" placeholder="Enter amount" id="budAmount">
+               <i class="text-3">Total Amount required for the Budget to be executed.</i>
+            </div>
+             <div class="mb-3">
+              <label class="form-label-custom">Budget Recipient Type</label>
+              <select class="form-select form-select-custom" id="budRepType">
+                <option value="scriptbank" selected>Scriptbank</option>
+                <option value="local-bank">Local Bank</option>
+                <option value="phone-number">Phone Number</option>
+                <option value="email">Email</option>
+                <option value="cryptocurrency">Cryptocurrency</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label-custom">Recipient Address</label>
+              <input type="text" class="form-control form-control-custom" placeholder="Enter Recipient Address or Account Number" id="budRep">
+              <i class="text-3">This should be the recipient of the Budget you want to spend based on the Recipient Type</i>
+            </div>
+
+            <div class="mb-3" style="display: none;">
+              <label class="form-label-custom">Recipient Name</label>
+              <input type="text" class="form-control form-control-custom" placeholder="Enter Recipient Name or Account Name" id="budRepName">
+              <i class="text-3">This should the Account Name of the Recipient</i>
+            </div>
+
+            <div class="mb-3" style="display: none;">
+              <label class="form-label-custom">Recipient Bank</label>
+              <input type="text" class="form-control form-control-custom" placeholder="Enter Recipient Bank Name" id="budRepBank">
+              <i class="text-3">This should the Bank name of the Recipient</i>
+            </div>
+            <button type="submit" class="btn btn-primary w-100" onclick="handleCreateBudget(this)">Create Budget</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="col-md-3">
+<div class="kpi-card link" data-toggle="modal" data-target="#promote-business">
+<div class="kpi-title icon"><i class="fas fa-plus-circle"></i></div>
+<div class="kpi-value text">Promote Business</div>
+</div>
+
+<!-- Promote Business -->
+  <div class="modal fade" id="promote-business" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title fw-semibold">Promote Business</h5>
+          <button type="button" class="close font-weight-400" data-dismiss="modal"> <span aria-hidden="true">&times;</span></button>
+        </div>
+        <div class="modal-body">
+          <form>
+            <div class="mb-3">
+              <label class="form-label-custom">Promotion Platform</label>
+              <select class="form-select form-select-custom" id="platform">
+                <option value="">Select Promotion Platform</option>
+                <option value="share">Native Shares</option>
+                <option value="facebook">Facebook / Instagram</option>
+                <option value="twitte">Twitter</option>
+                <option value="google">Google</option>
+                <option value="youtube">Youtube</option>
+                <option value="adsterra">Adsterra</option>
+                <option value="telegram">Telegram</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label-custom">Select Business</label>
+              <select class="form-select form-select-custom" id="businessPromote">
+                <option value="">Select Business</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label-custom">Amount</label>
+              <input type="number" class="form-control form-control-custom" placeholder="Enter amount" id="promoAmount">
+              <i>this is the value you want to budget for Promoting this Business on the platform. Note must be equal to or less than the companies sales record.</i>
+            </div>
+            <button type="submit" class="btn btn-primary w-100" onclick="handlePromoteBusiness(this)">Promote Business</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="col-md-3">
+<div class="kpi-card link" data-toggle="modal" data-target="#monitor-business">
+<div class="kpi-title icon"><i class="fas fa-plus-circle"></i></div>
+<div class="kpi-value text">Monitor Business</div>
+</div>
+
+ <!-- Monitor Business -->
+  <div class="modal fade" id="monitor-business" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title fw-semibold">Business Monitorer</h5>
+          <button type="button" class="close font-weight-400" data-dismiss="modal"> <span aria-hidden="true">&times;</span></button>
+        </div>
+        <div class="modal-body">
+          <form>
+            <div class="mb-3">
+              <label class="form-label-custom">Business to Monitor</label>
+              <select class="form-select form-select-custom" id="selectBusiness">
+                <option value="">Select Business</option>
+              </select>
+            </div>
+           <div class="mb-3" >
+                <label for="enddate">Business Monitor Start Date</label>
+                <div class="position-relative">
+                <input id="enddate" value="" type="text" class="form-control datepicker" placeholder="Business Monitor Start Date">
+                <span class="icon-inside"><i class="fas fa-calendar-alt"></i></span> </div>                
+              </div>
+           
+            <button type="submit" class="btn btn-primary w-100" onclick="handleBusinessMonitor(this)">Monitor Business</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<div class="row">
+
+<div class="col-md-6">
+
+<div class="chart-box">
+<h4>Revenue Trend</h4>
+<canvas id="revenueChart"></canvas>
+</div>
+
+</div>
+
+<div class="col-md-6">
+
+<div class="chart-box">
+<h4>Leads Trend</h4>
+<canvas id="leadsChart"></canvas>
+</div>
+
+</div>
+
+</div>
+
+<div class="row">
+
+<div class="col-md-12">
+
+<div class="chart-box">
+
+<h4>Business Performance</h4>
+
+<table class="table table-bordered" id="dataTable">
+
+<thead>
+<tr>
+<th>Date</th>
+<th>Business</th>
+<th>Leads</th>
+<th>Sales</th>
+<th>Revenue</th>
+<th>Cost</th>
+</tr>
+</thead>
+
+<tbody></tbody>
+
+</table>
+
+</div>
+
+</div>
+
+</div>
+
+</div>
+<script src="/vendor/jquery/jquery.min.js"></script>
+<script src="/vendor/bootstrap/js/bootstrap.min.js"></script>
+<script src="/vendor/daterangepicker/moment.min.js"></script> 
+<script src="/vendor/daterangepicker/daterangepicker.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="/js/crypto-js.js"></script>
+<script src="/js/supabase.js"></script>
+<script src="/js/scriptbill.js"></script>
+<script src="/js/checkLogin.js"></script>
+
+<script>
+
+    window.jQuery(function() {
+		'use strict';
+		  // Birth Date
+		  window.jQuery('#enddate').daterangepicker({
+			singleDatePicker: true,
+			"showDropdowns": true,
+			autoUpdateInput: false,
+			minDate: moment().add(7, 'days'),
+			}, function(chosen_date) {
+		  window.jQuery('#enddate').val(chosen_date.format('MM-DD-YYYY'));
+         
+		});
+	});
+
+/*
+if(! Scriptbill || ! Scriptbill.s.currentNote || ! Scriptbill.isJsonable(Scriptbill.s.currentNote) ) location.href = "/login";
+
+const note      = JSON.parse(Scriptbill.s.currentNote);
+
+if(note.rankPref != "businessManager"){
+    setTimeout(async ()=>{
+        await Scriptbill.createAlert("This section is for users who are Business Managers in the Scriptbank Network.");
+        location.href = "/dashboard";
+    }, 1000);
+}
+
+if(! note.sheetID ){
+    setTimeout(async ()=>{
+        await Scriptbill.createAlert("You don't have a KPI Sheet set on your account, please set it first by visiting your google sheet dashboard");
+        location.href = "/dashboard";
+    }, 1000);
+}
+*/
+
+const note = {};
+const sheetID = note.sheetID;
+const apiKey = "YOUR_API_KEY";
+
+const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetID}/values/Sheet1?key=${apiKey}`;
+
+
+async function handleBusinessMonitor(el, refreshRate = 5, businessAlerted = false ){
+    el.innerText = "Monitoring Business";
+    el.setAttribute("disabled", "disabled");
+    let businessID = selectBusiness.value;
+
+    if(! businessID){
+        return Scriptbill.createAlert("No Business to Monitor");
+    }
+
+    let chooseTime = false;
+
+    if(enddate.value){
+        chooseTime = new Date(enddate.value);
+        chooseTime = chooseTime.getTime().toString();
+    }
+
+    let trans = await Scriptbill.getTransBlock(100, {productID: businessID, transTime: (chooseTime ?? Date.now().toString()) + " <="});
+
+    if( ! trans.length ){
+        return Scriptbill.createAlert(`Business has no transaction yet.`);
+    }
+
+    trans = trans.filter((block)=>{
+        return block.transType == "BUYPRODUCT" || block.transType == "PRODUCTSUB";
+    })
+
+    const head = document.querySelector("#dataTable thead");
+    const table = document.querySelector("#dataTable tbody"); 
+    head.innerHTML = `<tr>
+            <th>Date</th>
+            <th> Amount </th>
+            <th>ID</th>
+        </tr>`;
+    table.innerHTML = "";
+    trans.forEach((block)=>{
+        let date    = new Date(block.transTime);
+        let value   = parseFloat(block.transValue).toFixed(2);
+        let l       = block.noteType;
+        table.innerHTML += `<tr>
+            <td>${date.toDateString()}</td>
+            <td>${value}</td>
+            <td>${block.blockID}</td>
+            </tr>`
+    });
+
+    
+    if( businessAlerted)
+     Scriptbill.createAlert("Please enter these values on your KPI Sheet for performance check. Fraudulent entries detected will be penalized.");
+
+    businessAlerted = true;
+
+    setTimeout(()=>{
+        handleBusinessMonitor(el, refreshRate, businessAlerted );
+    }, refreshRate * 1000)
+
+}
+
+async function handlePromoteBusiness(el){
+    el.innerText = `Promoting Business...`;
+    el.setAttribute("disabled", "disabled");
+    let businessID = businessPromote.value;
+
+    if(! businessID){
+        await Scriptbill.createAlert(`No Business to promote, Please select a Business and Try again`);
+        return;
+    }
+
+    let bizUrl  = `https://scriptbank.org/checkProduct/?productID=${businessID}`;
+    
+    if(platform.value == "share"){
+        return addSharePlatform(bizUrl)
+    }
+
+    if(note.noteValue < promoAmount.value ){
+        return Scriptbill.createAlert(`Note does not have enough value to fulfill this request. Value required is ${note.noteValue - promoAmount.value} ${note.noteType}`);
+    }
+
+    const res = await fetch(url);
+    const data = await res.json();
+
+    let revenue = 0;
+
+    dataset.forEach(row=>{
+
+
+let r = Number(row[5]);
+
+revenue += r;
+
+});
+
+
+let test = revenue * 0.2;
+
+if( test < promoAmount.value ){
+    return Scriptbill.createAlert(`Your Business does not generate enough revenue to be promoted.`)
+}
+
+
+    switch(platform.value){
+        case "facebook":
+            return addFacebookPlatform(bizUrl, promoAmount.value);
+            break;
+
+        case "twitter":
+            return addTwitterPlatform(bizUrl, promoAmount.value);
+            break;
+
+        case "telegram":
+            return addTelegramPlatform(bizUrl, promoAmount.value);
+            break;
+
+        case "adsterra":
+            return addCustomPlatform(bizUrl, promoAmount.value);
+
+        case "youtube":
+            return addYoutubePlatform(bizUrl, promoAmount.value);
+            break;
+
+        case "google":
+            return addGooglePlatform(bizUrl, promoAmount.value);
+            break;
+
+        default:
+            return addCustomPlatform(bizUrl, promoAmount.value)
+    }
+}
+
+async function addFacebookPlatform(url,value){
+    
+}
+
+async function addTwitterPlatform(url,value){
+    
+}
+
+async function addTelegramPlatform(url,value){
+    
+}
+
+async function addCustomPlatform(url,value){
+
+}
+
+async function addGooglePlatform(url,value){
+    
+}
+
+async function addYoutubePlatform(url,value){
+    
+}
+
+async function handleAddBusiness(el){
+    el.innerText = `Adding Business...`;
+
+    delete Scriptbill.s.currentNote;
+    //create a new Scriptbill Wallet using the Business Information
+    let config = Scriptbill.defaultScriptbill;
+
+    config.referee = note.walletID;
+    config.noteType   = note.noteType;
+    Scriptbill.password = bizPass.value;
+    Scriptbill.key      = bizKey.value;
+
+    Scriptbill.createNewScriptbillWallet().then( created =>{
+        if(created && created.transType == "CREATE"){
+            el.innerText = "Business Wallet Created...";
+            return setAccountData( this, bizName.value, bizName.value.split(" ")[0], bizEmail.value, bizPhone.value, bizAdd.value, "Nigeria" );
+        }
+        let errors = JSON.parse(Scriptbill.s.errorMessages);
+        let error = errors[errors.length - 1];
+        throw new Error(`Business wallet creation failed, hence can't continue the business creation. You can parse on the last stored error message from Scriptbill as guide: ${error}`);
+    }).then(updated =>{
+        if( updated && updated.transType == "UPDATE"){
+            el.innerText = "Business Wallet Updated...";            
+        }
+
+        else {
+            el.innerText = "Business Wallet Update Failed";
+        }
+
+        Scriptbill.budgetConfig.name    = budName.value;
+        Scriptbill.budgetConfig.budgetType = "business";
+        Scriptbill.budgetConfig.value       = 0;
+
+        return Scriptbill.createScriptbillBudget( Scriptbill.budgetConfig );
+
+    }).then( budgetted =>{
+        if(budgetted && budgetted.transType == "CREATEBUDGET"){
+            let bizNote     = JSON.parse( Scriptbill.s.currentNote );
+            el.innerText = `Business Budget Created...`;
+            Scriptbill.productConfig.name = budName.value;
+            Scriptbill.productConfig.value = 1;
+            Scriptbill.productConfig.units = Infinity;
+            Scriptbill.productConfig.description = `${bizName.value} Product Created!`;
+            return Scriptbill.create_product();
+        }
+        let errors = JSON.parse(Scriptbill.s.errorMessages);
+        let error = errors[errors.length - 1];
+        throw new Error(`Business Budget wasn't created, hence business creation failed. You can parse on the last stored error message from Scriptbill as guide: ${error}`);
+    }).then(async product =>{
+        if(product && product.transType == "CREATEPRODUCT" && product.productID ){
+            el.innerText    = `Business Creation Successful`;
+            await Scriptbill.createAlert(`Business has been successfully created with Business ID: ${product.productID}. Business transactions will now be used for your KPI`);
+            let accountData = JSON.parse(note.accountData)
+            
+            if(! accountData.businesses ){
+                accountData.businesses = []
+            }
+            accountData.businesses.push(product.productID);
+            accountData = {
+                [note.noteAddress] : accountData
+            }
+             let bizNote     = JSON.parse( Scriptbill.s.currentNote );
+            let bizNotes        = JSON.parse(Scriptbill.s.businessNotes ?? "[]");
+            bizNotes.push(bizNote);
+            Scriptbill.s.businessNotes = JSON.stringify(bizNotes);
+            Scriptbill.s.currentNote = JSON.stringify(note);
+            return Scriptbill.setAccountData(accountData);
+        }
+        let errors = JSON.parse(Scriptbill.s.errorMessages);
+        let error = errors[errors.length - 1];
+        throw new Error(`Business Product wasn't created, hence business creation failed. You can parse on the last stored error message from Scriptbill as guide: ${error}`);
+    }).then(updated =>{
+        if(updated && updated.transType == "UPDATED"){
+            el.innerText = 'Note Updated...';
+            location.reload();
+        }
+    }).catch(async error =>{
+        if(error.message){
+           await Scriptbill.createAlert(error.message);
+        }
+
+        else {
+            console.error(error);
+        }
+        location.reload()
+    })
+    
+}
+
+async function  handleCreateBudget(el){
+    el.innerText = `Creating Budget...`;
+    const res = await fetch(url);
+    const data = await res.json();
+
+    const rows = data.values;
+    const headers = rows[0];
+    const dataset = rows.slice(1);
+    const totalData = dataset.length;
+    let revenue     = 0;
+    let leads       = 0;
+    let sales       = 0;
+    let cost        = 0;
+    let businesses  = [];
+    let values      = [];
+    let dates       = [];
+
+    dataset.forEach(row=>{
+
+        let date = row[0];
+        let campaign = row[1];
+        let l = Number(row[2]);
+        let s = Number(row[3]);
+        let r = Number(row[4]);
+        let c = Number(row[5]);
+
+        revenue += r;
+        leads += l;
+        sales += s;
+        cost += c;
+
+    });
+
+    switch(budType.value){
+        case "internet-data":
+            let expected = revenue / 10;
+            if( expected < budAmount.value ){
+                Scriptbill.createAlert(`Unfortunately You have to make a revenue of ${ budAmount.value - expected } to purchase this. Please contact your supervisor if you have any issues.`)
+                return;
+            }
+            break;
+
+        case "business-promotion":
+            if(revenue < budAmount.value ){
+                Scriptbill.createAlert(`Can't Create a Business Promotion Budget without an active business participation`);
+                return;
+            }
+            break;
+
+        case "transportation":
+        case "investment-monitoring":
+        case "hardware":
+            if( cost > revenue ){
+                Scriptbill.createAlert(`Too large cost already on your account, please create more revenue for budget approval.`);
+                return;
+            }
+            break;
+
+    }
+
+    if(budAmount.value < note.noteValue ){
+        await Scriptbill.createAlert(`You don't have enough funds in your wallet to proceed with this budget. You can contact your supervisor for more details`);
+        location.reload();
+        return;
+    }
+
+    await Scriptbill.createAlert("You will be redirected to complete budget transaction. Make sure this is entered on your Google Sheet for KPI Scorage.");
+
+    if( budRepType.value == "local-bank" || budRepType.value == "cryptocurrency"){
+        if(( ! budRep.value || ! budRepBank.value || ! budRepName.value ) && budRepType.value == "local-bank"){
+            Scriptbill.createAlert(`Bank name and Account Name are required field if Recipient Type is bank.`);
+            return;
+        }
+        let config = {};
+
+        if( budRepType.value == "local-bank"){
+             config.bank    = atob(JSON.stringify({
+                    bankName: budRepBank.value,
+                    accountName: budRepName.value,
+                    accountNumber: budRep.value
+            }));
+        } else {
+             config.bank    = atob(JSON.stringify({
+                    bankName: budRepBank.value,
+                    accountName: "Cryptocurrency",
+                    accountNumber: budRep.value
+            }));
+        }
+       
+        config.total    = budAmount.value;
+        config.fees = budAmount.value * 0.05;
+        config.amount   = config.total - config.fees;
+
+        Scriptbill.s.withdrawConfig = JSON.stringify(config);
+        el.innerText = `Redirecting to Withdrawal...`;
+        return setTimeout(()=>{
+            location.href = "/withdraw-money-confirm";
+        }, 3000);
+    }
+
+
+    
+    let config = {};
+    config.agreeConfigType = "";
+    config.returnAmount = 0;
+    config.agreementExpiry = "";
+    config.repValue     = budAmount.value;
+    config.currency     = note.noteType.slice(0, note.noteType.length - 3);
+    config.repCurrency  = config.currency;
+    config.recipient    = budRep.value;
+
+    if( budRepType.value == "phone-number"){
+        config.recipientType = "phone";
+    }
+
+    else if(budRepType.value == "email"){
+        config.recipientType = "email";
+    } else {
+        config.recipientType = "scriptbill";
+    }
+    Scriptbill.s.sendConfig  = JSON.stringify(config);
+
+    el.innerText = `Redirecting to Send...`;
+    return setTimeout(()=>{
+        location.href = "/send-money-confirm";
+    }, 3000);
+    
+
+
+
+}
+
+async function loadData(){
+
+    budRepType.onchange = function(e){
+        if(this.value == "local-bank"){
+            budRep.parentElement.querySelector("label").innerText = `Account Number`;
+            budRep.parentElement.querySelector("i").innerText = `This should be the Local Bank Account Number of the Recipient`;
+            budRepName.parentElement.style.display = "block";
+            budRepBank.parentElement.style.display = "block";
+        } else {
+            budRep.parentElement.querySelector("label").innerText = `Recipient Address`;
+            budRep.parentElement.querySelector("i").innerText = `This should be the recipient of the Budget you want to spend based on the Recipient Type`;
+            budRepName.parentElement.style.display = "none";
+            budRepBank.parentElement.style.display = "none";
+        }
+    }
+
+const res = await fetch(url);
+const data = await res.json();
+
+const rows = data.values;
+const headers = rows[0];
+const dataset = rows.slice(1);
+
+let revenue = 0;
+let leads = 0;
+let sales = 0;
+let cost = 0;
+
+let dates = [];
+let revenues = [];
+let leadsData = [];
+const head = document.querySelector("#dataTable thead");
+const table = document.querySelector("#dataTable tbody");
+
+head.innerHTML = `
+    <tr>
+<th>Date</th>
+<th>Business</th>
+<th>Leads</th>
+<th>Sales</th>
+<th>Revenue</th>
+<th>Cost</th>
+</tr>
+`;
+
+dataset.forEach(row=>{
+
+let date = row[0];
+let campaign = row[1];
+let businessID = row[2]
+let l = Number(row[3]);
+let s = Number(row[4]);
+let r = Number(row[5]);
+let c = Number(row[6]);
+
+let option = document.createElement("option");
+option.setAttribute("value", businessID );
+option.textContent      = `${campaign}`;
+businessPromote.appendChild(option);
+
+revenue += r;
+leads += l;
+sales += s;
+cost += c;
+
+dates.push(date);
+revenues.push(r);
+leadsData.push(l);
+
+let tr = `
+<tr>
+<td>${date}</td>
+<td>${campaign}</td>
+<td>${l}</td>
+<td>${s}</td>
+<td>${r}</td>
+<td>${c}</td>
+</tr>
+`;
+
+table.innerHTML += tr;
+
+});
+
+document.getElementById("revenue").innerText = "$"+revenue;
+document.getElementById("leads").innerText = leads;
+document.getElementById("sales").innerText = sales;
+
+let conversion = (sales/leads)*100;
+
+document.getElementById("conversion").innerText = conversion.toFixed(2)+"%";
+
+renderCharts(dates, revenues, leadsData);
+
+}
+
+function renderCharts(dates, revenues, leadsData){
+
+new Chart(document.getElementById("revenueChart"),{
+type:"line",
+data:{
+labels:dates,
+datasets:[{
+label:"Revenue",
+data:revenues
+}]
+}
+});
+
+new Chart(document.getElementById("leadsChart"),{
+type:"bar",
+data:{
+labels:dates,
+datasets:[{
+label:"Leads",
+data:leadsData
+}]
+}
+});
+
+}
+
+loadData();
+
+</script>
+
+</body>
+</html>

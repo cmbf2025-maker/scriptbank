@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scriptbank Product</title>
+    <style>
+        .fullWidth {
+            width:100%;
+            position: fixed;
+            height:90%;
+        }
+    </style>
+    <link rel="stylesheet" type="text/css" href="/vendor/bootstrap/css/bootstrap.min.css" />
+    <link rel="stylesheet" type="text/css" href="/vendor/font-awesome/css/all.min.css" />
+</head>
+<body>
+    <!-- Water Modal -->
+  <div class="modal fade" id="water-modal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title fw-semibold">Pay Water Bill</h5>
+          <button type="button" class="close font-weight-400" data-dismiss="modal"> <span aria-hidden="true">&times;</span></button>
+        </div>
+        <div class="modal-body">
+          <form>
+            <div class="mb-3">
+              <label class="form-label-custom">Water Board</label>
+              <select class="form-select form-select-custom">
+                <option value="">Select Water Board</option>
+                <option value="lagos">Lagos Water Corporation</option>
+                <option value="abuja">FCT Water Board</option>
+                <option value="rivers">Rivers State Water Board</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label-custom">Customer ID</label>
+              <input type="text" class="form-control form-control-custom" placeholder="Enter customer ID">
+            </div>
+            <div class="mb-3">
+              <label class="form-label-custom">Amount</label>
+              <input type="number" class="form-control form-control-custom" placeholder="Enter amount">
+            </div>
+            <button type="submit" class="btn btn-primary w-100" onclick="handleWaterPurchase(this)">Pay Bill</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+    <script src="/js/crypto-js.js"></script>
+    <script src="/js/supabase.js"></script>
+    <script src="/js/scriptbill.js"></script>
+    <script>
+        let url = new URL(location.href);
+        let product = url.searchParams.get("productID");
+
+        if(product){
+             setTimeout(async()=>{
+                let trans = await Scriptbill.getTransBlock(1, {productID:product, transType:"CREATEPRODUCT"});
+
+                if( ! trans.length){
+                    await Scriptbill.createAlert(`No Product found with the ID: ${product}`);
+                    location.href = "/dashboard";
+                } else {
+                    let block = trans[0];
+                    let agreement = block.agreement;
+
+                    if(Scriptbill.isJsonable(agreement)){
+                        agreement   = JSON.parse(agreement);
+                    }
+
+                    appendProductToBody(agreement);
+                }
+            }, 1)
+        } else {
+            document.body.append("No Product was Requested");
+        }
+
+
+        function appendProductToBody(agreement){
+            if(agreement && agreement.url){
+                let iframe = document.createElement("iframe");
+                iframe.src = agreement.url;
+                iframe.classList.add("fullwidth");
+                document.body.appendChild(iframe);
+                let buydiv = document.createElement("div");
+                let buyButton = document.createElement("button");
+
+                buyButton.onclick = function(){
+                    buyModal.style.display = "block";
+                }
+            }
+        }
+       
+    </script>
+</body>
+</html>

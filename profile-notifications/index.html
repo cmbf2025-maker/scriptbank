@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1.0, shrink-to-fit=no">
+<link href="/images/icon32x32.png" rel="icon" />
+<title>Scriptbank - Bringing Out the Financial Giant in You</title>
+<meta name="description" content="A app used to manage Scriptbill, a Cryptocurrency built against financial mishandling and misappropraition..">
+<meta name="author" content="scriptbank.com.ng">
+
+<!-- Web Fonts
+============================================= -->
+<link rel='stylesheet' href='https://fonts.googleapis.com/css?family=Rubik:300,300i,400,400i,500,500i,700,700i,900,900i' type='text/css'>
+
+<!-- Stylesheet
+============================================= -->
+<link rel="stylesheet" type="text/css" href="/vendor/bootstrap/css/bootstrap.min.css" />
+<link rel="stylesheet" type="text/css" href="/vendor/font-awesome/css/all.min.css" />
+<link rel="stylesheet" type="text/css" href="/vendor/bootstrap-select/css/bootstrap-select.min.css" />
+<link rel="stylesheet" type="text/css" href="/vendor/currency-flags/css/currency-flags.min.css" />
+<link rel="stylesheet" type="text/css" href="/css/stylesheet.css" />
+<link rel="stylesheet" type="text/css" href="/css/css.css" />
+</head>
+<body>
+
+<!-- Preloader -->
+<div id="preloader">
+  <div data-loader="dual-ring"></div>
+</div>
+<!-- Preloader End --> 
+
+<!-- Document Wrapper   
+============================================= -->
+<div id="main-wrapper"> 
+  <!-- Header
+  ============================================= -->
+  <header id="header">
+    <div class="container">
+      <div class="header-row">
+        <div class="header-column justify-content-start"> 
+          <!-- Logo
+          ============================= -->
+          <div class="logo"> <a class="d-flex" href="/" title="Scriptbill Cryptonote"><img src="/images/scriptbankLogo2.png" alt="Scriptbank" /></a> </div>
+          <!-- Logo end --> 
+          <!-- Collapse Button
+          ============================== -->
+          <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#header-nav"> <span></span> <span></span> <span></span> </button>
+          <!-- Collapse Button end --> 
+          
+            <!-- Primary Navigation
+          ============================== -->
+          <nav class="primary-menu navbar navbar-expand-lg">
+            <div id="header-nav" class="collapse navbar-collapse">
+              <ul class="navbar-nav mr-auto">
+                <li><a href="/dashboard">Dashboard</a></li>
+                <li><a href="/transactions">Transactions</a></li>
+                <li><a href="/send-money">Send/Request</a></li>
+                <li><a href="/help">Help</a></li>                
+                <li><a href="/login?loggout=TRUE">Logout</a></li>                
+              </ul>
+            </div>
+          </nav>
+          <!-- Primary Navigation end --> 
+        </div>
+        <div class="header-column justify-content-end"> 
+          <!-- Login & Signup Link
+          ============================== -->
+          <nav class="login-signup navbar navbar-expand">
+            <ul class="navbar-nav">
+              <li><a href="/profile">Settings</a> </li>
+              <li class="align-items-center h-auto ml-sm-3"><a class="btn btn-outline-primary shadow-none d-none d-sm-block" href="/login?loggout=TRUE">Sign out</a></li>
+            </ul>
+          </nav>
+          <!-- Login & Signup Link end --> 
+        </div>
+      </div>
+    </div>
+  </header>
+  <!-- Header End -->
+   
+  
+   <!-- Secondary Menu
+  ============================================= -->
+  <div class="bg-primary">
+    <div class="container d-flex justify-content-center">
+      <ul class="nav secondary-nav">
+        <li class="nav-item"> <a class="nav-link" href="/profile">Account</a></li>
+        <li class="nav-item"> <a class="nav-link" href="/profile-cards-and-bank-accounts">Cards & Bank Accounts</a></li>
+        <li class="nav-item"> <a class="nav-link active" href="/profile-notifications">Notifications</a></li>
+		<li class="nav-item"> <a class="nav-link" href="/scan-qrcode">Scan Code</a></li>
+      </ul>
+    </div>
+  </div>
+  <!-- Secondary Menu end --> 
+  
+  <!-- Content
+  ============================================= -->
+  <div id="content" class="py-4">
+    <div class="container">
+      <div class="row"> 
+        <!-- Left Panel
+        ============================================= -->
+        <aside class="col-lg-3"> 
+          
+          <!-- Profile Details
+          =============================== -->
+          <div class="bg-light shadow-sm rounded text-center p-3 mb-4">
+            <div class="profile-thumb mt-3 mb-4"> <img class="rounded-circle" id="rankImage" src="/images/profile-thumb.jpg" alt="">
+              <div class="profile-thumb-edit custom-file bg-primary text-white" data-toggle="tooltip" title="Change Wallet Rank"> <i class="fas fa-briefcase position-absolute"></i>
+                <a href="/#buy-rank-bond" data-toggle="modal" class="custom-file-input" id="customFile"></a>
+              </div>
+            </div>
+            <p class="text-3 font-weight-500 mb-2" id="salutation">Hello, Smith Rhodes</p>
+			<p class="text-5 font-weight-700 mb-2" id="rankSalute">CMBF Beginner</p>
+           <!-- <p class="mb-2"><a href="/profile" class="text-5 text-light" data-toggle="tooltip" title="Edit Profile"><i class="fas fa-edit"></i></a></p>-->
+          </div>
+          <!-- Profile Details End -->
+		  <!--Buy Rank Bond Modal Start -->
+          <div id="buy-rank-bond" class="modal fade " role="dialog" aria-hidden="true">
+			<div class="modal-dialog modal-dialog-centered" role="document">
+              <div class="modal-content">
+                <div class="modal-header">
+                  <h5 class="modal-title font-weight-400">Buy Rank Bond</h5>
+				  <button type="button" class="close font-weight-400" data-dismiss="modal" aria-label="Close"> <span aria-hidden="true">&times;</span> </button>
+				</div>
+				<div class="modal-body p-4">
+					<div class="form-group">
+                      <label for="bondValue">Bond Value</label>
+                      <input type="number" min="100" class="form-control" data-bv-field="bondvalue" id="bondValue" required placeholder="100">
+					  <button class="btn btn-primary btn-block mt-4" type="submit" id="buyBondBtn">Buy Bond</button>
+                    </div>
+				</div>
+			  </div>
+			</div>	
+		  </div>
+		  <!--Buy Rank Modal Ends -->
+          
+          <!-- Available Balance
+          =============================== -->
+          <div class="bg-light shadow-sm rounded text-center p-3 mb-4" style="position:relative;">
+            <div class="text-17 text-light my-3"><i class="fas fa-wallet"></i></div>
+			<a href="/scan-qrcode" class="text-5 my-3" style="position:absolute; width:fit-content; right:3%;top:0; cursor:pointer;"><i class="fas fa-qrcode"></i></a>
+            <h3 class="text-9 font-weight-400" id="noteValue">--.--</h3>
+            <p class="mb-2 text-muted opacity-8">Available Balance</p>
+            <hr class="mx-n3">
+            <div class="d-flex"><a href="/withdraw-money" class="btn-link mr-auto">Withdraw</a> <a href="/deposit-money" class="btn-link ml-auto">Deposit</a></div>
+          </div>
+          <!-- Available Balance End -->
+          
+		   <!-- Get Loan Start
+          =============================== -->
+          <div class="bg-light shadow-sm rounded text-center p-3 mb-4">
+            <div class="text-17 text-light my-3"><i class="fas fa-briefcase"></i></div>
+            <h3 class="text-3 font-weight-400 my-4">Need Money?</h3>
+            <p class="text-muted opacity-8 mb-4">Get Loan Without Limits, You Are Only Credible Through Your Purchases With Scriptbill Credit?<br>
+              You Don't Need To Worry About Pay Back!.</p>
+            <a href="/loan" class="btn btn-primary btn-block">Get Loan</a> </div>
+          <!-- Get Loan End -->
+		  
+          <!-- Need Help?
+          =============================== -->
+          <div class="bg-light shadow-sm rounded text-center p-3 mb-4">
+            <div class="text-17 text-light my-3"><i class="fas fa-comments"></i></div>
+            <h3 class="text-3 font-weight-400 my-4">Need Help?</h3>
+            <p class="text-muted opacity-8 mb-4">Have questions or concerns regrading your account?<br>
+              Our experts are here to help!.</p>
+            <a href="/https://scriptbank.com.ng/contact-us" class="btn btn-primary btn-block">Chat with Us</a> </div>
+          <!-- Need Help? End -->
+          
+        </aside>
+        <!-- Left Panel End -->
+         
+        
+        <!-- Middle Panel
+        ============================================= -->
+        <div class="col-lg-9">
+          
+          <!-- Notifications
+          ============================================= -->
+          <div class="bg-light shadow-sm rounded p-4 mb-4">
+            <h3 class="text-5 font-weight-400">Notifications</h3>
+            <p class="text-muted">Select subscriptions to be delivered to <span class="text-body">smithrhodes1982@gmail.com</span></p>
+            <hr class="mx-n4">
+            <form id="notifications" method="post">
+              <div class="form-check custom-control custom-checkbox">
+                <input id="announcements" name="notifications" class="custom-control-input" type="checkbox">
+                <label class="custom-control-label text-3" for="announcements">Announcements</label>
+                <p class="text-muted line-height-3 mt-2">Be the first to know about new features and other news.</p>
+              </div>
+              <hr class="mx-n4">
+              <div class="form-check custom-control custom-checkbox">
+                <input id="sendPayment" name="notifications" class="custom-control-input" type="checkbox">
+                <label class="custom-control-label text-3" for="sendPayment">Send payment</label>
+                <p class="text-muted line-height-3 mt-2">Send an email when I send a payment.</p>
+              </div>
+              <hr class="mx-n4">
+              <div class="form-check custom-control custom-checkbox">
+                <input id="receiveApayment" name="notifications" class="custom-control-input" type="checkbox">
+                <label class="custom-control-label text-3" for="receiveApayment">Receive a payment</label>
+                <p class="text-muted line-height-3 mt-2">Send me an email when I receive a payment.</p>
+              </div>
+              <hr class="mx-n4">
+              <div class="form-check custom-control custom-checkbox">
+                <input id="requestPayment" name="notifications" class="custom-control-input" type="checkbox">
+                <label class="custom-control-label text-3" for="requestPayment">Request payment</label>
+                <p class="text-muted line-height-3 mt-2">Send me an email when i request payment.</p>
+              </div>
+              <hr class="mx-n4">
+              <div class="form-check custom-control custom-checkbox">
+                <input id="problemWithPayment" name="notifications" class="custom-control-input" type="checkbox">
+                <label class="custom-control-label text-3" for="problemWithPayment">Have a problem with a payment</label>
+                <p class="text-muted line-height-3 mt-2">Send me an email when have a problem with a payment.</p>
+              </div>
+              <hr class="mx-n4">
+              <div class="form-check custom-control custom-checkbox">
+                <input id="specialOffers" name="notifications" class="custom-control-input" type="checkbox">
+                <label class="custom-control-label text-3" for="specialOffers">Special Offers</label>
+                <p class="text-muted line-height-3 mt-2">Receive last-minute offers from us.</p>
+              </div>
+              <hr class="mx-n4">
+              <div class="form-check custom-control custom-checkbox">
+                <input id="reviewSurveys" name="notifications" class="custom-control-input" type="checkbox">
+                <label class="custom-control-label text-3" for="reviewSurveys">Review Surveys</label>
+                <p class="text-muted line-height-3 mt-2">Share your payment experience to better inform users.</p>
+              </div>
+			  <hr class="mx-n4">
+			  <div class="form-check custom-control custom-checkbox">
+                <input id="mineScriptbill" name="notifications" class="custom-control-input" type="checkbox">
+                <label class="custom-control-label text-3" for="mineScriptbill">Mine Scriptbill</label>
+                <p class="text-muted line-height-3 mt-2">Set My Current Account to a Mining Account. This May Cause Some Performance Issues!</p>
+              </div>
+              <hr class="mx-n4">
+              <button class="btn btn-primary mt-1" type="submit" id="paymentBtn">Save Changes</button>
+            </form>
+          </div>
+          <!-- Notifications End --> 
+          
+        </div>
+        <!-- Middle Panel End --> 
+      </div>
+    </div>
+  </div>
+  <!-- Content end --> 
+  
+   <!-- Footer
+  ============================================= -->
+  <footer id="footer">
+    <div class="container">
+      <div class="row">
+        <div class="col-lg d-lg-flex align-items-center">
+          <ul class="nav justify-content-center justify-content-lg-start text-3">
+            <li class="nav-item"> <a class="nav-link active" href="/about-us">About Us</a></li>
+            <li class="nav-item"> <a class="nav-link" href="/https://t.me/companymatrix">Support</a></li>
+            <li class="nav-item"> <a class="nav-link" href="/help">Help</a></li>
+            <li class="nav-item"> <a class="nav-link" href="/https://t.me/companymatrix/41">Careers</a></li>
+            <li class="nav-item"> <a class="nav-link" href="/https://t.me/companymatrix/66">Affiliate</a></li>
+            <li class="nav-item"> <a class="nav-link" href="/fees">Fees</a></li>
+          </ul>
+        </div>
+        <div class="col-lg d-lg-flex justify-content-lg-end mt-3 mt-lg-0">
+          <ul class="social-icons justify-content-center">
+            <li class="social-icons-facebook"><a data-toggle="tooltip" href="/http://www.facebook.com/" target="_blank" title="Facebook"><i class="fab fa-facebook-f"></i></a></li>
+            <li class="social-icons-twitter"><a data-toggle="tooltip" href="/http://www.twitter.com/" target="_blank" title="Twitter"><i class="fab fa-twitter"></i></a></li>
+            <li class="social-icons-google"><a data-toggle="tooltip" href="/http://www.google.com/" target="_blank" title="Google"><i class="fab fa-google"></i></a></li>
+            <li class="social-icons-youtube"><a data-toggle="tooltip" href="/http://www.youtube.com/" target="_blank" title="Youtube"><i class="fab fa-youtube"></i></a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-copyright pt-3 pt-lg-2 mt-2">
+        <div class="row">
+          <div class="col-lg">
+            <p class="text-center text-lg-left mb-2 mb-lg-0">Copyright &copy; 2024 <a href="/https://t.me/companymatrix">Scriptbank & Company Matrix</a>. All Rights Reserved.</p>
+          </div>
+          <div class="col-lg d-lg-flex align-items-center justify-content-lg-end">
+            <ul class="nav justify-content-center">
+              <li class="nav-item"> <a class="nav-link active" href="/security">Security</a></li>
+              <li class="nav-item"> <a class="nav-link" href="/term">Terms</a></li>
+              <li class="nav-item"> <a class="nav-link" href="/privacy">Privacy</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </footer>
+  <!-- Footer end -->
+  
+</div>
+<!-- Document Wrapper end -->
+
+<!-- Back to Top
+============================================= -->
+<a id="back-to-top" data-toggle="tooltip" title="Back to Top" href="/javascript:void(0)"><i class="fa fa-chevron-up"></i></a>
+<div class="script-modal" id="update-el"><div class="script-modal-content script-padding-48"><p class="text-center text-7 mb-2 mb-lg-0">Please <a href="/https://t.me/companymatrix/41/80">click here</a> to update Scriptbill before using</p></div></div>
+<!-- Script -->
+<script src="/vendor/jquery/jquery.min.js"></script> 
+<script src="/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+<script src="/vendor/bootstrap-select/js/bootstrap-select.min.js"></script>  
+<script src="/js/theme.js"></script>
+<script src="/vendor/daterangepicker/moment.min.js"></script> 
+<script src="/vendor/daterangepicker/daterangepicker.js"></script>
+<script src="/js/supabase.js"></script>
+   <script src="/js/crypto-js.js"></script>
+<script src="/js/scriptbill.js"></script>
+<script src="/qrcode.min.js"></script>	
+<script src="/content.js"></script>
+<script src="/js/checkLogin.js"></script>
+</body>
+</html>

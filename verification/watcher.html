@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Verification Watcher</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 900px;
+            width: 100%;
+            margin: 0 auto;
+        }
+        h1 { text-align: center; color: #333; margin-bottom: 10px; }
+        .subtitle { text-align: center; color: #666; margin-bottom: 30px; font-size: 0.95rem; }
+
+        /* Key Input */
+        .key-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            text-align: center;
+        }
+        .key-input-group {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        #signalingKey {
+            padding: 12px 16px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 16px;
+            width: 300px;
+            max-width: 100%;
+        }
+        .connect-btn {
+            padding: 12px 24px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .connect-btn:hover:not(:disabled) { background: #45a049; transform: translateY(-2px); }
+        .connect-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .status-badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .status-connected    { background: #e8f5e8; color: #2e7d32; }
+        .status-connecting   { background: #fff3e0; color: #f57c00; }
+        .status-disconnected { background: #ffebee; color: #c62828; }
+
+        /* Video Layout */
+        .video-layout { display: grid; grid-template-columns: 1fr 300px; gap: 25px; margin-bottom: 25px; }
+        @media (max-width: 768px) { .video-layout { grid-template-columns: 1fr; } }
+
+        .video-container {
+            position: relative;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            background: #1a1a1a;
+        }
+        #remoteVideo {
+            width: 100%;
+            height: 400px;
+            object-fit: cover;
+            display: block;
+        }
+        #connectionIndicator {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            padding: 8px 12px;
+            background: rgba(0,0,0,0.7);
+            color: #4CAF50;
+            border-radius: 20px;
+            font-size: 12px;
+            display: none;
+        }
+
+        /* Chat */
+        .chat-panel {
+            background: #f8f9fa;
+            border-radius: 12px;
+            height: 400px;
+            display: flex;
+            flex-direction: column;
+        }
+        .chat-header { padding: 15px 20px; border-bottom: 1px solid #e9ecef; font-weight: 600; color: #333; }
+        .chat-messages { flex: 1; padding: 15px; overflow-y: auto; }
+        .chat-message { margin-bottom: 12px; padding: 8px 12px; border-radius: 12px; max-width: 85%; font-size: 0.9rem; }
+        .chat-message.instruction { background: #e3f2fd; border-left: 4px solid #2196F3; }
+        .chat-message.system { background: #f5f5f5; color: #666; text-align: center; }
+        .chat-input-group { padding: 15px; border-top: 1px solid #e9ecef; display: flex; gap: 10px; }
+        #chatInput {
+            flex: 1;
+            padding: 10px 14px;
+            border: 2px solid #e9ecef;
+            border-radius: 20px;
+            font-size: 14px;
+        }
+        #sendInstruction {
+            padding: 10px 16px;
+            background: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        /* Controls */
+        .controls { display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; margin-top: 25px; }
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-primary   { background: #4CAF50; color: white; }
+        .btn-danger    { background: #f44336; color: white; }
+        .btn-secondary { background: #6c757d; color: white; }
+
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            font-weight: 500;
+        }
+        .status.success { background: #e8f5e8; color: #2e7d32; }
+        .status.error   { background: #ffebee; color: #c62828; }
+        .status.warning { background: #fff3e0; color: #f57c00; }
+
+        .connection-info { background: #f8f9fa; padding: 15px; border-radius: 10px; margin-top: 20px; font-size: 0.9rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>👁️ Face Verification Watcher</h1>
+        <p class="subtitle">Enter the streamer key and watch the stream. Send instructions via chat.</p>
+
+        <div class="key-section">
+            <div class="key-input-group">
+                <input type="text" id="signalingKey" placeholder="Enter Streamer Key (e.g., fv_abc123xyz)" maxlength="50">
+                <button id="connectBtn" class="connect-btn">🔗 Connect</button>
+                <button id="disconnectBtn" class="connect-btn" style="background:#f44336; display:none;">✖ Disconnect</button>
+                <span id="connectionStatus" class="status-badge status-disconnected">Disconnected</span>
+            </div>
+        </div>
+
+        <div class="video-layout" id="videoLayout" style="display:none;">
+            <div class="video-container">
+                <!--
+                    IMPORTANT: Do NOT add `muted` here.
+                    Muting a remote video in some browsers suppresses the media pipeline
+                    and can prevent the video track from rendering.
+                -->
+                <video id="remoteVideo" autoplay playsinline></video>
+                <div id="connectionIndicator">● Live</div>
+            </div>
+
+            <div class="chat-panel">
+                <div class="chat-header">📝 Instructions Chat</div>
+                <div class="chat-messages" id="chatMessages">
+                    <div class="chat-message system">Send instructions like "smile", "turn left", "blink twice"…</div>
+                </div>
+                <div class="chat-input-group">
+                    <input type="text" id="chatInput" placeholder="Type instruction…" maxlength="100">
+                    <button id="sendInstruction">📤 Send</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button id="startRecording" class="btn-primary"   disabled>📹 Start Recording</button>
+            <button id="stopRecording"  class="btn-danger"    disabled>⏹️ Stop</button>
+            <button id="downloadBtn"    class="btn-secondary" disabled>💾 Download</button>
+        </div>
+
+        <div class="status" id="status">Enter signaling key and click Connect</div>
+        <div id="error" class="status error" style="display:none;"></div>
+
+        <div class="connection-info" id="connectionInfo" style="display:none;">
+            <strong>🆔 Room:</strong> <span id="currentRoom"></span><br>
+            <strong>📶 ICE:</strong> <span id="peerStatus">—</span>
+        </div>
+    </div>
+
+    <script src="/js/supabase.js"></script>
+    <script src="/js/crypto-js.js"></script>
+    <script src="/js/scriptbill.js"></script>
+    <script>
+        class WebRTCWatcher {
+            constructor() {
+                // DOM refs
+                this.remoteVideo       = document.getElementById('remoteVideo');
+                this.signalingKeyInput = document.getElementById('signalingKey');
+                this.connectBtn        = document.getElementById('connectBtn');
+                this.disconnectBtn     = document.getElementById('disconnectBtn');
+                this.chatInput         = document.getElementById('chatInput');
+                this.sendBtn           = document.getElementById('sendInstruction');
+                this.chatMessages      = document.getElementById('chatMessages');
+                this.statusEl          = document.getElementById('status');
+                this.errorEl           = document.getElementById('error');
+                this.videoLayout       = document.getElementById('videoLayout');
+                this.connectionStatus  = document.getElementById('connectionStatus');
+                this.connectionInfo    = document.getElementById('connectionInfo');
+                this.currentRoomEl     = document.getElementById('currentRoom');
+                this.peerStatusEl      = document.getElementById('peerStatus');
+                this.connectionIndicator = document.getElementById('connectionIndicator');
+
+                // State
+                this.pc                = null;
+                this.supaChannel       = null;
+                this.supabaseClient    = null;
+                this.processedMessages = new Set();
+                this.mediaRecorder     = null;
+                this.recordedChunks    = [];
+                this.recordings        = [];
+                this._offerRetryTimer  = null;
+
+                this._init();
+            }
+
+            async _init() {
+                this.connectBtn.addEventListener('click',    () => this._connect());
+                this.disconnectBtn.addEventListener('click', () => this.disconnect());
+                this.sendBtn.addEventListener('click',       () => this._sendInstruction());
+                this.chatInput.addEventListener('keypress',  e => { if (e.key === 'Enter') this._sendInstruction(); });
+
+                document.getElementById('startRecording').addEventListener('click', () => this._startRecording());
+                document.getElementById('stopRecording').addEventListener('click',  () => this._stopRecording());
+                document.getElementById('downloadBtn').addEventListener('click',    () => this._downloadLastRecording());
+
+                await Scriptbill.init();
+                if (!Scriptbill.s.currentNote) {
+                    this._showError('Please login first');
+                    return;
+                }
+            }
+
+            // ── Connect ──────────────────────────────────────────────────────
+            async _connect() {
+                const key = this.signalingKeyInput.value.trim();
+                if (!key) { this._showError('Please enter a signaling key'); return; }
+
+                this._setConnectionStatus('connecting');
+                this.connectBtn.disabled = true;
+                this.connectBtn.textContent = '🔄 Connecting…';
+
+                try {
+                    // 1. Create peer connection (receive-only — no addTrack calls)
+                    this._createPeerConnection();
+
+                    // 2. Subscribe to the shared signaling channel
+                    this.supabaseClient = Scriptbill.createClient();
+                    this.supaChannel    = this.supabaseClient.channel(`webrtc-${key}`);
+
+                    this.supaChannel.on('broadcast', { event: 'webrtc-offer' }, ({ payload }) => {
+                        if (payload._from !== 'streamer') return; // only accept offers from the streamer
+                        this._handleOffer(payload);
+                    });
+
+                    // The watcher does NOT listen for webrtc-answer —
+                    // answers are sent by the watcher and consumed only by the streamer.
+
+                    this.supaChannel.on('broadcast', { event: 'webrtc-ice' }, ({ payload }) => {
+                        if (payload._from !== 'streamer') return; // only ICE from the streamer
+                        this._handleRemoteIce(payload);
+                    });
+
+                    this.supaChannel.on('broadcast', { event: 'instruction-ack' }, ({ payload }) => {
+                        this._addChatMessage('✅ ' + payload.message, 'system');
+                    });
+
+                    await this.supaChannel.subscribe();
+                    console.log('[watcher] Subscribed to channel webrtc-' + key);
+
+                    // 3. Show UI
+                    this.currentRoomEl.textContent      = key;
+                    this.connectionInfo.style.display   = 'block';
+                    this.videoLayout.style.display      = 'grid';
+                    this.disconnectBtn.style.display    = 'inline-block';
+
+                    // 4. Ask the streamer to send an offer
+                    this._requestOffer(key);
+
+                    // 5. Retry after 3 s if we still haven't received an offer
+                    this._offerRetryTimer = setTimeout(() => {
+                        if (this.pc && this.pc.signalingState === 'stable' && !this.remoteVideo.srcObject) {
+                            console.log('[watcher] Retrying request-offer…');
+                            this._requestOffer(key);
+                        }
+                    }, 3000);
+
+                } catch (err) {
+                    console.error('[watcher] Connection error:', err);
+                    this._showError('Connection failed: ' + err.message);
+                    this._setConnectionStatus('disconnected');
+                    this.connectBtn.disabled = false;
+                    this.connectBtn.textContent = '🔗 Connect';
+                }
+            }
+
+            _requestOffer(key) {
+                this.supaChannel.send({
+                    type: 'broadcast',
+                    event: 'request-offer',
+                    payload: { key, role: 'watcher', msgId: Date.now() }
+                    // NOTE: no _from tag here — the streamer uses role:'watcher' to filter
+                });
+                console.log('[watcher] request-offer sent');
+            }
+
+            // ── PeerConnection ────────────────────────────────────────────────
+            _createPeerConnection() {
+                if (this.pc) { this.pc.close(); }
+                this.processedMessages.clear();
+
+                this.pc = new RTCPeerConnection({
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' }
+                    ]
+                });
+
+                // Receive the remote video track
+                this.pc.ontrack = (event) => {
+                    console.log('[watcher] ontrack fired — stream received');
+                    this.remoteVideo.srcObject = event.streams[0];
+                    this.connectionIndicator.style.display = 'block';
+                    this._showStatus('✅ Stream received', 'success');
+                    this._setConnectionStatus('connected');
+                    document.getElementById('startRecording').disabled = false;
+                };
+
+                // Forward ICE candidates to the streamer
+                this.pc.onicecandidate = (event) => {
+                    if (event.candidate && this.supaChannel) {
+                        this.supaChannel.send({
+                            type: 'broadcast',
+                            event: 'webrtc-ice',
+                            payload: { ...event.candidate.toJSON(), _from: 'watcher' }
+                        });
+                    }
+                };
+
+                this.pc.oniceconnectionstatechange = () => {
+                    const state = this.pc.iceConnectionState;
+                    console.log('[watcher] ICE state:', state);
+                    this.peerStatusEl.textContent = state;
+                    if (state === 'disconnected' || state === 'failed') {
+                        this._showStatus('Connection lost. Try reconnecting.', 'error');
+                        this._setConnectionStatus('disconnected');
+                    }
+                };
+            }
+
+            // ── Offer / Answer ────────────────────────────────────────────────
+            async _handleOffer(payload) {
+                try {
+                    const msgId = payload.msgId || (payload.sdp ? payload.sdp.slice(0, 20) : Date.now());
+                    if (this.processedMessages.has(msgId)) {
+                        console.log('[watcher] Duplicate offer ignored');
+                        return;
+                    }
+                    this.processedMessages.add(msgId);
+
+                    if (!payload.type || payload.type !== 'offer' || !payload.sdp) {
+                        console.warn('[watcher] Invalid offer payload');
+                        return;
+                    }
+
+                    // If PC is not in a clean state, recreate it
+                    if (this.pc.signalingState !== 'stable') {
+                        console.warn('[watcher] Recreating PC — state was:', this.pc.signalingState);
+                        this._createPeerConnection();
+                    }
+
+                    clearTimeout(this._offerRetryTimer);
+
+                    await this.pc.setRemoteDescription(new RTCSessionDescription({ type: payload.type, sdp: payload.sdp }));
+                    console.log('[watcher] Remote offer set, creating answer…');
+
+                    const answer = await this.pc.createAnswer();
+                    await this.pc.setLocalDescription(answer);
+
+                    // Send answer tagged as coming from watcher
+                    this.supaChannel.send({
+                        type: 'broadcast',
+                        event: 'webrtc-answer',
+                        payload: {
+                            type: this.pc.localDescription.type,
+                            sdp:  this.pc.localDescription.sdp,
+                            msgId: Date.now(),
+                            _from: 'watcher'
+                        }
+                    });
+
+                    console.log('[watcher] Answer sent to streamer');
+                    this._showStatus('Answer sent — waiting for stream…', 'warning');
+                } catch (err) {
+                    console.error('[watcher] Offer handling failed:', err);
+                    this._showError('Offer handling failed: ' + err.message);
+                }
+            }
+
+            async _handleRemoteIce(payload) {
+                try {
+                    if (!this.pc || !payload) return;
+                    await this.pc.addIceCandidate(new RTCIceCandidate(payload));
+                } catch (err) {
+                    console.warn('[watcher] ICE candidate error:', err.message);
+                }
+            }
+
+            // ── Chat ──────────────────────────────────────────────────────────
+            _sendInstruction() {
+                const message = this.chatInput.value.trim();
+                if (!message || !this.supaChannel) return;
+                this._addChatMessage(message, 'instruction');
+                this.supaChannel.send({
+                    type: 'broadcast',
+                    event: 'instruction',
+                    payload: { message, timestamp: Date.now() }
+                });
+                this.chatInput.value = '';
+            }
+
+            _addChatMessage(message, type = 'instruction') {
+                const div = document.createElement('div');
+                div.className = `chat-message ${type}`;
+                div.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+                this.chatMessages.appendChild(div);
+                this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+            }
+
+            // ── Recording ─────────────────────────────────────────────────────
+            async _startRecording() {
+                if (!this.remoteVideo.srcObject) { this._showError('No stream to record'); return; }
+                try {
+                    const stream = this.remoteVideo.srcObject;
+                    const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+                        ? 'video/webm;codecs=vp9' : 'video/webm';
+                    this.mediaRecorder = new MediaRecorder(stream, { mimeType });
+                    this.recordedChunks = [];
+                    this.mediaRecorder.ondataavailable = e => { if (e.data.size > 0) this.recordedChunks.push(e.data); };
+                    this.mediaRecorder.onstop = () => this._saveRecording();
+                    this.mediaRecorder.start(1000);
+                    document.getElementById('startRecording').disabled = true;
+                    document.getElementById('stopRecording').disabled  = false;
+                    this._showStatus('🔴 Recording…', 'warning');
+                } catch (err) {
+                    this._showError('Recording failed: ' + err.message);
+                }
+            }
+
+            _stopRecording() {
+                if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+                    this.mediaRecorder.stop();
+                    document.getElementById('startRecording').disabled = false;
+                    document.getElementById('stopRecording').disabled  = true;
+                    document.getElementById('downloadBtn').disabled    = false;
+                    this._showStatus('✅ Recording saved');
+                }
+            }
+
+            _saveRecording() {
+                if (!this.recordedChunks.length) return;
+                const blob = new Blob(this.recordedChunks, { type: 'video/webm' });
+                this.recordings.push({
+                    url:      URL.createObjectURL(blob),
+                    filename: `verification-${Date.now()}.webm`
+                });
+                this.recordedChunks = [];
+            }
+
+            _downloadLastRecording() {
+                if (!this.recordings.length) return;
+                const rec = this.recordings[this.recordings.length - 1];
+                const a   = document.createElement('a');
+                a.href = rec.url; a.download = rec.filename; a.click();
+            }
+
+            // ── Disconnect ────────────────────────────────────────────────────
+            disconnect() {
+                clearTimeout(this._offerRetryTimer);
+                if (this.mediaRecorder && this.mediaRecorder.state === 'recording') this.mediaRecorder.stop();
+                if (this.pc) { this.pc.close(); this.pc = null; }
+                if (this.supaChannel) { this.supaChannel.unsubscribe(); this.supaChannel = null; }
+
+                this.remoteVideo.srcObject = null;
+                this.processedMessages.clear();
+                this._setConnectionStatus('disconnected');
+                this.connectBtn.disabled          = false;
+                this.connectBtn.textContent       = '🔗 Connect';
+                this.disconnectBtn.style.display  = 'none';
+                this.videoLayout.style.display    = 'none';
+                this.connectionIndicator.style.display = 'none';
+                this.connectionInfo.style.display = 'none';
+                document.getElementById('startRecording').disabled = true;
+                document.getElementById('stopRecording').disabled  = true;
+                this._showStatus('Disconnected');
+            }
+
+            // ── UI helpers ────────────────────────────────────────────────────
+            _showStatus(msg, type = '') {
+                this.statusEl.textContent = msg;
+                this.statusEl.className   = 'status' + (type ? ' ' + type : '');
+            }
+
+            _showError(msg) {
+                this.errorEl.textContent   = msg;
+                this.errorEl.style.display = 'block';
+                setTimeout(() => this.errorEl.style.display = 'none', 5000);
+            }
+
+            _setConnectionStatus(s) {
+                const labels = { connected: 'Connected', connecting: 'Connecting…', disconnected: 'Disconnected' };
+                this.connectionStatus.textContent = labels[s] || s;
+                this.connectionStatus.className   = `status-badge status-${s}`;
+            }
+        }
+
+        window.addEventListener('load', () => {
+            window.watcher = new WebRTCWatcher();
+        });
+    </script>
+</body>
+</html>
