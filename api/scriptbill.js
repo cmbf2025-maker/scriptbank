@@ -1,4 +1,5 @@
-		//=============================Scriptbill Class Main====================================
+	//import CryptoJS from "crypto-js.js"
+    //=============================Scriptbill Class Main====================================
 	class Scriptbill {
 		
 	static funcUp = [];
@@ -29518,3 +29519,5 @@ static Base64 = {
 		}
 	}
 }
+
+export default Scriptbill;
