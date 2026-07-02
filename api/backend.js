@@ -241,4 +241,6 @@ export default async function handler(req, res){
             return res.status(429).text("data not found");
         }
     }
+
+    return res.status(400).text("Please GET and POST request are supported!");
 }
