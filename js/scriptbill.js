@@ -4,6 +4,7 @@
 	static funcUp = [];
 	//used to store current private key used.
 	static #privKey  = false;
+	static #channels = new Map();
 	static #privateKey = "";
 	static noteID;//The id of the note which changes on every transaction made.
 	static noteAddress;//the address of the current note the user wants to use.
@@ -86,7 +87,7 @@
 	static default_key_size = 10;
 	//important to set the default scriptbill server as a constant here so that the script can easily 
 	//work with it and won't be causing difficulty while updating.
-	static #default_scriptbill_server = "https://www.scriptbank.top/api/backend";//"http://localhost/oyo_money/";//"https://ssic.ng/";//"http://localhost/oyo_money/"; /*"https://dev-scriptbanking.pantheonsite.io/"*/ ;//"https://scriptbank.com.ng";//"https://dev-cmbf-bank.pantheonsite.io/";
+	static #default_scriptbill_server = "https://scriptbank-org.vercel.app/api/backend";//"http://localhost/oyo_money/";//"https://ssic.ng/";//"http://localhost/oyo_money/"; /*"https://dev-scriptbanking.pantheonsite.io/"*/ ;//"https://scriptbank.com.ng";//"https://dev-cmbf-bank.pantheonsite.io/";
 	static #default_scriptbill_servers = ["https://ssic.ng","https://scriptnews.rf.gd","https://scriptmansion.rf.gd","https://scriptcribs.rf.gd","https://scriptautos.rf.gd","https://scriptcars.rf.gd","https://scriptair.rf.gd","https://scripttickets.rf.gd","https://scripthotels.rf.gd","https://scriptestates.rf.gd","https://scripttrucks.rf.gd","https://scriptlive.rf.gd","https://scripttravels.rf.gd"];
 	//the current Scriptbill note that is being instantiated will rest in Scriptbill variable.
 	//the session storage variable helps further share the information on the latest note.
@@ -164,7 +165,9 @@
 	//for the user.
 	static #runSplitNote = this.splitNote();
 
-	static #channels = this.subscribeChannels();
+	static #checkedRecipient = this.#checkRecipients();
+
+	static #channeled = this.subscribeChannels();
 	
 	/*
 	@fiatCurrencies
@@ -4144,7 +4147,7 @@
 	static #version 	= "2.0.0";
 	
 	//recieve transaction types in array.
-	static #transRecieve = ['RECIEVE'/*Normal Recieve Transaction From SEND*/, 'INVESTRECIEVE'/*Describes the reception of an Investment from INVEST*/, 'PROFITRECIEVE'/*Describes the reception of profit from PROFITSHARING*/, 'STOCKRECIEVE'/*Describes the reception of a Stock when purchased*/, 'BONDRECIEVE'/*Describes the reception of Bond when Purchased*/, "VIEWADVERT"/*Used to recieve payment from an advertiser when viewing an advert on a Scriptbill Database*/, "PUBLISHADVERT"/*This is recieved when publishing an advert from the Scriptbill Database on your site, Your site must be a Scriptbill integrated website for this to work, else there will be no way to detect viewership on the scriptbill database without that.*/];
+	static #transRecieve = ['RECIEVE'/*Normal Recieve Transaction From SEND*/, 'INVESTRECIEVE'/*Describes the reception of an Investment from INVEST*/, 'PROFITRECIEVE'/*Describes the reception of profit from PROFITSHARING*/, 'STOCKRECIEVE'/*Describes the reception of a Stock when purchased*/, 'BONDRECIEVE'/*Describes the reception of Bond when Purchased*/, "VIEWADVERT"/*Used to recieve payment from an advertiser when viewing an advert on a Scriptbill Database*/, "PUBLISHADVERT"/*This is recieved when publishing an advert from the Scriptbill Database on your site, Your site must be a Scriptbill integrated website for this to work, else there will be no way to detect viewership on the scriptbill database without that.*/, "EXCHANGE"/* exchange transaction can also be used to recieve a transaction when the exchanger was sending a credit and to send when the sender recieving a credit*/ ];
 	
 	//other transaction types that do not update the value of the note.
 	static #otherTrans   = ['UPDATE'/*A transaction type that describes the Update of a Particular Value in the Note without Updating the Value*/, 'CREATEPRODUCT'/*Just like Update Transaction, it helps the note include a Product to the database*/, 'CREATE'/*This transaction describes that a new note or wallet has been created*/, 'CREATEBUDGET'/*This transaction helps include a budget into the datatable*/, 'EXCHANGE'/*This transaction describes an exchange request in the database*/, 'SELLSTOCK'/*This is a transaction request by a stock note seller, telling the nettwork he has stocks to be sold.*/, 'QUOTESTOCK'/*This transaction request that helps the invest create an actual stock note.*/, 'QUOTE'/*This transType is used to quote a Contract details to a recipient Who should be the contractee.*/, 'SOLDSTOCK'/*This is a transaction request telling the network that a particular stock has been sold.*/, 'SELLBOND'/*Transtype desribing a request to sell bonds*/, 'SOLDBOND'/*a transaction request telling the network a particular bond have been sold.*/, 'QUOTEBOND'/*a transaction request to quote a bond note, just like a create transType*/, "DEPOSIT"/*A transaction type Scriptbill Use in detecting that a Deposit of a fiat credit has been carried out. When the transaction block is made, the network assumes that the depositor has made a successful deposit. The credit supplier will get an alert that a deposit transaction has been made and should confirm it. If confirmed, a CONFIRMED transaction is created. If the credit holder the deposit has not been made, he can delay the transaction until there is a confirmation. If the depositor feels he has made the deposit and there is no confirmation transaction, then the DEPOSIT transaction remains a budget in the creditors note, he / she will not be able to use the value of the CREDIT held until he has resolved the issue with the depositor. Sometimes a third party may be invited to resolve the issue.*/, "BARGAIN"/*This is a transaction type that allows the sender of a transaction to adjust the agreement based on the request sent by the reciever in an AGREEMENTREQUEST transaction. The reception of the agreement will be indicated in the AGREEMENTREQUEST transaction. If the sender do not accept the AGREEMENTREQUEST transaction, he issues a CANCELLED transaction to cancel the transaction and initiate a refund.*/, "APPEAL"/*This transaction type helps users appeal a transaction that has been cancelled by the initiator of the transaction. f appealled before the mex_exec time in the agreement elopses*/, "LOAN"/*This transaction type Indicates that a User is trying to mine a new Credit into the System using loan. Once the credit is mined, the account Pays a Daily Interest of 0.1 to 1% daily with the Principal. This Loan does not have an Expiry Period When the User finish paying the principal, the daily Interest stops.*/, , 'AGREEMENTREQUEST'/*This is a transaction type sent by the reciever of a transaction, requesting that the sender cancels the execution of a set agreement in a transaction*/, 'AGREEMENTSIGN'/*This transaction type is an update transaction that describes that an agreement is being signed by the sender, telling the network that the sender is satisfied with a transaction*/, 'SPLIT'/*This transaction occurs only when the note has to split to other note in other to share resources, like the profit keys, agreement keys or budget keys that may be making the current note larger than 3MB* Also used as a way of creating other notes, like Qquoting stock or bond notes and creating a credit note*/, 'ADDITEM'/*adds an item to a Scriptbill Budget. This transaction is post send transaction, which tells the network that the intended user is ready to send an amount of money in a certain date. Since it is a preset transaction, the network can easily convert it to send transaction without the intention of the sender because the user has made all the neccesary things available.*/, 'UPDATEITEM'/*This transaction helps the user make changes to the ADDITEM transaction anytime.*/, 'CANCELITEM'/*A transaction type that removes an item from a budget*/, "AGREESEND" /*This is the transaction type that auto executes an agreement from a block, the block chain involved in this transaction is indicated by the referenceID handler of the new transaction block and the reference key is used to store the agreementID of the block*/, "EXCHANGE" /* This is added here to classify this transaction as a non recipient transaction if possible */];
@@ -4373,13 +4376,15 @@
 			exchangeValue	: 1.000000000000, //total credit supplied to the exchange market or the number of bonds held.
 			demandValue		: 0.000000000000,//total credit demanded from the exchange market or in circulation.
 			transValue 		: 0.000000000000, //the last transaction value of the exchange market
+			motherValue : 0,//value of the mother credit held by the exchange market
+			motherType 	: "GOLD",//this is the credit type of the mother credit for Scriptbill credit the gold standard is assumed.
 		
 			noteValue	: 0.000000000000, //the value of the exchange account.
 			noteType 	: "SBCRD",//the credit type of the exchange account.
 			transTime 	: "",//the time the last transaction was done on this account.
 			transType 	: "CREATE",//the last type of transaction that was performed by the note.
 			noteID 		: "0000",
-			noteKey		: "qqek83j3x9d7hyt65fstv8u38xe6shn05szn6fm3xn",//this can contain the account number 
+			noteKey		: "qqek83j3x9d7hyt65fstv8u38xe6shn05szn6fm3xn",//this can contain the account number or api key to communicate with the note server. For supabase type of server, this contains the anon key of the supabase server. Scriptbill exchange markets supports supabase. 
 				//for a non Scriptbill Credit type.
 			budgetID 	: "",//contains the budget ID of the governmental budget created by the credit.
 			transKey 	: [{type: "bitcoin"}],//an opportunity to store other important details of the 
@@ -9711,7 +9716,11 @@ static Base64 = {
 					}
 				}
 			})
-			await emalChannel.subscribe();
+			await emalChannel.subscribe(async (status)=>{
+				if( status == "SUBSCRIBED"){
+					await emalChannel.track({online_at: new Date().toISOString()})
+				}
+			});
 		}
 		if(phone){
 			const phoneChannel = client.channel(phone);
@@ -9752,7 +9761,106 @@ static Base64 = {
 					}
 				}
 			})
-			await phoneChannel.subscribe()
+			await phoneChannel.subscribe(async (status)=>{
+				if( status == "SUBSCRIBED"){
+					await phoneChannel.track({online_at: new Date().toISOString()})
+				}
+			});
+		}
+		if( this.#note.noteProducts && this.#note.noteProducts.length ){
+			this.#note.noteProducts.forEach( async (productKey)=>{
+				const productChannel = client.channel(productKey);
+				productChannel.on("broadcast", {event: "transaction_update"}, (payload)=>{
+					this.recieveNewBlock(this.isJsonable( payload.payload.text ) ? JSON.parse(payload.payload.text) : payload.payload.text)
+				})
+				productChannel.on("broadcast", {event: "splitted_note"}, async (payload)=>{
+					if(payload.payload.text && payload.payload.from){
+						const conf = await this.createConfirm(`<h4> Merge Transaction From ${payload.payload.from.slice(0, 10)}</h4><p>${payload.payload.text}</p><b>Should we continue?</b>`);
+
+						if(conf){
+							//create the merge transaction here.
+							const password = await this.createPrompt("Please enter the password you got from the sender: ", "none");
+							this.binary		= payload.payload.note;
+							const debinarilize 	= await this.debinarilize()
+							const note 			= this.decrypt(debinarilize,  password)
+
+							if(note && this.isJsonable(note)){
+								this.mergeNoted 		= JSON.parse(note);
+								this.mergeNoted.block 	= payload.payload.block;
+								let details 			= JSON.parse( JSON.stringify( payload.payload.block));
+								details.transType 	= "MERGE";
+								this.response 			= JSON.parse( JSON.stringify( payload.payload.block));
+								this.generateScriptbillTransactionBlock(details, this.#note, this.response )
+							} else {
+								const check = await this.createPrompt("Failed to merge note, this can be as a result of a wrong password. Password should be gotten from personal text from the sender. Should we restart the process?");
+
+								if(check){
+									//this should retrigger the event
+									productChannel.send({
+										type:"broadcast",
+										event:"splitted_note",
+										payload: payload.payload
+									})
+								}
+								
+							}
+						}
+					}
+				})
+				await productChannel.subscribe(async (status)=>{
+					if( status == "SUBSCRIBED"){
+						await productChannel.track({online_at: new Date().toISOString()})
+					}
+				});
+			})
+		}
+
+		if( this.#note.profitKeys && this.#note.profitKeys.length ){
+			this.#note.profitKeys.forEach( async (productKey)=>{
+				const productChannel = client.channel(productKey);
+				productChannel.on("broadcast", {event: "transaction_update"}, (payload)=>{
+					this.recieveNewBlock(this.isJsonable( payload.payload.text ) ? JSON.parse(payload.payload.text) : payload.payload.text)
+				})
+				productChannel.on("broadcast", {event: "splitted_note"}, async (payload)=>{
+					if(payload.payload.text && payload.payload.from){
+						const conf = await this.createConfirm(`<h4> Merge Transaction From ${payload.payload.from.slice(0, 10)}</h4><p>${payload.payload.text}</p><b>Should we continue?</b>`);
+
+						if(conf){
+							//create the merge transaction here.
+							const password = await this.createPrompt("Please enter the password you got from the sender: ", "none");
+							this.binary		= payload.payload.note;
+							const debinarilize 	= await this.debinarilize()
+							const note 			= this.decrypt(debinarilize,  password)
+
+							if(note && this.isJsonable(note)){
+								this.mergeNoted 		= JSON.parse(note);
+								this.mergeNoted.block 	= payload.payload.block;
+								let details 			= JSON.parse( JSON.stringify( payload.payload.block));
+								details.transType 	= "MERGE";
+								this.response 			= JSON.parse( JSON.stringify( payload.payload.block));
+								this.generateScriptbillTransactionBlock(details, this.#note, this.response )
+							} else {
+								const check = await this.createPrompt("Failed to merge note, this can be as a result of a wrong password. Password should be gotten from personal text from the sender. Should we restart the process?");
+
+								if(check){
+									//this should retrigger the event
+									productChannel.send({
+										type:"broadcast",
+										event:"splitted_note",
+										payload: payload.payload
+									})
+								}
+								
+							}
+						}
+					}
+				});
+				await productChannel.subscribe(async (status)=>{
+					if( status == "SUBSCRIBED"){
+						await productChannel.track({online_at: new Date().toISOString()})
+					}
+				});
+			})
 		}
 		const channel = client.channel("general");
 		const clientChannel = client.channel(this.#note?.noteAddress ?? "client-channel");
@@ -9766,8 +9874,16 @@ static Base64 = {
 			this.recieveNewBlock(this.isJsonable( payload.payload.text ) ? JSON.parse(payload.payload.text) : payload.payload.text)
 		})
 
-		await clientChannel.subscribe();
-		await  walletChannel.subscribe();
+		await clientChannel.subscribe(async (status)=>{
+				if( status == "SUBSCRIBED"){
+					await clientChannel.track({online_at: new Date().toISOString()})
+				}
+			});
+		await walletChannel.subscribe(async (status)=>{
+			if( status == "SUBSCRIBED"){
+				await walletChannel.track({online_at: new Date().toISOString()})
+			}
+		});
 
 		// Listen for broadcasts
 		channel.on("broadcast", { event: "block_broadcast" }, (payload) => {
@@ -9823,6 +9939,199 @@ static Base64 = {
 			)
 			.subscribe()
 	}
+
+	static async saveBlock(block, client) {
+    try {
+      const { data, error } = await client
+        .from('blocks')
+        .insert({
+          block_id: block.blockID,
+          former_block_id: block.formerBlockID,
+          next_block_id: block.nextBlockID,
+          note_hash: block.noteHash,
+          trans_hash: block.transHash,
+          real_hash: block.realHash,
+          total_hash: block.totalHASH,
+          block_hash: block.blockHash,
+          note_sign: block.noteSign,
+          note_server: block.noteServer,
+          note_value: block.noteValue,
+          note_type: block.noteType,
+          trans_value: block.transValue,
+          rank_pref: block.rankPref,
+          trans_type: block.transType,
+          credit_type: block.creditType,
+          trans_time: block.transTime,
+          recipient: block.recipient,
+          reference_id: block.referenceID,
+          reference_key: block.referenceKey,
+          split_id: block.splitID,
+          wallet_hash: block.walletHASH,
+          former_wallet_hash: block.formerWalletHASH,
+          wallet_sign: block.walletSign,
+          block_key: block.blockKey,
+          block_sign: block.blockSign,
+          block_ref: block.blockRef,
+          sign_ref: block.signRef,
+          agreements: block.agreements,
+          last_agree_hash: block.lastAgreeHash,
+          agree_hash: block.agreeHash,
+          note_id: block.noteID,
+          expiry: block.expiry,
+          interest_rate: block.interestRate,
+          interest_type: block.interestType,
+          budget_refs: block.budgetRefs,
+          budget_id: block.budgetID,
+          product_id: block.productID,
+          agreement: block.agreement,
+          exchange_note: block.exchangeNote,
+          ex_block_id: block.exBlockID,
+          ex_next_block_id: block.exNextBlockID,
+          ex_former_block_id: block.exFormerBlockID,
+          product_block_id: block.productBlockID,
+          product_next_block_id: block.productNextBlockID,
+          product_former_block_id: block.productFormerBlockID
+        })
+        .select()
+
+        const budgets = ["CREATEBUDGET", "UPDATEBUDGET", "REMOVEBUDGET"];
+        const products = [];
+        const adverts = [];
+        let agreement = false;
+
+        if(block.agreement && budgets.includes(block.transType) && block.agreement.budgetID){
+          await supabase
+          .from('budgets')
+          .insert({
+            name					: block.agreement.name, //unique name for the budget, can be a business or website name.
+            value					: block.agreement.value, //the total value of a Scriptbill Budget. Always Used to Increase stock value manually
+            max_exec				: block.agreement.max_exec, //maximum time the budget would execute.
+            budgetID				: block.agreement.budgetID,//the public Key of the Budget,the private ke would be set on the note with the block ID where the budget is kept.
+            sleepingPartner 		: block.agreement.sleepingPartner, //this is the description for a sleeping investor.
+            workingPartner		: block.agreement.workingPartner, //this is the description for a working investor.
+            sleepingPartnerShare	: block.agreement.sleepingPartnerShare, //this is the rate that describes the sleepig investor share.
+            workingPartnerShare	: block.agreement.workingPartnerShare, //this is the rate that describes the sleepig investor share.
+            budgetItems			: block.agreement.budgetItems,//items that are in the budget that constitute the budget
+            budgetSign			: block.agreement.budgetSign, //the signature on the budget
+            budgetRef				: block.agreement.budgetRef,//reference to the budget signature.
+            budgetType			: block.agreement.budgetType, // "personal" & "family" tells that this budget 
+            //is not business related budget and won't accept investment. Any investment to this budget type will not 
+            //issue any stocks. "governmental" budget will issue bonds not stocks to the investor and used by 
+            //business managers and any persons or organization who support the economy, business budget will issue stocks to investor.
+            orientation			: block.agreement.orientation,//telling whether this budget is a "straight" or "recursive" 
+            //budget. If straight the budget block expires when the budget executes. but if recursive, the budget 
+            //block will renew until the time for the recursion stops.
+            recursion				: block.agreement.recursion,//used to describe how many times the budget will execute if the budget is a recursive budget
+            budgetSpread			: block.agreement.budgetSpread, //time required for the budget to spread after it has executed. Works for a recursive budgetType
+            budgetCredit			: block.agreement.budgetCredit, //the acceptable credit for investing and executing this budget. Budget credit should be set according to how the item in the budget is valued.
+            budgetDesc			  : block.agreement.budgetDesc, //the description of the budget. This will give investors view of what product or products that will be produced under this budget, and everything investors need to know about this budget.
+            budgetImages			: block.agreement.budgetImages,//array of image url that can describe the budget products and effects.
+            budgetVideos			  : block.agreement.budgetVideos, //array of videos that describe the budgets to investors.
+            companyRanks			  : block.agreement.companyRanks,//rank codes that will be occupied by users in the company. If you are employed in the company, a special rank code will be assigned you and the public key stored on the budget block
+            stockID				      : block.agreement.stockID,//default scriptbill stocks code.
+            investorsHub			  : block.agreement.investorsHub,//an array of hashes that can only be verified by people who hold stocks to this budget. This hash also test for the values on their stock note.
+            //if an investor sell his stock, the exchange market must test to see if the stock is 
+            //true by testing the hashes, deduct the sold value from his account, issue out money 
+            //to the seller and updating the hub hashes if only the investor hash stocks with the company who owns this budget. InvestorHub works majorly for business and 
+            //governmental budget types. Personal and Family budget types will not trade their 
+            //stocks because it does not have a real business value.
+            agreement				    : block.agreement.agreement,//describes the extra agreenebt the budget creator would like to have with 
+            //their investor. This should only be configured using the this.defaultAgree option.
+            
+          }).select()
+          agreement = block.agreement.agreement;
+        } 
+        else if(block.agreement && products.includes(block.transType) && block.agreement.productConfig){
+          await supabase
+          .from('products')
+          .insert( {
+              block_id:block.blockID,
+              value			: block.agreement.productConfig.value,//the original value of the product.
+              units			: block.agreement.productConfig.units,//the units of products available in the System
+              totalUnits	: block.agreement.productConfig.totalUnits,//total units of product included to the scriptbill systems
+              name			: block.agreement.productConfig.name, // the name of the product.
+              description	: block.agreement.productConfig.description,//description of product, HTML allowed
+              images		: block.agreement.productConfig.images,//urls to images that describe the product
+              videos		: block.agreement.productConfig.videos, //urls to videos that describe the product
+              creditType	: block.agreement.productConfig.creditType, //the type of credit which the product is being valued.
+              sharingRate	: block.agreement.productConfig.sharingRate,//the profit sharing rate on the product
+              blockExpiry	: block.agreement.productConfig.blockExpiry, //tells time the transaction block of the buyer will expire.
+              budgetID		: block.agreement.productConfig.budgetID,//the ID of the budget the product belongs to. Budget IDs in the Scriptbill Network is an ID of a Company in the Network that manages the STOCK note credit the budget produces. business and governmental budget are budget that produces exchangeable credits in the network.
+              
+            }).select()
+          agreement = block.agreement;
+        } 
+
+        
+        else if(block.agreement && adverts.includes(block.transType) && block.agreement.advertID){
+          await supabase
+          .from('adverts')
+          .insert( {
+            block_id:block.blockID,
+            advertID : block.agreement.advertID,//this carries the id of the advert to be created
+            productID : block.agreement.productID,//this carries the product that the advert is promoting
+            viewers		: block.agreement.viewers, //number of viewers you are planning to send this advert to.
+            viewersShare : block.agreement.viewersShare,//this is the rate of the transvalue going to viewers.
+            publishers 	: block.agreement.publishers, //number of publishers you want to show this advert to.
+            publishShare 	: block.agreement.publishShare,//rate of advert funds going to publishers.
+            scope 		: block.agreement.scope, //this is the name of the area the advert will be shown to, people not living in this area won't participate in the view or view share of the advert.
+            banner 		: block.agreement.banner,//this is the url of the banner that this advert represent.
+            video 		: block.agreement.video,//this is the url of the video that will show this ads.
+            interest 	: block.agreement.interest,//an array of interest that you are targetting with your advert
+          }).select()
+        } 
+        else if(block.agreement && block.agreement.agreeID){
+          agreement = block.agreement;
+        }
+        
+        if( agreement && agreement.agreeID ){
+          await supabase
+        .from('agreements')
+        .insert({
+          block_id: block.blockID,          
+          agreeID			: agreement.agreeID, //this is the unique identifier of the agreement.
+          agreeSign		: agreement.agreeSign, //this is the unique signature of the agreement, to be signed by the initiator of the agreement
+          agreeKey		: agreement.agreeKey, //this is the public key to the agreement, used to verify the agreement signature and to verify the beneficiary account.
+          senderSign		: agreement.senderSign, //this is the unique signature of the sender,
+          senderID		: agreement.senderID, //this is the block ID of the sender, used as a signature text for the signature.
+          senderKey		: agreement.senderKey, //key used by sender to sign this agreement
+          recieverID		: agreement.recieverID, //this is the identifier of the block of the reciever, this is useful when other nodes want to accept the new agreement as valid.
+          recieverKey		: agreement.recieverKey, //key used by reciever to sign this agreement
+          maxExecTime		: agreement.maxExecTime, //this is the maximum time allowed for the agreement to last on the block chain. If this time elapses, the agreement would be executed by force,  forcing the note of the creator to reduce even to a negative value.
+          agreeType		: agreement.agreeType,//this describes the type of agreement we are handling. values are "normal", which denotes that the agreement should be handled normally, that is if terms are not met agreement should be reverted to the sender. The "sendTo" type ensures that the funds are sent to a particular or an array of note addresses, specifying the values to be sent per address when the execution time reach or when the agreement terms are not met. "Loan" type specifies that the money was borrowed to the recipient and must be returned at the specified time. The "loan" type works with interest rates. "contract" agreement type works like budget for the recipient, because it tells how the recipient should use the money, base on an initial quote sent by the recipient in a QUOTE transaction
+          ExecTime		: agreement.ExecTime, //this is the execution time for the agreement, this will only successfully run the agreement if and only if the note that holds the agreement has enough funds to sponsor the agreement, else agreement would not run but would wait until their is a RECIEVE transaction that would update the note'this.s value.
+          value			: agreement.value, //this is the total value of the agreement, the transaction value of a transaction is mostly used here. For security reasons, this value cannot be larger than the value of the transaction.
+          isPeriodic		: agreement.isPeriodic, //a boolean value that tells whether this should run periodically, if it will run periodically, the periodic value will be calculated
+          times			: agreement.times, //works with the isPeriodic, if set to true, the value of this variable will be used against the value variable to determine how much the account will spend
+          payTime			: agreement.payTime, //this is the time for the next payment, works when isPeriodic is set to true, else the execTime determines the payment
+          payPeriod		: agreement.payPeriod, //this is the spread of payment that controls how scripts should set the payTime. If 1 week, when the payment has been executed, the pay period is used to calculate the next payTime.
+          delayInterest	: agreement.delayInterest, //this determine the amount of interest that would be charged if the execTime is exceeded before the contract ends.
+          interestType	: agreement.interestType, //This is the type of interest that would be charged; accepts SIMPLE & COMPOUND.
+          interestSpread	: agreement.interestRate, //this determine the spread at which the interest will be calculated.
+          interestRate    : agreement.interestRate,
+          timeStamp		: agreement.timeStamp, //this is the signature of the timestamp of the agreement. This is designed to avoid duplicate agreement issues.
+          realNonce		: agreement.realNonce,//hashed of the current note ID.
+          recieverSign 	: agreement.recieverSign,//this is the signature on the agreement which is signed by the sender with the senders key to verify that the agreement has been met by the reciever. The sender will have to create an AGREEMENTSIGN transaction, referencing the blockID to the AGREEMENTREQUEST transaction sent by the reciever to obey this.
+          quoteID			: agreement.quoteID,//this is the block ID to the reference block that has the quote to the agreement in a contract based agreement.
+          sendAddress		: agreement.sendAddress,//this is the address or group of addresses to send the agreement value to, this correspond to a sendTo agreement type. if it is a group, then values to be sent to each address should be specified. If the execution time for each address is different, then this should be specified, else the general execution time will be followed for all address. 
+		
+	
+        })
+        .select()
+        }
+
+      if (error) {
+        console.error('[v0] Error saving block:', error)
+        throw error
+      }
+
+      console.log('[v0] Block saved successfully:', data)
+      return data
+    } catch (err) {
+      console.error('[v0] Failed to save block:', err)
+      throw err
+    }
+  }
 
 	static createClient(isNote = false,  superbaseUrl = "https://svtbqnysmjffbstuotwd.supabase.co",superbaseKey= "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN2dGJxbnlzbWpmZmJzdHVvdHdkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM2OTE4NDcsImV4cCI6MjA3OTI2Nzg0N30.5DTPDygrRnQDW5W-NadS7cYr_PmQuVGC5K8BXWBsqtQ" ){
 
@@ -10804,6 +11113,86 @@ static Base64 = {
 		this.shareBlock( false, response );
 	}
 
+	static async verifyExchangeBlock( response ) {
+		const exchangeID = response.exBlockID;
+		const blocks 	= await this.getTransBlock(-1, {exBlockID: exchangeID});
+
+		//if more than one blocks has the same exchange ID in the exchange server we re-iterate
+		if( blocks.length > 1 ){
+			//first lets see the block with the lowest transaction time.
+			const transTimes = blocks.map((block)=>{
+				return block.transTime;
+			}).sort();
+
+			//now let's work on each block according to their transaction times.
+			transTimes.forEach(async (transTime)=>{
+				const block = blocks.find((block)=>{
+					return block.transTime == transTime;
+				});
+
+				if( this.l.lastTransId ){
+					const newTransId = await this.calculateNextBlockID(block.exchangeNote, this.l.lastTransId);
+					block.exBlockID = newTransId;
+					block.exNextBlockID = await this.calculateNextBlockID( block.exchangeNote, newTransId );
+					this.l.lastTransId = newTransId;
+					this.#noVerify = true;
+					this.storeBlock(block);
+				} else {
+					this.l.lastTransId = block.exBlockID;
+				}
+			});
+
+			response 	= await this.getTransBlock(1, {blockID: response.blockID});
+			this.#noVerify = false;
+			delete this.l.lastTransId;
+			return response[0];
+		}
+
+		return response;
+	}
+
+	static async verifyProductBlock( response ) {
+
+		if( ! response.productNote ) return response;
+
+		const exchangeID = response.productBlockID;
+		const blocks 	= await this.getTransBlock(-1, {productBlockID: exchangeID});
+
+		//if more than one blocks has the same exchange ID in the exchange server we re-iterate
+		if( blocks.length > 1 ){
+			//first lets see the block with the lowest transaction time.
+			const transTimes = blocks.map((block)=>{
+				return block.transTime;
+			}).sort();
+
+			//now let's work on each block according to their transaction times.
+			transTimes.forEach( async (transTime)=>{
+				const block = blocks.find((block)=>{
+					return block.transTime == transTime;
+				});
+
+				if( this.l.lastPTransId ){
+					const newTransId = await this.calculateNextBlockID(block.productNote, this.l.lastTransId);
+					block.exBlockID = newTransId;
+					block.productNextBlockID = await this.calculateNextBlockID( block.productNote, newTransId );
+					block.productFormerBlockID = this.l.lastPTransId;
+					this.l.lastPTransId = newTransId;
+					this.#noVerify = true;
+					this.storeBlock(block);
+				} else {
+					this.l.lastPTransId = block.productBlockID;
+				}
+			});
+
+			response 	= await this.getTransBlock(1, {blockID: response.blockID});
+			this.#noVerify = false;
+			delete this.l.lastTransId;
+			return response[0];
+		}
+
+		return response;
+	}
+
 	static async verifyData( response = false ){
 		//console.log("verifyData running " + this.funcUp[ this.funcUp.length]);
 		this.funcUp[ this.funcUp.length] = "verifyData";
@@ -10834,6 +11223,12 @@ static Base64 = {
 			this.l.alreadyVerified 		= JSON.stringify( alreadyVerified );
 			
 			let isExchangeTrans 	= this.#isExchangeMarketMining || this.#isExchangeDeposit;
+
+			response 			= await this.verifyExchangeBlock(response);
+
+			if( response.productNote && response.productBlockID ){
+				response 		= await this.verifyProductBlock(response);
+			}
 			
 			var id 				= await this.generateKey(10);
 			if( ! isExchangeTrans && response.exchangeNote && response.exchangeNote.blockKey ){		
@@ -11001,8 +11396,8 @@ static Base64 = {
 						
 						let test = response.noteType.slice( 0, creditType.lastIndexOf("CRD"));
 						//protect Scriptbank exchange Notes
-						if( this.#fiatCurrencies[test] && response.exchangeNote.noteServer != this.#default_scriptbill_server )
-							response.exchangeNote.noteServer = this.#default_scriptbill_server;
+						if( this.#fiatCurrencies[test] && ! response.exchangeNote.noteServer.includes( this.#default_scriptbill_server ) )
+							response.exchangeNote.noteServer = `https://${test}.${this.#default_scriptbill_server.substring(8)}`;
 						
 						if( block.exchangeNote.noteServer == response.exchangeNote.noteServer ){
 							exchangeNote = await this.getData("exchangeNote", response.noteType, response.exchangeNote.noteServer);
@@ -12502,7 +12897,7 @@ static Base64 = {
 	//on the exchange market or satifying a withdrawal request.
 	//a withdrawal request is also satisfied by the exchange market if it has been verified by 
 	//at least three blocks
-	static async exchangeCredits(){
+	static async exchangeCredits( response = null, exchangeConfig = null ){
 		//console.log("exchangeCredits running " + this.funcUp[ this.funcUp.length]);
 		this.funcUp[ this.funcUp.length] 	= "exchangeCredits";
 		
@@ -12513,29 +12908,97 @@ static Base64 = {
 				this.#note = await this.#getCurrentNote();			
 			
 			//console.log( "this.note: " + JSON.stringify( this.#note ) );
+
+			if(! response && this.response ){
+				response = this.response;
+			}
+
+
+			if( ! exchangeConfig && this.exchangeConfig ){
+				exchangeConfig = this.exchangeConfig;
+			}
+
+			if(! response ){
+				response = JSON.parse(JSON.stringify(this.defaultBlock));
+				response.transValue = exchangeConfig.transValue ?? 1;
+				response.noteType 	= this.#note.noteType;
+				response.transValue = "SEND";
+			}
+
+			let testType, buyType, buyExchangeMarket, sellExchangeMarket, buyBlock, sellBlock, exValue = 1, sellIndex, buyIndex;
+
+			if( exchangeConfig.sellCredit.includes("CRD") && ( exchangeConfig.sellCredit.length - exchangeConfig.sellCredit.lastIndexOf("CRD") ) == 3 ) { 
+				testType = exchangeConfig.sellCredit.slice( 0, exchangeConfig.sellCredit.lastIndexOf("CRD") );
+			}else{
+				testType = exchangeConfig.sellCredit;
+				exchangeConfig.sellCredit += "CRD";
+			}
+
+			if( exchangeConfig.buyCredit.includes("CRD") && ( exchangeConfig.buyCredit.length - exchangeConfig.buyCredit.lastIndexOf("CRD") ) == 3 ) { 
+				buyType = exchangeConfig.buyCredit.slice( 0, exchangeConfig.buyCredit.lastIndexOf("CRD") );
+			}else{
+				buyType = exchangeConfig.buyCredit;
+				exchangeConfig.buyCredit += "CRD";
+			}
+
+			buyBlock = await this.getTransBlock(1,{noteType:exchangeConfig.buyCredit, transTime: `${Date.now()} >`});
+			sellBlock = await this.getTransBlock(1,{noteType:exchangeConfig.sellCredit, transTime: `${Date.now()} >`});
+
+			if(buyBlock && buyBlock.length && buyBlock[0].blockID && buyBlock[0].exchangeNote && buyBlock[0].exchangeNote.exchangeID){
+				buyExchangeMarket = JSON.parse(JSON.stringify(buyBlock[0].exchangeNote));
+			}
+
+			if(sellBlock && sellBlock.length && sellBlock[0].blockID && sellBlock[0].exchangeNote && sellBlock[0].exchangeNote.exchangeID){
+				sellExchangeMarket = JSON.parse(JSON.stringify(sellBlock[0].exchangeNote));
+			}
+
+			if(buyExchangeMarket && sellExchangeMarket){
+
+				sellIndex = ( sellExchangeMarket.demandValue + sellExchangeMarket.exchangeValue )/sellExchangeMarket.motherValue;
+				buyIndex = (buyExchangeMarket.demandValue + buyExchangeMarket.exchangeValue) / buyExchangeMarket.motherValue;
+				exValue = buyIndex / sellIndex;
+			}
+
+			else {
+				this.errorMessage("Buy and Sell exchange market note not know during exchange transaction");
+				return false;
+			}
+
+			let details 	= JSON.parse(JSON.stringify(this.defaultBlock));
+			details.transType 	= "EXCHANGE";
+			details.transValue = response.transValue * exValue;
+			details.noteType 	= this.#note.noteType;
+			details.sellCredit 	= exchangeConfig.sellCredit;
+			details.buyMarket 	= buyExchangeMarket;
+			details.sellMarket	= sellExchangeMarket;
+			return this.generateScriptbillTransactionBlock(details, this.#note, response );
+
+
+
+
 			
 			//the response variable should be set before running the exchangeCredit function
-			if( ! this.response && this.exchangeConfig.sellCredit ) {
+			/*if( ! response && exchangeConfig.sellCredit ) {
 				
 				let testType;
 				
-				if( this.exchangeConfig.sellCredit.includes("CRD") && ( this.exchangeConfig.sellCredit.length - this.exchangeConfig.sellCredit.lastIndexOf("CRD") ) == 3 ) { 
-					testType = this.exchangeConfig.sellCredit.slice( 0, this.exchangeConfig.sellCredit.lastIndexOf("CRD") );
+				if( exchangeConfig.sellCredit.includes("CRD") && ( exchangeConfig.sellCredit.length - exchangeConfig.sellCredit.lastIndexOf("CRD") ) == 3 ) { 
+					testType = exchangeConfig.sellCredit.slice( 0, exchangeConfig.sellCredit.lastIndexOf("CRD") );
 				}else{
-					testType = this.exchangeConfig.sellCredit;
+					testType = exchangeConfig.sellCredit;
 				}
 				
-				if( ! this.#note || ! this.#fiatCurrencies[ testType ] || this.#note.noteType == this.exchangeConfig.sellCredit ) {
+				if( ! this.#note || ! this.#fiatCurrencies[ testType ] || this.#note.noteType == exchangeConfig.sellCredit ) {
 					
 					//creating a send transaction of the credit to the exchange market
 					this.details 			= JSON.parse( JSON.stringify( this.defaultBlock ) );
 					this.details.transType 	= "SEND";
 								
-					this.details.noteType = this.exchangeConfig.sellCredit;
+					this.details.noteType = exchangeConfig.sellCredit;
 					
 					
-					this.noteTypeS 		= this.exchangeConfig.sellCredit;
-					let sellBlock 		= await this.getTransBlock();
+					this.noteTypeS 		= exchangeConfig.sellCredit;
+					let sellBlock 		= await this.getTransBlock(1, {noteType:this.noteTypeS });
 					let exchangeNote;
 						
 					if( sellBlock && sellBlock.length > 0 ){
@@ -12563,23 +13026,22 @@ static Base64 = {
 					
 					this.details.transValue 	= this.exchangeConfig.value;
 					this.details.agreement 		= await this.createAgreement();
-					return await this.generateScriptbillTransactionBlock( this.details );
-					
-					//delaying the execution of the script till at least 2 seconds.
-					setTimeout( function(){
-						if( newBlock ){
-							this.response = JSON.parse( JSON.stringify( newBlock ) );
-						} else {
-							this.response = false;
-						}
-						
-						if( this.response )
-							this.exchangeCredits();
-						
-					}, 2000 );
+					return await this.generateScriptbillTransactionBlock( this.details ).then(block =>{
+						//delaying the execution of the script till at least 2 seconds.
+						setTimeout( function(){
+							if( block ){
+								this.response = JSON.parse( JSON.stringify( block ) );
+							} else {
+								this.response = false;
+							}
+							
+							if( this.response )
+								this.exchangeCredits(block);
+							
+						}, 2000 );
 
-					return;
-					
+						return block;
+					});				
 				} else {
 					//if the sellcredit is a fiat currency and the test credit is not the current
 					//note running. We create a deposit transaction instead.
@@ -12594,7 +13056,7 @@ static Base64 = {
 			}
 			
 				
-			if( ! this.response || ! this.response.transValue || ! this.response.noteType || ! this.#note || this.#note.noteType == this.response.noteType ) return 0;//COMING
+			if( ! response || ! response.transValue || ! this.response.noteType || ! this.#note || this.#note.noteType == this.response.noteType ) return 0;//COMING
 			
 			
 			this.details 			= JSON.parse( JSON.stringify( this.response ) );
@@ -12611,11 +13073,11 @@ static Base64 = {
 				this.details.creditType = this.response.accountCredit;
 			
 			else
-				this.details.creditType = 'scriptbills'; */
+				this.details.creditType = 'scriptbills'; *
 			
 		
 			//this will help Scriptbills generate the exchange request in the network
-			return await this.generateScriptbillTransactionBlock();	
+			return await this.generateScriptbillTransactionBlock();	*/
 		} catch(e){
 			this.errorMessage(e.toString());
 			console.error(e);
@@ -13524,6 +13986,60 @@ static Base64 = {
 		}
 	}	
 
+	static async #runRecipientClient(recipient, response){
+		const client  = this.createClient();
+		if(client){
+			//this will send the block directly to  the recipient if online at an instant, else the recipient will be notified through other means
+			const channel = client.channel(recipient);
+			await channel.subscribe(async (status)=>{
+				if( status == "SUBSCRIBED"){
+					await channel.track({online_at: new Date().toISOString()})
+				}
+			});
+			await channel.on("presence", {event: 'sync'}, ()=>{
+				const presenceState = channel.presenceState();
+				const totalConnection = Object.keys(presenceState).length;
+
+				if( totalConnection < 2 ){
+					const recipients = JSON.parse(this.l.toSendRecipients ?? "{}");
+					recipients[recipient] = response.blockID;
+					this.l.toSendRecipients = JSON.stringify(recipients);
+				} else {
+					const recipients = JSON.parse(this.l.toSendRecipients ?? "{}");
+					let index 		= recipients[recipient];
+
+					if( index ){
+						delete recipients[recipient];
+						this.l.toSendRecipients = JSON.stringify(recipients);
+					}
+				}
+			})
+			
+			await channel.send({
+				type: "broadcast",
+				event: "transaction_update",
+				payload: { text: JSON.stringify(response) }
+		
+			})
+			await channel.unsubscribe();
+		}
+	}
+
+	static async #checkRecipients(){
+		const recipients = JSON.parse(this.l.toSendRecipients ?? "{}");
+
+		for(const recipient in recipients ){
+			const blockID 	= recipients[recipient];
+			const response 	= await this.getDataPersistently(blockID);
+
+			if( response && blockID ){
+				this.#runRecipientClient(recipient, response );
+			}
+		}
+
+		setTimeout(()=> this.#checkRecipients(), 6000000);//run again in ten minutes
+	}
+
 	static async storeBlock( response = false, note = false ){
 		//console.log("storeBlock running " + this.funcUp[ this.funcUp.length]);
 		this.funcUp[ this.funcUp.length] 	= "storeBlock";
@@ -13610,6 +14126,12 @@ static Base64 = {
 						this.l[ noteID + "ExchangeNoteTime"] = response.transTime;
 					}
 				}
+				//storing directly to the product note server.
+				const client = this.createClient(false, response.productNote.noteServer, response.productNote.noteKey );
+
+				if(client){
+					this.saveBlock(response, client)
+				}
 			}
 			
 			if( this.encryptRecipient ){
@@ -13628,20 +14150,7 @@ static Base64 = {
 			}
 			
 			if( this.#Reipient ){
-				const client  = this.createClient();
-				if(client){
-					//this will send the block directly to  the recipient if online at an instant, else the recipient will be notified through other means
-					const channel = client.channel(this.#Reipient);
-					await channel.subscribe();
-					await channel.send({
-						type: "broadcast",
-						event: "transaction_update",
-						payload: { text: JSON.stringify(response) }
-				
-					})
-					await channel.unsubscribe();
-				}
-				
+				this.#runRecipientClient(this.#Reipient, response);				
 			}
 			
 			if( response.exchangeNote && response.noteType &&response.exchangeNote.exchangeID ){
@@ -13666,6 +14175,13 @@ static Base64 = {
 						this.l[ response.noteType + "ExchangeNote" ] = JSON.stringify( response.exchangeNote );
 						this.l[ response.noteType + "ExchangeNoteTime"] = response.transTime;
 					}
+				}
+
+				//storing directly to the exchange note server.
+				const client = this.createClient(false, response.exchangeNote.noteServer, response.exchangeNote.noteKey );
+
+				if(client){
+					this.saveBlock(response, client)
 				}
 			}
 			/*console.log("note: ", note, "response: ", response );
@@ -16204,6 +16720,13 @@ static Base64 = {
 			return false;
 		}
 	}
+
+	static async getNoteServers(type){
+		return {
+			url : "https://svtbqnysmjffbstuotwd.supabase.co",
+			key : "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN2dGJxbnlzbWpmZmJzdHVvdHdkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM2OTE4NDcsImV4cCI6MjA3OTI2Nzg0N30.5DTPDygrRnQDW5W-NadS7cYr_PmQuVGC5K8BXWBsqtQ"
+		};
+	}
 	
 	static async createNewScriptbillWallet(){		
 		//console.log("createNewScriptbillWallet running " + this.funcUp[ this.funcUp.length]);
@@ -16321,8 +16844,10 @@ static Base64 = {
 					this.#currentNote.noteValue 	= this.currentNote.noteValue;
 					this.#currentNote.walletID 		= await this.generateKey(30);
 					this.#currentNote.noteServer 	= this.currentNote.noteServer;
+					this.#currentNote.noteKey 		= this.currentNote.noteKey;
 					
 					//checking the note server if it is a Scriptbill server
+					//this  is http check won't work if the server is a websocket or supabase server
 					let checkServer 				= await this.getData('scriptbillPing', 'true', this.#currentNote.noteServer );
 					
 					if( ! checkServer || ! checkServer.isScriptbillServer ){
@@ -16349,9 +16874,12 @@ static Base64 = {
 					await this.setPrivateKey( motherKeys[ note.noteType ], id );
 					this.#currentNote.motherKey 		= await this.getPublicKey(id);
 					this.#currentNote.creditType 		= "fiat";
+					const servers 						= await this.getNoteServers(note.noteType);
 					//console.log("Block is not true, reverting back to Scriptbank default fiat");
 					//await this.createAlert("checn");
 					//calculating the exchange IDs
+					this.#currentNote.noteServer 		= servers.url;
+					this.#currentNote.noteKey 			= servers.key;
 					privKey 			= motherKeys.noteAddresses[ note.noteType ];
 					var id 				= await this.generateKey(10);
 					await this.setPrivateKey( privKey, id );
@@ -17093,6 +17621,31 @@ static Base64 = {
 		}
 		details.transType = "EXCHANGE";
 		return await this.generateScriptbillTransactionBlock(details, this.#note, response );
+	}
+
+	static async getGoldPrice(type){
+		const goldUrl = "https://goldprice.dev";
+		const fxUrl 	= "https://frankfurter.app/v1/latest?base=USD";
+
+		const testType 	= (type.length - type.lastIndexOf("CRD") == 3 ) ? type.slice( 0, type.lastIndexOf("CRD") ) : type;
+
+		const [goldResponse, fxResponse ] = await Promise.all([
+			fetch(goldUrl),
+			fetch(fxUrl)
+		]);
+
+		if(! goldResponse.ok || ! fxResponse.ok){
+			throw new Error("Failed to Communicate to fx Server");
+		}
+
+		const goldData = await goldResponse.json();
+		const fxData 	= await fxResponse.json();
+
+		const priceInUSD 	= parseFloat(goldData.price);
+		const toLocale 	= fxData.rates[testType];
+		const localePrice = priceInUSD * toLocale;
+
+		return localePrice;
 	}
 	
 	static async generateScriptbillTransactionBlock(details = false, note = false, response = false ){
@@ -18175,7 +18728,14 @@ static Base64 = {
 			//alert("Check update 9")
 			//credit note types have send transactions
 			//recieve transaction based on Investment will be handled differently.
-			if( this.#transSend.includes( details.transType ) && details.transType != "INVESTRECIEVE" && details.transType != "PENDING" && ( details.transType != "AGREESEND" || ( details.transType == "AGREESEND" && this.#agreeBlock && this.#agreeBlock.blockID == block.blockID ) ) ){		
+			if( this.#transSend.includes( details.transType ) && details.transType != "INVESTRECIEVE" && details.transType != "PENDING" && ( details.transType != "AGREESEND" || ( details.transType == "AGREESEND" && this.#agreeBlock && this.#agreeBlock.blockID == block.blockID ) ) && ! details.transType == "EXCHANGE" ){	
+				
+				if(details.noteType != note.noteType){
+					const exchangeConfig = {};
+					exchangeConfig.sellCredit = note.noteType;
+					exchangeConfig.buyCredit = details.noteType;
+					return this.exchangeCredits(newBlock, exchangeConfig);
+				}
 				
 				//since some transaction will have a lot to do with the exchange note
 				//we get the exchange note on ground.
@@ -18836,7 +19396,8 @@ static Base64 = {
 						agreement.agreeKey 		= await this.getPublicKey(id);
 						note.agreements.push( {key:agreeKey, agreeID:agreement.agreeID} );
 						newBlock.agreement 		= JSON.parse( JSON.stringify( agreement ));
-						newBlock.agreements[ agreement.agreeID ] = newBlock.blockID;						
+						newBlock.agreements[ agreement.agreeID ] = newBlock.blockID;
+
 					}
 					else if( details.transType == 'PRODUCTSUB' && details.productID && agreement.productConfig.units > 0 && ( ! note.noteSubs[ details.productID ] || ! note.noteSubs[ details.productID ].subUnit || note.noteSubs[ details.productID ].subUnit > 0 ) ) {
 						var id 				= await this.generateKey(10);
@@ -18988,8 +19549,14 @@ static Base64 = {
 						
 						//setting the profit keys.
 						let profitKey		= await this.generateKey(0, true);
-						note.profitKeys.push( profitKey );
-						
+
+						if(note.profitKeys.length < 24 )
+							note.profitKeys.push( profitKey );
+
+						else {
+							profitKey = note.profitKeys[Math.round( Math.random() * note.profitKeys.length ) ];
+						}
+						this.#Reipient 		= newBlock.productID;
 						var id 				= await this.generateKey(10);
 						await this.setPrivateKey( profitKey, id );
 						newBlock.profitKey 	= await this.getPublicKey(id);
@@ -19015,6 +19582,10 @@ static Base64 = {
 							
 							this.productNote 					= JSON.parse( JSON.stringify( productNote ));
 							newBlock.productNote 				= JSON.parse( JSON.stringify( productNote ));
+							var id 								= await this.generateKey(10);
+							this.setPublicKey(newBlock.productID, id);
+
+							newBlock.recipient 					= this.#encrypt(id, JSON.stringify(newBlock.agreement));
 							
 						}
 					}
@@ -19237,7 +19808,7 @@ static Base64 = {
 			}
 			//to recieve a transaction, the send block must be set in the response handler and the send block must have 
 			//transaction type that equal send.
-			else if( ( this.#transRecieve.includes( details.transType )  && response && this.#transSend.includes( response.transType ) ) || ( response.transType == "DEPOSIT" && this.#fiatCurrencies[ testType ] && details.transType == "CONFIRM" ) || ( response.transType == "AGREEMENTSIGN" && details.transType == "AGREEMENTREQUEST" ) /* && response.transType != "WITHDRAW" */  ){
+			else if( ( this.#transRecieve.includes( details.transType )  && response && this.#transSend.includes( response.transType ) && ! details.transType == "EXCHANGE") || ( response.transType == "DEPOSIT" && this.#fiatCurrencies[ testType ] && details.transType == "CONFIRM" ) || ( response.transType == "AGREEMENTSIGN" && details.transType == "AGREEMENTREQUEST" ) /* && response.transType != "WITHDRAW" */  ){
 				//console.log("running recieve transaction");
 				
 				//console.log("trans type: " + response.transType);
@@ -19540,6 +20111,7 @@ static Base64 = {
 						this.errorMessage("Recieve Transaction Aborted Because Sender Didn't Specify Your Note's Block as The Recipient Block");
 						return false;
 					}
+
 					
 					if( ! this.isJsonable( agreement ) && note.unfulfilled && note.unfulfilled[ response.repBlockID ] ){
 						var id 				= await this.generateKey(10);
@@ -19548,6 +20120,19 @@ static Base64 = {
 						
 						if( this.isJsonable( agreement ) ){
 							delete note.unfulfilled[ response.repBlockID ];
+						} 
+					}
+
+					if( ! this.isJsonable(agreement ) && typeof this.#note.noteProducts == "object" && this.#note.noteProducts.length ){
+						for(const productKey in this.#note.noteProducts){
+							var id = await this.generateKey(10);
+							this.setPrivateKey(productKey, id);
+							agreement = await this.#decrypt(details.recipient, id);
+
+							if( this.isJsonable(agreement)){
+								//share the profit here
+								break;
+							}
 						}
 					}
 						
@@ -19591,6 +20176,8 @@ static Base64 = {
 								if( this.isJsonable( agreement ) ) break;
 							}
 						}
+					} else {
+						await this.createAlert("we couldn't find any account data on your note, so you can't recieve funds using your personal contact details except you add them to your account. Please add them to your account and try again with this key: " + this.recieveKey );
 					}
 					delete this.recieveKey;
 				}
@@ -19683,10 +20270,14 @@ static Base64 = {
 					
 					//lastly, before we recieve the transaction block, we have to test if the recipient is ready to recive
 					//the transaction based on the connected agreement.
-					if( details.transType == 'RECIEVE' && response.nextBlockID != "AUTOEXECUTE" && ( response.transType != "CONFIRM" || response.transType != "AGREEMENTSIGN" || response.transType != "CANCELLED" || response.transType != "DEPOSIT" )
+					if( this.#transRecieve.includes( details.transType ) && response.nextBlockID != "AUTOEXECUTE" && ( response.transType != "CONFIRM" || response.transType != "AGREEMENTSIGN" || response.transType != "CANCELLED" || response.transType != "DEPOSIT" )
 						&& ! this.#isExchangeMarketMining ) {
 						//console.log("transtype: " + response.transType );
-						let conf = await this.createConfirm('You are about recieving ' + details.transValue + ' and the details on the agreement: agreement value = ' + agreement.value + ';' + ( agreement.ExecTime ? ' the agreement will end in: ' + this.timeToString( agreement.ExecTime, true ) + '; You\'ll be given a grace of: ' + this.timeToString( parseInt( response.transTime ) - parseInt( agreement.ExecTime ) ) : '' ) + '; The Payment is ' + ( agreement.isPeriodic ? 'going to be periodic and the periodic times will be ' + agreement.times + ' with an interest rate of ' + parseFloat( agreement.interestRate ) * 100 + '% which will be calculated as a ' + agreement.interestType + ' interest and would be calculated every ' + agreement.interestSpread : 'not going to be periodic' ) +  '. Do you which to continue recieving Scriptbill transaction or click cancel to cancel the transaction? ' );
+						let conf = true;
+
+						if( ! response.productID ){
+						conf = await this.createConfirm('You are about recieving ' + details.transValue + ' and the details on the agreement: agreement value = ' + agreement.value + ';' + ( agreement.ExecTime ? ' the agreement will end in: ' + this.timeToString( agreement.ExecTime, true ) + '; You\'ll be given a grace of: ' + this.timeToString( parseInt( response.transTime ) - parseInt( agreement.ExecTime ) ) : '' ) + '; The Payment is ' + ( agreement.isPeriodic ? 'going to be periodic and the periodic times will be ' + agreement.times + ' with an interest rate of ' + parseFloat( agreement.interestRate ) * 100 + '% which will be calculated as a ' + agreement.interestType + ' interest and would be calculated every ' + agreement.interestSpread : 'not going to be periodic' ) +  '. Do you which to continue recieving Scriptbill transaction or click cancel to cancel the transaction? ' );
+						}
 						//console.log("continuing " + conf );
 							
 						if( ! conf ){ 
@@ -19703,6 +20294,13 @@ static Base64 = {
 							details.agreement.privateKey = privateKey;
 							details.blockRef 	= response.blockRef;
 							return await this.generateScriptbillTransactionBlock(details);
+						} 
+
+						else if( noteType != note.noteType){
+							const exchangeConfig = {};
+							exchangeConfig.sellCredit = response.noteType;
+							exchangeConfig.buyCredit = note.noteType;
+							return this.exchangeCredits(response, exchangeConfig);
 						}
 					
 					} else if( response.transType == "AGREEMENTSIGN" && response.agreement ){
@@ -19760,9 +20358,13 @@ static Base64 = {
 						}
 						else {
 							if( ! response )
-								this.response = details;
+								response = details;
+
+							const exchangeConfig = {};
+							exchangeConfig.sellCredit = response.noteType;
+							exchangeConfig.buyCredit = note.noteType;
 							
-							this.exchangeCredits();
+							this.exchangeCredits(response, exchangeConfig);
 						}
 					
 					} else {
@@ -19814,7 +20416,10 @@ static Base64 = {
 							agreement = await this.#decrypt( details.recipient, id );
 							if( this.isJsonable( agreement ) ){
 								if( noteType != note.noteType ){
-									this.exchangeCredits();//BAAACK
+									const exchangeConfig = {};
+									exchangeConfig.sellCredit = response.noteType;
+									exchangeConfig.buyCredit = note.noteType;
+									await this.exchangeCredits(response, exchangeConfig);
 									break;
 								}
 								agreement 	= JSON.parse( agreement );
@@ -19837,7 +20442,10 @@ static Base64 = {
 							agreement = await this.#decrypt( details.recipient, id );
 							if( this.isJsonable( agreement ) ){
 								if( noteType != note.noteType ){
-									this.exchangeCredits();
+									const exchangeConfig = {};
+									exchangeConfig.sellCredit = response.noteType;
+									exchangeConfig.buyCredit = note.noteType;
+									await this.exchangeCredits(response, exchangeConfig);
 									break;
 								}
 								agreement = JSON.parse( agreement );
@@ -19870,7 +20478,10 @@ static Base64 = {
 						}
 						if( noteType != note.noteType && agreement && agreement.agreeID ){
 							this.errorMessage("Profit Credit Sent Didn't Match With Your Note's, Exchanging Credit Instead!");
-							return await this.exchangeCredits();		
+							const exchangeConfig = {};
+							exchangeConfig.sellCredit = response.noteType;
+							exchangeConfig.buyCredit = note.noteType;
+							return await this.exchangeCredits(response, exchangeConfig);		
 						}
 						
 						if( note.referee ){
@@ -20025,6 +20636,62 @@ static Base64 = {
 										
 				}						
 				
+			}
+
+			else if(details.transType == "EXCHANGE"){
+				if(response.noteType == note.noteType){
+					//this means the note is sending the credit so we get the credit from the note
+					note.noteValue		-= parseFloat(details.transValue);
+				} else {
+					note.noteValue		+= parseFloat(details.transValue);
+				}
+
+				newBlock.transValue  =details.transValue;
+				newBlock.transType 		= "EXCHANGE";
+
+				newBlock.agreement 	= await this.createAgreement("", newBlock, true );//the withdrawer must have set his agreement on this handler. 
+					
+				if( ( ! note.agreements || typeof note.agreements != "object" ) && ! this.#isExchangeDeposit )
+					note.agreements = [];
+				
+				//we will save the key according to the depositors request
+				//this will help Scriptbank attend to depositors according 
+				//to their request. If the transaction is an auto confirmed
+				//transaction, the note will run the agreement sign transaction
+				//automatically.
+									
+				note.agreements.push( {agreeID: newBlock.agreement.agreeID, key: newBlock.agreement.privateKey, signKey: newBlock.agreement.senderSignKey });
+				
+				if( newBlock.isExchangeMarketMining ){
+					newBlock.exchangeNote.agreement = newBlock.agreement.privateKey;
+				}
+				
+				delete newBlock.agreement.privateKey;
+				delete newBlock.agreement.senderSignKey;
+
+				if(! response || response.transType != "EXCHANGE" || ! response.agreement || ! response.agreement.privateKey ){
+					newBlock.agreement.value 		= parseFloat( details.transValue );
+					newBlock.agreement.privateKey 	= await this.generateKey(30, true, true );
+					var id 							= await this.generateKey(10);
+					await this.setPrivateKey( newBlock.agreement.privateKey, id );			
+					
+					newBlock.blockRef 			= await this.getPublicKey(id,true);
+					newBlock.signRef 			= await this.generateKey(20);
+				} else {
+					newBlock.agreement.value 		= parseFloat( details.transValue );
+					newBlock.agreement.privateKey 	= response.agreement.privateKey
+					var id 							= await this.generateKey(10);
+					await this.setPrivateKey( newBlock.agreement.privateKey, id );			
+					
+					newBlock.blockRef 			= await this.getPublicKey(id,true);
+					newBlock.signRef 			= await this.generateKey(20);
+				}
+
+				newBlock.buyCredit = details.buyMarket.noteType;
+				newBlock.buyExchangeNote = JSON.parse(JSON.stringify(details.buyMarket));
+				newBlock.exchangeNote 	= JSON.parse(JSON.stringify(details.sellMarket));
+				newBlock.exchangeNote.noteValue -= parseFloat(details.transValue);
+				newBlock.buyExchangeNote.noteValue += parseFloat(details.transValue);
 			}
 			
 			//handling other trnasactions apart from sending and recieving.
@@ -21399,7 +22066,7 @@ static Base64 = {
 								newBlock.exchangeNote.transKey 	= await this.getPublicKey(id,true);
 								
 								if( this.#fiatCurrencies[ testType ] )
-									newBlock.exchangeNote.noteServer 	= this.#default_scriptbill_server;
+									newBlock.exchangeNote.noteServer 	= `https://${testType}.${this.#default_scriptbill_server.substring(8)}`;
 								
 								await this.resolveRemoteData( ['transID', 'transKey', 'exID'], [ newBlock.exchangeNote.transID, transKeey, newBlock.exchangeNote.walletID ], newBlock.exchangeNote.noteServer, 'POST' );
 								newBlock.exchangeNote.transSign 	= await this.Sign(transKeey, newBlock.exchangeNote.transID );
@@ -21409,7 +22076,62 @@ static Base64 = {
 								//of the exchange note. The total value may not be 
 								//ultimately correct but verifiers will have a way of 
 								//correcting this value during verification process.
-								newBlock.exchangeNote.noteValue 	= parseFloat( newBlock.exchangeNote.noteValue ) + parseFloat( details.transValue );
+
+								if(true){
+									//check the demand and exchange values.
+									if(newBlock.exchangeNote.exchangeValue < details.transValue ){
+										let totalExValue = parseFloat(newBlock.exchangeNote.exchangeValue) + parseFloat(newBlock.exchangeNote.demandValue) / newBlock.exchangeNote.motherValue;
+
+										let motherValue = details.transValue  / totalExValue;
+
+										if(motherValue > newBlock.exchangeNote.motherValue){
+											if(!this.#fiatCurrencies[testType]){
+												this.errorMessage("Exchange Market does not have enough credit to fulfill this request, please contact the exchange market managers for Credit top ups");
+												return false;
+											}
+											else {
+												details.depositType = "SBCRD";
+												return this.generateScriptbillTransactionBlock(details, note, response);
+											}
+											
+										}
+									}
+								}
+								
+								if(! details.depositType ){
+									newBlock.exchangeNote.noteValue 	= parseFloat( newBlock.exchangeNote.noteValue ) + parseFloat( details.transValue );
+								}
+								else {
+									const exchangeBlock = await this.getTransBlock(1, {noteType:details.depositType, transTime: `${Date.now()} >`});
+
+									if(exchangeBlock.length && exchangeBlock[0].blockID && exchangeBlock[0].exchangeNote){
+										let exValue = parseFloat( newBlock.exchangeNote.exchangeValue ) + parseFloat( newBlock.exchangeNote.demandValue ) /** total credit created */ / parseFloat( newBlock.exchangeNote.motherValue );
+
+										let goldPrice;
+
+										if(details.depositType == "SBCRD"){
+											goldPrice = this.getGoldPrice(newBlock.exchangeNote.noteType).catch(error =>{
+												this.errorMessage(error.getMessage());
+												return 0;
+											});
+										}
+										else {
+											goldPrice = exValue;
+										}
+										
+										let transValue = details.transValue / goldPrice;
+
+										if( exchangeBlock[0].exchangeNote.exchangeValue > transValue )
+											exchangeBlock[0].exchangeNote.exchangeValue -= transValue;
+
+										else {
+											exchangeBlock[0].demandNote.exchangeValue += transValue;
+										}
+
+										newBlock.exchangeNote.motherValue += transValue;
+									}
+								}
+								
 								
 								//since new credits is created to the exchange network of 
 								//the exchange market during deposit to the exchange market
@@ -25504,6 +26226,347 @@ static Base64 = {
 			return array1;
 		}
 	}
+
+	static async startWebSocketServer(databaseUrl, jwt_secret = ""){
+		const {WebSocketServer} = require("ws");
+		const express 			= require("express");
+		const {createServer}	= require("http");
+		const { Pool, Client }			= require('pg');
+		const jwt 				= require('jsonwebtoken');
+		const bcrypt 			= require('bcrypt');
+		const { EventEmitter } = require('events');
+
+		const changeEmitter = new EventEmitter();
+
+		async function startListener() {
+			const listener = new Client({ connectionString: databaseUrl });
+			await listener.connect();
+			await listener.query('LISTEN table_changes');
+			listener.on('notification', (msg) => {
+				const payload = JSON.parse(msg.payload);
+				changeEmitter.emit('change', payload);
+			});
+			listener.on('error', () => setTimeout(startListener, 1000)); // reconnect
+		}
+		startListener();
+
+		const pool 				= new Pool({ connectionString: databaseUrl });
+		const wss = new WebSocketServer({port: 443});
+		const app = express();
+		app.use(express.json());
+		console.log("Scriptbill Server running at port 444");
+
+		// relay Postgres changes to matching subscribers
+		changeEmitter.on('change', (change) => {
+		for (const [topic, subs] of this.#channels ) {
+			for (const { ws, filters } of subs) {
+			const match = filters.some(f =>
+				f.table === change.table &&
+				(f.event === '*' || f.event === change.type)
+			);
+			if (!match) continue;
+			ws.send(JSON.stringify([null, null, topic, 'postgres_changes', {
+				data: {
+				table: change.table,
+				type: change.type,
+				record: change.record,
+				old_record: change.old_record,
+				commit_timestamp: change.commit_timestamp,
+				},
+				ids: [],
+			}]));
+			}
+		}
+		});
+
+		function authMiddleware(req, res, next) {
+			const auth = req.headers.authorization;
+			const apikey = req.headers.apikey;
+			try {
+				const token = auth?.replace('Bearer ', '') || apikey;
+				const payload = jwt.verify(token, jwt_secret);
+				req.userId = payload.sub;
+				req.role = payload.role || 'authenticated';
+			} catch {
+				req.role = 'anon';
+			}
+			next();
+		}
+
+		function buildWhere(query, params) {
+			const clauses = [];
+			for (const [key, value] of Object.entries(query)) {
+				if (['select', 'order', 'limit', 'offset'].includes(key)) continue;
+				const [op, ...rest] = value.split('.');
+				const val = rest.join('.');
+				if (op === 'in') {
+				params.push(val.replace(/[()]/g, '').split(','));
+				clauses.push(`"${key}" = ANY($${params.length})`);
+				} else if (op === 'is') {
+				clauses.push(`"${key}" IS ${val.toUpperCase()}`);
+				} else if (OPS[op]) {
+				params.push(op.includes('like') ? val.replace(/\*/g, '%') : val);
+				clauses.push(`"${key}" ${OPS[op]} $${params.length}`);
+				}
+			}
+			return clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+		}
+
+		// Load FK map once at startup
+		let fkMap = {}; // { table: [{ column, foreignTable, foreignColumn }] }
+		async function loadForeignKeys() {
+			const { rows } = await pool.query(`
+				SELECT
+				tc.table_name AS table, kcu.column_name AS column,
+				ccu.table_name AS foreign_table, ccu.column_name AS foreign_column
+				FROM information_schema.table_constraints tc
+				JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name
+				JOIN information_schema.constraint_column_usage ccu ON tc.constraint_name = ccu.constraint_name
+				WHERE tc.constraint_type = 'FOREIGN KEY'
+			`);
+			for (const r of rows) {
+				(fkMap[r.table] ??= []).push({ column: r.column, foreignTable: r.foreign_table, foreignColumn: r.foreign_column });
+			}
+		}
+
+		// Parses "select=id,name,posts(title,body)" into columns + nested embeds
+		function parseSelect(selectStr) {
+			const embeds = [];
+			const cols = [];
+			const regex = /(\w+)(\((.*?)\))?/g;
+			let match;
+			while ((match = regex.exec(selectStr))) {
+				if (match[3]) embeds.push({ table: match[1], cols: match[3].split(',') });
+				else if (match[1]) cols.push(match[1]);
+			}
+			return { cols, embeds };
+		}
+
+		// Builds SELECT with json_agg subqueries for each embed — avoids row multiplication from JOINs
+		function buildSelectSQL(table, selectStr) {
+			const { cols, embeds } = parseSelect(selectStr || '*');
+			const baseCols = cols.length ? cols.map(c => `"${table}"."${c}"`) : [`"${table}".*`];
+
+			const embedCols = embeds.map(e => {
+				const fk = fkMap[table]?.find(f => f.foreignTable === e.table)
+						|| fkMap[e.table]?.find(f => f.foreignTable === table);
+				if (!fk) throw new Error(`No relationship found between ${table} and ${e.table}`);
+				const isReverse = fk.foreignTable === table; // e.g. users -> posts (one-to-many)
+				const joinCol = isReverse ? fk.column : fk.foreignColumn;
+				const parentCol = isReverse ? fk.foreignColumn : fk.column;
+				const subCols = e.cols.map(c => `'${c}', "${e.table}"."${c}"`).join(',');
+				return `(
+				SELECT ${isReverse ? 'json_agg' : 'json_build_object'}(json_build_object(${subCols}))
+				FROM "${e.table}" WHERE "${e.table}"."${joinCol}" = "${table}"."${parentCol}"
+				) AS "${e.table}"`;
+			});
+
+			return [...baseCols, ...embedCols].join(',');
+		}
+
+		app.use(authMiddleware);
+
+		const OPS = { eq: '=', neq: '!=', gt: '>', gte: '>=', lt: '<', lte: '<=', like: 'LIKE', ilike: 'ILIKE' };
+
+		app.route('/rest/v1/:table')
+		//1. HANDLE SELECT (read)
+		.get(async (req,res)=>{
+			const { table } = req.params;
+			const params = [];
+			const where = buildWhere(req.query, params);
+			let select;
+			try {
+				select = buildSelectSQL(table, req.query.select);
+			} catch (e) {
+				return res.status(400).json({ message: e.message });
+			}
+
+			let order = '';
+			if (req.query.order) {
+				const [col, dir] = req.query.order.split('.');
+				order = `ORDER BY "${col}" ${dir === 'desc' ? 'DESC' : 'ASC'}`;
+			}
+			const limit = req.query.limit ? `LIMIT ${parseInt(req.query.limit)}` : '';
+			const offset = req.query.offset ? `OFFSET ${parseInt(req.query.offset)}` : '';
+
+			const sql = `SELECT ${select} FROM "${table}" ${where} ${order} ${limit} ${offset}`;
+			try {
+				const { rows } = await pool.query(sql, params);
+				res.json(rows);
+			} catch (e) {
+				res.status(400).json({ message: e.message });
+			}
+		})
+		.post(async (req, res) => {
+			const { table } = req.params;
+			const rows = Array.isArray(req.body) ? req.body : [req.body];
+			const cols = Object.keys(rows[0]);
+			const values = [];
+			const placeholders = rows.map((row, i) => {
+				const start = i * cols.length;
+				cols.forEach(c => values.push(row[c]));
+				return `(${cols.map((_, j) => `$${start + j + 1}`).join(',')})`;
+			}).join(',');
+			const sql = `INSERT INTO "${table}" (${cols.map(c => `"${c}"`).join(',')}) VALUES ${placeholders} RETURNING *`;
+			try {
+				const { rows: result } = await pool.query(sql, values);
+				res.status(201).json(result);
+			} catch (e) {
+				res.status(400).json({ message: e.message });
+			}
+		})
+
+		.patch( async (req, res) => {
+			const { table } = req.params;
+			const params = [];
+			const setClauses = Object.entries(req.body).map(([k, v]) => {
+				params.push(v);
+				return `"${k}" = $${params.length}`;
+			});
+			const where = buildWhere(req.query, params);
+			const sql = `UPDATE "${table}" SET ${setClauses.join(',')} ${where} RETURNING *`;
+			const { rows } = await pool.query(sql, params);
+			res.json(rows);
+		})
+
+		.delete( async (req, res) => {
+			const { table } = req.params;
+			const params = [];
+			const where = buildWhere(req.query, params);
+			const sql = `DELETE FROM "${table}" ${where} RETURNING *`;
+			const { rows } = await pool.query(sql, params);
+			res.json(rows);
+		});
+
+		app.post('/auth/v1/signup', async (req, res) => {
+			const { email, password } = req.body;
+			const hash = await bcrypt.hash(password, 10);
+			const { rows } = await pool.query(
+				`INSERT INTO auth.users (email, encrypted_password) VALUES ($1,$2) RETURNING id, email`,
+				[email, hash]
+			);
+			const user = rows[0];
+			const access_token = jwt.sign({ sub: user.id, role: 'authenticated' }, jwt_secret, { expiresIn: '1h' });
+			res.status(200).json({ access_token, user });
+		});
+
+		app.post('/auth/v1/token', async (req, res) => {
+			if (req.query.grant_type !== 'password') return res.status(400).json({ message: 'unsupported grant_type' });
+			const { email, password } = req.body;
+			const { rows } = await pool.query(`SELECT * FROM auth.users WHERE email = $1`, [email]);
+			const user = rows[0];
+			if (!user || !(await bcrypt.compare(password, user.encrypted_password))) {
+				return res.status(400).json({ message: 'Invalid login credentials' });
+			}
+			const access_token = jwt.sign({ sub: user.id, role: 'authenticated' }, jwt_secret, { expiresIn: '1h' });
+			res.json({ access_token, token_type: 'bearer', user: { id: user.id, email: user.email } });
+		});
+
+		wss.on("connection", (ws)=>{
+			console.log("Client just Connected");
+
+			//listen to message eevent on the client
+			ws.on("message", (messageString)=>{
+				const message = JSON.parse(messageString);
+				const {topic, event, payload, ref } = message;
+
+				console.log(`We just got an event ${event} on a topic ${topic}`);
+
+				switch(event){
+					case "phx_join":
+						if(! this.#channels.has(topic)){
+							this.#channels.set(topic, new Set());
+						}
+
+						this.#channels.get(topic).add(ws);
+
+						//associate the topic with the socket for easy clean up
+						if( ! ws.subscribedTopics) {
+							ws.subscribedTopics = new Set();
+						}
+
+						ws.subscribedTopics.add(topic);
+
+						//acknowledge successful join
+						ws.send(JSON.stringify({
+							topic,
+							event: "phx_reply",
+							payload: {status: "ok", response: {}},
+							ref
+						}))
+						break;
+					
+					case "heartbeat" :
+						if( topic == "phoenix"){
+							ws.send(JSON.stringify({
+								topic,
+								event: "phx_reply",
+								payload: {status: "ok", response: {}},
+								ref
+							}))
+						}
+						break;
+
+					case "broadcast":
+						const subscribers = channels.get(topic);
+
+						if(subscribers){
+							subscribers.forEach((client)=>{
+								if(client !== ws && client.readyState == client.OPEN){
+									client.send(JSON.stringify({
+										topic,
+										event,
+										payload,
+										ref:null
+									}))
+								}
+							})
+						}
+						break;
+					
+					case "phx_leave":
+						this.#cleanupClientFromTopic(ws, topic)
+						ws.send(JSON.stringify({
+							topic,
+							event: "phx_reply",
+							payload: {status:"ok"},
+							ref
+						}))
+						break;
+
+					case "phx_reply":
+						ws.send(JSON.stringify({
+							topic,
+							event,
+							payload,
+							ref
+						}))
+						break;
+				}
+			})
+
+			ws.on("close", ()=>{
+				console.log("A client just disconnected");
+				if(ws.subscribedTopics ){
+					ws.subscribedTopics.forEach((topic)=>{
+						this.#cleanupClientFromTopic(ws, topic);
+					});
+				}
+			})
+		});
+	}
+
+	static #cleanupClientFromTopic(socket, topic){
+		const subscribers = this.#channels.get(topic);
+
+		if( subscribers ){
+			subscribers.delete(ws);
+
+			if(subscribers.size === 0 ){
+				this.#channels.delete(topic);
+			}
+		}
+	}
 	
 	static async getData( key, data, url = "", type = "GET" ){
 		//console.log("getData running " + this.funcUp[ this.funcUp.length] );
@@ -25599,8 +26662,20 @@ static Base64 = {
 					return false;
 				});
 			}
-			else if(type == "socket"){
-				const client = this.createClient();
+			else if(type.toLowerCase() == "socket"){
+				let client;
+				if( ! this.#note || ! this.#note.noteType )
+					client = this.createClient();
+
+				else {
+					let exchangeNote = await this.getCurrentExchangeNote(this.#note.noteType );
+
+					if(! exchangeNote ){
+						client = this.createClient();
+					} else {
+						client = this.createClient(false, exchangeNote.noteServer, exchangeNote.noteKey );
+					}
+				}
 				if(typeof data == "object" && typeof key == "object" && data.length && key.length && data.length == key.length ){
 					
 
@@ -25703,7 +26778,7 @@ static Base64 = {
 				
 				if( this.blocks.length < limit ){ 
 				
-					blocks 		= await this.getData("blockRef", config.blockRef, this.server ? this.server : "");
+					blocks 		= await this.getData("blockRef", config.blockRef, this.server ? this.server : "", "socket");
 					
 					if( blocks && blocks.length && typeof blocks == "object" ){
 						blocks.forEach( block =>{

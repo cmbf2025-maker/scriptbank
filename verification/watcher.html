@@ -61,6 +61,51 @@
         .connect-btn:hover:not(:disabled) { background: #45a049; transform: translateY(-2px); }
         .connect-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+        /* Available sessions (discovery) */
+        .sessions-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 25px;
+        }
+        .sessions-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .sessions-header h2 { font-size: 1rem; color: #333; }
+        .sessions-live-dot {
+            font-size: 12px;
+            color: #4CAF50;
+            font-weight: 600;
+        }
+        .sessions-list { display: flex; flex-direction: column; gap: 10px; max-height: 220px; overflow-y: auto; }
+        .session-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            padding: 12px 16px;
+        }
+        .session-info { display: flex; flex-direction: column; gap: 2px; }
+        .session-key { font-family: monospace; font-weight: 700; color: #2e7d32; }
+        .session-meta { font-size: 12px; color: #888; }
+        .session-connect-btn {
+            padding: 8px 16px;
+            background: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .session-connect-btn:hover { background: #1976d2; }
+        .session-empty { text-align: center; color: #888; font-size: 14px; padding: 10px 0; }
+
         .status-badge {
             padding: 6px 12px;
             border-radius: 20px;
@@ -164,7 +209,17 @@
 <body>
     <div class="container">
         <h1>👁️ Face Verification Watcher</h1>
-        <p class="subtitle">Enter the streamer key and watch the stream. Send instructions via chat.</p>
+        <p class="subtitle">Pick a waiting session below, or enter a streamer key directly.</p>
+
+        <div class="sessions-section">
+            <div class="sessions-header">
+                <h2>🟢 Available Sessions</h2>
+                <span class="sessions-live-dot" id="sessionsLiveDot">● live</span>
+            </div>
+            <div class="sessions-list" id="sessionsList">
+                <div class="session-empty">Looking for waiting streamers…</div>
+            </div>
+        </div>
 
         <div class="key-section">
             <div class="key-input-group">
@@ -217,6 +272,11 @@
     <script src="/js/crypto-js.js"></script>
     <script src="/js/scriptbill.js"></script>
     <script>
+        // Shared channel every streamer announces itself on while waiting for a
+        // watcher. This is separate from the per-session `webrtc-${key}` channel
+        // used for the actual WebRTC signaling.
+        const DISCOVERY_CHANNEL = 'verification-watchers';
+
         class WebRTCWatcher {
             constructor() {
                 // DOM refs
@@ -235,6 +295,8 @@
                 this.currentRoomEl     = document.getElementById('currentRoom');
                 this.peerStatusEl      = document.getElementById('peerStatus');
                 this.connectionIndicator = document.getElementById('connectionIndicator');
+                this.sessionsListEl      = document.getElementById('sessionsList');
+                this.sessionsLiveDotEl   = document.getElementById('sessionsLiveDot');
 
                 // State
                 this.pc                = null;
@@ -245,6 +307,11 @@
                 this.recordedChunks    = [];
                 this.recordings        = [];
                 this._offerRetryTimer  = null;
+
+                // Discovery (list of streamers currently waiting for a watcher)
+                this.discoveryChannel      = null;
+                this._discoveryClient      = null;
+                this._sessionsRefreshTimer = null;
 
                 this._init();
             }
@@ -263,6 +330,87 @@
                 if (!Scriptbill.s.currentNote) {
                     this._showError('Please login first');
                     return;
+                }
+
+                this._joinDiscoveryChannel();
+            }
+
+            // ── Discovery (available sessions list) ─────────────────────────
+            async _joinDiscoveryChannel() {
+                try {
+                    this._discoveryClient  = this._discoveryClient || Scriptbill.createClient();
+                    this.discoveryChannel  = this._discoveryClient.channel(DISCOVERY_CHANNEL);
+
+                    this.discoveryChannel.on('presence', { event: 'sync' },  () => this._refreshAvailableSessions());
+                    this.discoveryChannel.on('presence', { event: 'join' },  () => this._refreshAvailableSessions());
+                    this.discoveryChannel.on('presence', { event: 'leave' }, () => this._refreshAvailableSessions());
+
+                    await this.discoveryChannel.subscribe((status) => {
+                        if (status === 'SUBSCRIBED') {
+                            this.sessionsLiveDotEl.style.display = 'inline';
+                            this._refreshAvailableSessions();
+                        }
+                    });
+
+                    // Keep "waiting Xs" times fresh even without new presence events
+                    this._sessionsRefreshTimer = setInterval(() => this._refreshAvailableSessions(), 5000);
+                } catch (err) {
+                    console.error('[watcher] Discovery channel failed:', err);
+                    this.sessionsListEl.innerHTML = '<div class="session-empty">Could not load available sessions.</div>';
+                }
+            }
+
+            _refreshAvailableSessions() {
+                if (!this.discoveryChannel) return;
+                const state = this.discoveryChannel.presenceState();
+                const sessions = Object.values(state)
+                    .map(entries => entries && entries[0])
+                    .filter(Boolean)
+                    .sort((a, b) => (a.startedAt || 0) - (b.startedAt || 0));
+                this._renderAvailableSessions(sessions);
+            }
+
+            _renderAvailableSessions(sessions) {
+                if (!sessions.length) {
+                    this.sessionsListEl.innerHTML = '<div class="session-empty">No streamers waiting right now.</div>';
+                    return;
+                }
+
+                this.sessionsListEl.innerHTML = sessions.map(s => `
+                    <div class="session-item">
+                        <div class="session-info">
+                            <span class="session-key">${this._escapeHtml(s.signalingKey)}</span>
+                            <span class="session-meta">${s.walletHint ? 'Wallet ' + this._escapeHtml(s.walletHint) + ' • ' : ''}waiting ${this._elapsed(s.startedAt)}</span>
+                        </div>
+                        <button class="session-connect-btn" data-key="${this._escapeHtml(s.signalingKey)}">🔗 Connect</button>
+                    </div>
+                `).join('');
+
+                this.sessionsListEl.querySelectorAll('.session-connect-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        this.signalingKeyInput.value = btn.dataset.key;
+                        this._connect();
+                    });
+                });
+            }
+
+            _elapsed(startedAt) {
+                if (!startedAt) return 'just now';
+                const secs = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+                return secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m ${secs % 60}s`;
+            }
+
+            _escapeHtml(str) {
+                const div = document.createElement('div');
+                div.textContent = String(str ?? '');
+                return div.innerHTML;
+            }
+
+            _leaveDiscoveryChannel() {
+                clearInterval(this._sessionsRefreshTimer);
+                if (this.discoveryChannel) {
+                    this.discoveryChannel.unsubscribe();
+                    this.discoveryChannel = null;
                 }
             }
 
@@ -551,6 +699,10 @@
 
         window.addEventListener('load', () => {
             window.watcher = new WebRTCWatcher();
+        });
+
+        window.addEventListener('beforeunload', () => {
+            if (window.watcher) window.watcher._leaveDiscoveryChannel();
         });
     </script>
 </body>

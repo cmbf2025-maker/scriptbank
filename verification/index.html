@@ -123,6 +123,7 @@
         .status-waiting  { background: #e3f2fd; color: #1976d2; }
         .status-connecting { background: #fff3e0; color: #f57c00; }
         .status-connected  { background: #e8f5e8; color: #2e7d32; }
+        .status-auto     { background: #fce4ec; color: #ad1457; }
 
         .controls {
             display: flex;
@@ -213,6 +214,12 @@
             });
         };
 
+        // Shared channel every streamer announces itself on while waiting for a
+        // watcher, so watchers can browse and pick a session instead of needing
+        // the key handed to them out of band. Separate from the per-session
+        // `webrtc-${key}` channel used for the actual WebRTC signaling.
+        const DISCOVERY_CHANNEL = 'verification-watchers';
+
         // ─── Utility ──────────────────────────────────────────────────────────
         function generateSignalingKey() {
             return 'fv_' + CryptoJS.MD5(
@@ -233,6 +240,8 @@
                 this.statusEl    = document.getElementById('status');
                 this.errorEl     = document.getElementById('error');
                 this.faceGuide   = document.getElementById('faceGuide');
+                this.startBtn    = document.getElementById('startBtn');
+                this.stopBtn     = document.getElementById('stopBtn');
                 this.note        = JSON.parse(Scriptbill.s.currentNote);
 
                 this.signalingKey      = generateSignalingKey();
@@ -245,9 +254,40 @@
                 this.recordings        = [];
                 this.recordingStartTime= null;
 
+                // ── Watcher-wait / automatic-verification state ────────────────
+                // How long we wait for a human watcher to connect before the
+                // streamer falls back to an unattended, self-guided verification.
+                // Configurable via ?wait=SECONDS (clamped 10s–10min); defaults to 90s.
+                const params = new URLSearchParams(location.search);
+                const waitSecondsParam = parseInt(params.get('wait'), 10);
+                this.watcherWaitMs = Math.min(Math.max(
+                    (Number.isFinite(waitSecondsParam) ? waitSecondsParam : 90) * 1000,
+                    10000
+                ), 600000);
+
+                this.watcherPresent         = false;   // a watcher has requested an offer
+                this.autoVerificationStarted= false;   // automatic fallback has taken over
+                this._watcherWaitTimer      = null;
+                this._countdownInterval     = null;
+                this._waitRemainingSeconds  = Math.ceil(this.watcherWaitMs / 1000);
+                this._startedAt             = Date.now();
+
+                // Discovery (announces this session to watchers while it's waiting)
+                this.discoveryChannel       = null;
+
                 // Display the key immediately
                 document.getElementById('keyDisplay').textContent      = this.signalingKey;
                 document.getElementById('signalingKeyDisplay').textContent = this.signalingKey;
+
+                // Manual controls (used when a live watcher is guiding the session)
+                this.startBtn.addEventListener('click', () => {
+                    if (this.autoVerificationStarted) return;
+                    this.startRecording('manual');
+                });
+                this.stopBtn.addEventListener('click', () => {
+                    if (this.autoVerificationStarted) return;
+                    this.stopRecording();
+                });
 
                 this._boot();
             }
@@ -266,11 +306,152 @@
                     // 3. Subscribe to signaling channel
                     await this._subscribeSignaling();
 
+                    // 3b. Announce this session on the shared discovery channel so
+                    //     any watcher browsing verification-watchers can find it.
+                    await this._joinDiscoveryChannel();
+
                     this._updateStatus('Camera ready. Share key with watcher.', 'success');
+
+                    // Recording controls become usable once the camera is live.
+                    this.startBtn.disabled = false;
+                    this.stopBtn.disabled  = true;
+
+                    // 4. Start the countdown — if no watcher joins in time,
+                    //    automatic verification takes over.
+                    this._startWatcherWaitTimer();
                 } catch (err) {
                     console.error('Boot error:', err);
                     this._showError('Setup failed: ' + err.message);
                 }
+            }
+
+            // ── Discovery (announce this session to browsing watchers) ──────
+            async _joinDiscoveryChannel() {
+                try {
+                    this.discoveryChannel = this.supabaseClient.channel(DISCOVERY_CHANNEL, {
+                        config: { presence: { key: this.signalingKey } }
+                    });
+
+                    await this.discoveryChannel.subscribe(async (status) => {
+                        if (status === 'SUBSCRIBED') {
+                            await this.discoveryChannel.track({
+                                signalingKey: this.signalingKey,
+                                walletHint: this.note.walletID ? String(this.note.walletID).slice(-6) : null,
+                                startedAt: this._startedAt
+                            });
+                        }
+                    });
+                    console.log('[streamer] Announced on discovery channel:', DISCOVERY_CHANNEL);
+                } catch (err) {
+                    // Discovery is a convenience, not a hard requirement — a watcher
+                    // can still connect with a manually shared key if this fails.
+                    console.warn('[streamer] Discovery channel join failed:', err.message);
+                }
+            }
+
+            _leaveDiscoveryChannel() {
+                if (!this.discoveryChannel) return;
+                try { this.discoveryChannel.untrack(); } catch (err) { /* best effort */ }
+                this.discoveryChannel.unsubscribe();
+                this.discoveryChannel = null;
+            }
+
+            // ── Watcher-wait timer ───────────────────────────────────────────
+            _startWatcherWaitTimer() {
+                this._waitRemainingSeconds = Math.ceil(this.watcherWaitMs / 1000);
+                this._updateWaitStatus();
+
+                this._countdownInterval = setInterval(() => {
+                    this._waitRemainingSeconds--;
+                    this._updateWaitStatus();
+                    if (this._waitRemainingSeconds <= 0) {
+                        clearInterval(this._countdownInterval);
+                    }
+                }, 1000);
+
+                this._watcherWaitTimer = setTimeout(() => {
+                    this._beginAutomaticVerification();
+                }, this.watcherWaitMs);
+            }
+
+            _updateWaitStatus() {
+                if (this.watcherPresent || this.autoVerificationStarted) return;
+                setWebRTCStatus(`Waiting for watcher… auto in ${this._waitRemainingSeconds}s`, 'status-waiting');
+            }
+
+            // Called when a watcher's request-offer is received — see _handleRequestOffer
+            _onWatcherJoined() {
+                if (this.watcherPresent) return;
+                this.watcherPresent = true;
+
+                clearTimeout(this._watcherWaitTimer);
+                clearInterval(this._countdownInterval);
+
+                if (this.autoVerificationStarted) {
+                    // Automatic verification already took over this session — a watcher
+                    // showing up late doesn't interrupt an in-progress recording.
+                    console.log('[streamer] Watcher joined after automatic verification already started; ignoring.');
+                    return;
+                }
+
+                // Someone has picked this session — stop advertising it to others.
+                this._leaveDiscoveryChannel();
+
+                this._updateStatus('Watcher connected. Follow their instructions, then press Start Recording.', 'success');
+            }
+
+            // ── Automatic verification (no watcher available) ───────────────
+            _delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+            async _beginAutomaticVerification() {
+                if (this.watcherPresent || this.autoVerificationStarted) return;
+                this.autoVerificationStarted = true;
+
+                clearTimeout(this._watcherWaitTimer);
+                clearInterval(this._countdownInterval);
+
+                setWebRTCStatus('No watcher — automatic verification', 'status-auto');
+                this._updateStatus('No watcher joined in time. Starting automatic verification…', 'warning');
+
+                // No longer waiting for a watcher — stop advertising this session.
+                this._leaveDiscoveryChannel();
+
+                // Auto mode owns the recording controls for the rest of the session.
+                this.startBtn.disabled = true;
+                this.stopBtn.disabled  = true;
+
+                if (this.supaChannel) {
+                    this.supaChannel.send({
+                        type: 'broadcast',
+                        event: 'verification-mode',
+                        payload: { mode: 'auto', signalingKey: this.signalingKey, timestamp: Date.now() }
+                    });
+                }
+
+                // Give the person a moment to read the message before capture starts.
+                await this._delay(2000);
+
+                this.startRecording('auto');
+
+                const steps = [
+                    { cue: 'center', text: 'Look straight at the camera' },
+                    { cue: 'blink',  text: 'Blink your eyes' },
+                    { cue: 'smile',  text: 'Smile' },
+                    { cue: 'left',   text: 'Turn your head slightly left' },
+                    { cue: 'right',  text: 'Turn your head slightly right' },
+                    { cue: 'center', text: 'Look straight ahead again' }
+                ];
+
+                for (const step of steps) {
+                    this._showInstruction(step.cue);
+                    await this._delay(4000);
+                }
+
+                // Small buffer so the final cue isn't cut off mid-recording.
+                await this._delay(1500);
+
+                this.stopRecording();
+                this._updateStatus('Automatic verification complete. Uploading…', 'success');
             }
 
             // ── Camera ────────────────────────────────────────────────────────
@@ -388,6 +569,8 @@
             async _handleRequestOffer(payload) {
                 if (payload.role !== 'watcher') return;
 
+                this._onWatcherJoined();
+
                 try {
                     // If a previous negotiation stalled, reset the PC to stable
                     if (this.pc.signalingState !== 'stable') {
@@ -493,6 +676,11 @@
                         this.mediaRecorder.start(1000);
                         this.recordingStartTime = Date.now();
                     }, 50);
+
+                    if (!this.autoVerificationStarted) {
+                        this.startBtn.disabled = true;
+                        this.stopBtn.disabled  = false;
+                    }
                 } catch (err) {
                     this._showError('Failed to start recording: ' + err.message);
                 }
@@ -504,6 +692,11 @@
                 }
                 this.recordingStartTime = null;
                 this._updateStatus('Face verification done. Processing…', 'success');
+
+                if (!this.autoVerificationStarted) {
+                    this.startBtn.disabled = false;
+                    this.stopBtn.disabled  = true;
+                }
             }
 
             async _saveRecording(title) {
@@ -520,7 +713,12 @@
                         this.supaChannel.send({
                             type: 'broadcast',
                             event: 'verification_video',
-                            payload: { filename, url: data.path, timestamp: Date.now() }
+                            payload: {
+                                filename,
+                                url: data.path,
+                                timestamp: Date.now(),
+                                mode: this.autoVerificationStarted ? 'auto' : 'watcher'
+                            }
                         });
                     } else if (error) {
                         console.error('[streamer] Upload error:', error);
@@ -550,6 +748,9 @@
             }
 
             cleanup() {
+                clearTimeout(this._watcherWaitTimer);
+                clearInterval(this._countdownInterval);
+                this._leaveDiscoveryChannel();
                 if (this.mediaStream) this.mediaStream.getTracks().forEach(t => t.stop());
                 if (this.pc) { this.pc.close(); this.pc = null; }
                 if (this.supaChannel) { this.supaChannel.unsubscribe(); this.supaChannel = null; }
