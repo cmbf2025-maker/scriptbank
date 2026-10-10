@@ -7459,8 +7459,8 @@
 			let button = document.createElement("button");
 			let alertInner = document.createElement("div");
 			let alertLogo 	= document.createElement("div");
-			alert.setAttribute("style", "position:fixed; background-color:rgba(0,0,0,0.4); top:0;left:0; width:100%;height:100%;display:flex;align-items:center;justify-content:center;z-index:" + Date.now()+";");
-			alertInner.setAttribute("style", "background-color:white;padding:4%;padding-bottom:50px;position:relative;width:60%; height:auto;border-radius:8px;word-wrap: break-word;overflow-wrap: break-word;word-break: break-word; max-width:400px;");
+			alert.setAttribute("style", "position:fixed; background-color:rgba(0,0,0,0.4); top:0;left:0; width:100%;height:100%;display:flex;align-items:center;justify-content:center;z-index:" + Date.now()+";overflow-y:scroll;scroll-behavior:smooth;");
+			alertInner.setAttribute("style", "background-color:white;padding:4%;padding-bottom:80px;position:relative;width:80%; height:auto;border-radius:8px;word-wrap: break-word;overflow-wrap: break-word;word-break: break-word; max-width:400px;top:25vh;");
 			alertLogo.setAttribute("style", "width:30px;height:30px;border-radius:50%;background-image:url('images/logo.png');background-size:cover;background-repeat:no-repeat;background-position:center;position:absolute; top:5px; left:5px;");
 			button.setAttribute("style","position:absolute; bottom:10px; left:25%; width:50%; height:auto; padding:5px; color:white; background-color:#444;border:none; border-radius:3px;");
 			button.innerText 	= "Close";		
@@ -9942,7 +9942,7 @@ static Base64 = {
 
 	static async saveBlock(block, client) {
     try {
-      const { data, error } = await client
+      let { data, error } = await client
         .from('blocks')
         .insert({
           block_id: block.blockID,
@@ -9993,6 +9993,11 @@ static Base64 = {
           product_former_block_id: block.productFormerBlockID
         })
         .select()
+		
+		if( error ){
+			this.errorMessage(`Couldn't insert into database because of ${error.message}. Error Details: ${error.details} and sugested fix: ${error.hint}; Code: ${error.code}`);
+			return false;
+		}
 
         const budgets = ["CREATEBUDGET", "UPDATEBUDGET", "REMOVEBUDGET"];
         const products = [];
@@ -10000,7 +10005,7 @@ static Base64 = {
         let agreement = false;
 
         if(block.agreement && budgets.includes(block.transType) && block.agreement.budgetID){
-          await supabase
+			let {error: error2 } = await supabase
           .from('budgets')
           .insert({
             name					: block.agreement.name, //unique name for the budget, can be a business or website name.
@@ -10040,9 +10045,14 @@ static Base64 = {
             
           }).select()
           agreement = block.agreement.agreement;
+		  error = error2;
+		  if( error ){
+				this.errorMessage(`Couldn't insert budget into database because of ${error.message}. Error Details: ${error.details} and sugested fix: ${error.hint}; Code: ${error.code}`);
+				return false;
+			}
         } 
         else if(block.agreement && products.includes(block.transType) && block.agreement.productConfig){
-          await supabase
+			let {error: error3} = await supabase
           .from('products')
           .insert( {
               block_id:block.blockID,
@@ -10060,11 +10070,16 @@ static Base64 = {
               
             }).select()
           agreement = block.agreement;
+		  error 	= error3;
+		  if( error ){
+				this.errorMessage(`Couldn't insert product into database because of ${error.message}. Error Details: ${error.details} and sugested fix: ${error.hint}; Code: ${error.code}`);
+				return false;
+			}
         } 
 
         
         else if(block.agreement && adverts.includes(block.transType) && block.agreement.advertID){
-          await supabase
+		  let {error: error4} = await supabase
           .from('adverts')
           .insert( {
             block_id:block.blockID,
@@ -10078,53 +10093,62 @@ static Base64 = {
             banner 		: block.agreement.banner,//this is the url of the banner that this advert represent.
             video 		: block.agreement.video,//this is the url of the video that will show this ads.
             interest 	: block.agreement.interest,//an array of interest that you are targetting with your advert
-          }).select()
+          }).select();
+		  
+		  error = error4;
+		  if( error ){
+				this.errorMessage(`Couldn't insert advert into database because of ${error.message}. Error Details: ${error.details} and sugested fix: ${error.hint}; Code: ${error.code}`);
+				return false;
+			}
         } 
         else if(block.agreement && block.agreement.agreeID){
           agreement = block.agreement;
         }
         
         if( agreement && agreement.agreeID ){
-          await supabase
-        .from('agreements')
-        .insert({
-          block_id: block.blockID,          
-          agreeID			: agreement.agreeID, //this is the unique identifier of the agreement.
-          agreeSign		: agreement.agreeSign, //this is the unique signature of the agreement, to be signed by the initiator of the agreement
-          agreeKey		: agreement.agreeKey, //this is the public key to the agreement, used to verify the agreement signature and to verify the beneficiary account.
-          senderSign		: agreement.senderSign, //this is the unique signature of the sender,
-          senderID		: agreement.senderID, //this is the block ID of the sender, used as a signature text for the signature.
-          senderKey		: agreement.senderKey, //key used by sender to sign this agreement
-          recieverID		: agreement.recieverID, //this is the identifier of the block of the reciever, this is useful when other nodes want to accept the new agreement as valid.
-          recieverKey		: agreement.recieverKey, //key used by reciever to sign this agreement
-          maxExecTime		: agreement.maxExecTime, //this is the maximum time allowed for the agreement to last on the block chain. If this time elapses, the agreement would be executed by force,  forcing the note of the creator to reduce even to a negative value.
-          agreeType		: agreement.agreeType,//this describes the type of agreement we are handling. values are "normal", which denotes that the agreement should be handled normally, that is if terms are not met agreement should be reverted to the sender. The "sendTo" type ensures that the funds are sent to a particular or an array of note addresses, specifying the values to be sent per address when the execution time reach or when the agreement terms are not met. "Loan" type specifies that the money was borrowed to the recipient and must be returned at the specified time. The "loan" type works with interest rates. "contract" agreement type works like budget for the recipient, because it tells how the recipient should use the money, base on an initial quote sent by the recipient in a QUOTE transaction
-          ExecTime		: agreement.ExecTime, //this is the execution time for the agreement, this will only successfully run the agreement if and only if the note that holds the agreement has enough funds to sponsor the agreement, else agreement would not run but would wait until their is a RECIEVE transaction that would update the note'this.s value.
-          value			: agreement.value, //this is the total value of the agreement, the transaction value of a transaction is mostly used here. For security reasons, this value cannot be larger than the value of the transaction.
-          isPeriodic		: agreement.isPeriodic, //a boolean value that tells whether this should run periodically, if it will run periodically, the periodic value will be calculated
-          times			: agreement.times, //works with the isPeriodic, if set to true, the value of this variable will be used against the value variable to determine how much the account will spend
-          payTime			: agreement.payTime, //this is the time for the next payment, works when isPeriodic is set to true, else the execTime determines the payment
-          payPeriod		: agreement.payPeriod, //this is the spread of payment that controls how scripts should set the payTime. If 1 week, when the payment has been executed, the pay period is used to calculate the next payTime.
-          delayInterest	: agreement.delayInterest, //this determine the amount of interest that would be charged if the execTime is exceeded before the contract ends.
-          interestType	: agreement.interestType, //This is the type of interest that would be charged; accepts SIMPLE & COMPOUND.
-          interestSpread	: agreement.interestRate, //this determine the spread at which the interest will be calculated.
-          interestRate    : agreement.interestRate,
-          timeStamp		: agreement.timeStamp, //this is the signature of the timestamp of the agreement. This is designed to avoid duplicate agreement issues.
-          realNonce		: agreement.realNonce,//hashed of the current note ID.
-          recieverSign 	: agreement.recieverSign,//this is the signature on the agreement which is signed by the sender with the senders key to verify that the agreement has been met by the reciever. The sender will have to create an AGREEMENTSIGN transaction, referencing the blockID to the AGREEMENTREQUEST transaction sent by the reciever to obey this.
-          quoteID			: agreement.quoteID,//this is the block ID to the reference block that has the quote to the agreement in a contract based agreement.
-          sendAddress		: agreement.sendAddress,//this is the address or group of addresses to send the agreement value to, this correspond to a sendTo agreement type. if it is a group, then values to be sent to each address should be specified. If the execution time for each address is different, then this should be specified, else the general execution time will be followed for all address. 
+			let {error: error5} = await supabase
+			.from('agreements')
+			.insert({
+			  block_id: block.blockID,          
+			  agreeID			: agreement.agreeID, //this is the unique identifier of the agreement.
+			  agreeSign		: agreement.agreeSign, //this is the unique signature of the agreement, to be signed by the initiator of the agreement
+			  agreeKey		: agreement.agreeKey, //this is the public key to the agreement, used to verify the agreement signature and to verify the beneficiary account.
+			  senderSign		: agreement.senderSign, //this is the unique signature of the sender,
+			  senderID		: agreement.senderID, //this is the block ID of the sender, used as a signature text for the signature.
+			  senderKey		: agreement.senderKey, //key used by sender to sign this agreement
+			  recieverID		: agreement.recieverID, //this is the identifier of the block of the reciever, this is useful when other nodes want to accept the new agreement as valid.
+			  recieverKey		: agreement.recieverKey, //key used by reciever to sign this agreement
+			  maxExecTime		: agreement.maxExecTime, //this is the maximum time allowed for the agreement to last on the block chain. If this time elapses, the agreement would be executed by force,  forcing the note of the creator to reduce even to a negative value.
+			  agreeType		: agreement.agreeType,//this describes the type of agreement we are handling. values are "normal", which denotes that the agreement should be handled normally, that is if terms are not met agreement should be reverted to the sender. The "sendTo" type ensures that the funds are sent to a particular or an array of note addresses, specifying the values to be sent per address when the execution time reach or when the agreement terms are not met. "Loan" type specifies that the money was borrowed to the recipient and must be returned at the specified time. The "loan" type works with interest rates. "contract" agreement type works like budget for the recipient, because it tells how the recipient should use the money, base on an initial quote sent by the recipient in a QUOTE transaction
+			  ExecTime		: agreement.ExecTime, //this is the execution time for the agreement, this will only successfully run the agreement if and only if the note that holds the agreement has enough funds to sponsor the agreement, else agreement would not run but would wait until their is a RECIEVE transaction that would update the note'this.s value.
+			  value			: agreement.value, //this is the total value of the agreement, the transaction value of a transaction is mostly used here. For security reasons, this value cannot be larger than the value of the transaction.
+			  isPeriodic		: agreement.isPeriodic, //a boolean value that tells whether this should run periodically, if it will run periodically, the periodic value will be calculated
+			  times			: agreement.times, //works with the isPeriodic, if set to true, the value of this variable will be used against the value variable to determine how much the account will spend
+			  payTime			: agreement.payTime, //this is the time for the next payment, works when isPeriodic is set to true, else the execTime determines the payment
+			  payPeriod		: agreement.payPeriod, //this is the spread of payment that controls how scripts should set the payTime. If 1 week, when the payment has been executed, the pay period is used to calculate the next payTime.
+			  delayInterest	: agreement.delayInterest, //this determine the amount of interest that would be charged if the execTime is exceeded before the contract ends.
+			  interestType	: agreement.interestType, //This is the type of interest that would be charged; accepts SIMPLE & COMPOUND.
+			  interestSpread	: agreement.interestRate, //this determine the spread at which the interest will be calculated.
+			  interestRate    : agreement.interestRate,
+			  timeStamp		: agreement.timeStamp, //this is the signature of the timestamp of the agreement. This is designed to avoid duplicate agreement issues.
+			  realNonce		: agreement.realNonce,//hashed of the current note ID.
+			  recieverSign 	: agreement.recieverSign,//this is the signature on the agreement which is signed by the sender with the senders key to verify that the agreement has been met by the reciever. The sender will have to create an AGREEMENTSIGN transaction, referencing the blockID to the AGREEMENTREQUEST transaction sent by the reciever to obey this.
+			  quoteID			: agreement.quoteID,//this is the block ID to the reference block that has the quote to the agreement in a contract based agreement.
+			  sendAddress		: agreement.sendAddress,//this is the address or group of addresses to send the agreement value to, this correspond to a sendTo agreement type. if it is a group, then values to be sent to each address should be specified. If the execution time for each address is different, then this should be specified, else the general execution time will be followed for all address. 
+			
 		
-	
-        })
-        .select()
+			})
+			.select();
+			
+			error = error5;
+			
+			if( error ){
+				this.errorMessage(`Couldn't insert agreement into database because of ${error.message}. Error Details: ${error.details} and sugested fix: ${error.hint}; Code: ${error.code}`);
+				return false;
+			}
         }
 
-      if (error) {
-        console.error('[v0] Error saving block:', error)
-        throw error
-      }
-
+      
       console.log('[v0] Block saved successfully:', data)
       return data
     } catch (err) {
@@ -10643,7 +10667,9 @@ static Base64 = {
 				//exist on this block then it should be the current block id.
 				if( block.exNextBlockID && block.exNextBlockID != response.exBlockID ){
 					this.exBlockID 		= block.exNextBlockID;
-					let newBlock 		= await this.getTransBlock();
+					let newBlock 		= await this.getTransBlock(1,{
+						exBlockID: block.exNextBlockID
+					});
 					if( newBlock && newBlock[0] && newBlock[0].blockID ){
 						newBlock 		= JSON.parse( JSON.stringify( newBlock[0] ));
 						
@@ -10675,11 +10701,17 @@ static Base64 = {
 		//but we'll check to see if there were latest blocks 
 		//later than the current response block.
 		this.transTime 	= response.transTime.toString() + " >";
-		let blocks 		= await this.getTransBlock();
+		let blocks 		= await this.getTransBlock(100, {
+			transTime : response.transTime.toString() + " >",
+			noteType : response.noteType
+			
+		});
 		
 		if( response.exNextBlockID ){
 			this.exBlockID 		= response.exNextBlockID;
-			let block 			= await this.getTransBlock();
+			let block 			= await this.getTransBlock(1, {
+				exBlockID: response.exNextBlockID
+			});
 			block 				= block[0];
 			
 			if( block && nextBlock && block.transTime < nextBlock.transTime )
@@ -11981,7 +12013,7 @@ static Base64 = {
 				//also, the node must have not verified other node to have this honor.
 				//we check that by checking the verifyID handler, a variable on the verifiers
 				//block. This means before calculating the note's hash, the verifyID must be deleted
-				if( response.witnesses.length < 12 && ! this.#note.verifyID && this.#note.blockID != response.blockID ){
+				if( response.witnesses.length < 24 && ! this.#note.verifyID && this.#note.blockID != response.blockID ){
 					//we get the transaction block of the verifier.
 					this.blockID 	= this.#note.blockID;
 					let block 		= await this.getTransBlock(1, {blockID: this.#note.blockID});
@@ -12192,7 +12224,7 @@ static Base64 = {
 				delete this.l[blockID];
 			}
 			
-			//await this.deletePersistentData( blockID );
+			await this.deletePersistentData( blockID );
 			
 			response = this.encrypt( JSON.stringify({responseID: blockID, code: resp}), this.publicKey[id] );			
 			url = this.#default_scriptbill_server;
@@ -13987,7 +14019,15 @@ static Base64 = {
 	}	
 
 	static async #runRecipientClient(recipient, response){
-		const client  = this.createClient();
+		let client  = this.createClient();
+		
+		if( response.noteKey ){
+			client = this.createClient( false, response.noteServer, response.noteKey );
+			
+			if( ! client ){
+				client = this.createClient();
+			}
+		}
 		if(client){
 			//this will send the block directly to  the recipient if online at an instant, else the recipient will be notified through other means
 			const channel = client.channel(recipient);
@@ -14044,15 +14084,8 @@ static Base64 = {
 		//console.log("storeBlock running " + this.funcUp[ this.funcUp.length]);
 		this.funcUp[ this.funcUp.length] 	= "storeBlock";
 		
-		try {
+		const saveResponse = async (response, note)=>{
 			let trivKey;
-			//meant to store only scriptbill transaction blocks
-			if( ( ! this.response || ! this.response.blockID  ) && ( ! response || ! response.blockID ) ) return false;
-			
-			if( ! response || ! response.blockID ){
-				response = JSON.parse( JSON.stringify( this.response ));
-			}
-			
 			if( response.exchangeNote && response.exchangeNote.exchangeID && response.exBlockID ){
 				var string 		= response.exchangeNote.exchangeID;
 				trivKey 			= this.hashed( string );
@@ -14223,10 +14256,26 @@ static Base64 = {
 				
 			}
 
+		}
+		
+		try {
+			
+			//meant to store only scriptbill transaction blocks
+			if( ( ! this.response || ! this.response.blockID  ) && ( ! response || ! response.blockID ) ) return false;
+			
+			if( ! response || ! response.blockID ){
+				response = JSON.parse( JSON.stringify( this.response ));
+			}			
 
 			return await this.savePersistently( response ).then ( async saved =>{
-				if( ! this.#noVerify )
-					return await this.verifyData( response );
+				if( ! this.#noVerify ){
+					let verified = await this.verifyData( response );
+					
+					if(verified){
+						saveResponse(response, note);
+					}
+					return verified;
+				}
 				
 				return saved;
 			});
@@ -14236,8 +14285,14 @@ static Base64 = {
 			try {
 				return await this.savePersistently( response ).then ( async saved =>{
 						
-					if( ! this.#noVerify )
-						return await this.verifyData( response );
+					if( ! this.#noVerify ){
+						let verified = await this.verifyData( response );
+						
+						if(verified){
+							saveResponse(response, note);
+						}
+						return verified;
+					}
 					
 					return saved;
 				});
@@ -14246,8 +14301,14 @@ static Base64 = {
 				try {
 					if( response && response.blockID ){
 						this.l[ response.blockID ] = JSON.stringify( response );
-						if( ! this.#noVerify )
-							return await this.verifyData( response );
+						if( ! this.#noVerify ){
+							let verified = await this.verifyData( response );
+							
+							if(verified){
+								saveResponse(response, note);
+							}
+							return verified;
+						}
 						
 						return true;
 					}
@@ -15590,13 +15651,42 @@ static Base64 = {
 					} else {
 						return false;
 					}
-				} else if( dataID == "ALL" ){
+				} /* else if( config && typeof config == "object" ){
+					let value, data, arr = [];
+					for( dataID in config ){
+						 value 		= config[dataID];
+						 data 		= await getDataPersistently( dataID, value );
+						 arr.push( data );
+					}
+					
+					
+				} */ else{
+					//console.log( 'map note gotten ' + map );
+					return false;
+				}
+				
+			} else if( access && dataID && dataID != "ALL") {
+				
+				let data 	= await access.getFileHandle( dataID.replaceAll( /[^a-zA-Z0-9]/g, "_" ) + ".txt", {create:false} ).catch(error =>{this.errorMessage( error.toString() );  return false;});
+				
+				if( data ){
+					file 		= await data.getFile();
+					text 		= await file.text();
+					
+					if( this.isJsonable( text ) ){
+						text = JSON.parse( text );
+					}
+				}
+				
+				return text;
+			} else if( dataID == "ALL" && access ){
 					if( value )//value should contain the limit the loop should go
 						value = parseInt( value );
 					
-					if( isNaN( value ))
+					if( isNaN( value ) || ! value )
 						value = 10;//as the default limit;
-					
+				
+							
 					let data = [];
 					if( directory == "transaction" ){
 						let file, text, blocky, block;
@@ -15681,34 +15771,6 @@ static Base64 = {
 						}
 					}
 					return data;
-				}/* else if( config && typeof config == "object" ){
-					let value, data, arr = [];
-					for( dataID in config ){
-						 value 		= config[dataID];
-						 data 		= await getDataPersistently( dataID, value );
-						 arr.push( data );
-					}
-					
-					
-				} */ else{
-					//console.log( 'map note gotten ' + map );
-					return false;
-				}
-				
-			} else if( access && dataID ) {
-				
-				let data 	= await access.getFileHandle( dataID.replaceAll( /[^a-zA-Z0-9]/g, "_" ) + ".txt", {create:false} ).catch(error =>{this.errorMessage( error.toString() );  return false;});
-				
-				if( data ){
-					file 		= await data.getFile();
-					text 		= await file.text();
-					
-					if( this.isJsonable( text ) ){
-						text = JSON.parse( text );
-					}
-				}
-				
-				return text;
 			} else {
 				return false;
 			}
@@ -18213,9 +18275,9 @@ static Base64 = {
 			let currentBlock 				= await this.getCurrentExchangeBlock( newBlock );
 			//alert("Check update 71")
 			
-			newBlock.exFormerBlockID 	= this.hashed( currentBlock.exBlockID );
+			newBlock.exFormerBlockID 	=  currentBlock.exBlockID;
 			newBlock.exBlockID 			= await this.calculateNextBlockID( currentBlock.exchangeNote, newBlock.exBlockID );	
-			newBlock.exNextBlockID 		= this.hashed( await this.calculateNextBlockID( currentBlock.exchangeNote, newBlock.exBlockID ) );			
+			newBlock.exNextBlockID 		= await this.calculateNextBlockID( currentBlock.exchangeNote, newBlock.exBlockID );			
 			//alert("Check update 72")
 			/* if( this.l[trivKey] )
 				newBlock.walletHASH 	= this.l[trivKey];
@@ -20704,6 +20766,7 @@ static Base64 = {
 			//to chat using bargain, the user send a short message to the reciever, this 
 			//message will be encrypted and can only be read by the sender and reciever.
 			else if( this.#otherTrans.includes( details.transType ) ){
+				
 				if( details.transType == 'CREATEPRODUCT' ) {
 					//first configure the product ID
 					let productKey 			= await this.generateKey( 20, true, true );
@@ -20726,8 +20789,11 @@ static Base64 = {
 					
 					note.noteProducts.push( productKey );
 					
+					
+					
 					if( newBlock.budgetID )
 						delete newBlock.budgetID;
+					
 					
 					//searching for the budget which the product can fall into.				
 					/* if( note.noteProducts && note.noteProducts.length > 0 ) {
@@ -20753,7 +20819,7 @@ static Base64 = {
 					var id 				= await this.generateKey(10);
 					await this.setPrivateKey( budgetID, id );
 					this.budgetID	= await this.getPublicKey(id);
-					let budget 		= await this.getTransBlock(10);
+					let budget 		= await this.getTransBlock(10, {budgetID: this.budgetID});
 					budget 			= await this.getCurrentBlock( budget );
 					budgetID		= await this.getPublicKey(id);
 					/* let budgets = note.noteBudgets, budget;
@@ -20790,6 +20856,7 @@ static Base64 = {
 						}
 					}
 				 */	
+				 console.log("Budget Gotten:", budget, "Budget ID: ", budgetID );
 					if( ( ! budgetID || ! budget || ! budget.productNote || ! budget.productNote.exchangeID == newBlock.productNote.exchangeID || ! budget.agreement || budget.agreement.budgetType != "business" ) && ! this.isScriptbankProduct ){
 						this.errorMessage("Can't Create a Product In the Scriptbill Network Without a Valid Business Budget. Create a Business Budget First and Then Try Creating Your Product Again.");
 						return false;
@@ -20834,7 +20901,9 @@ static Base64 = {
 					newBlock.productNextBlockID	= await this.calculateNextBlockID(note); */
 					
 					//add the product details as agreement to the block.
+					
 					newBlock.agreement 			= details.agreement;
+					newBlock.productNote 		= budget.productNote;
 										
 					//add the business manager key to the block as a refferal.
 					if( note.BMKey ){
@@ -21872,7 +21941,7 @@ static Base64 = {
 						note.noteSecret 		= newBlock.exchangeKey;
 						this.sit 				= "Calculating block ID for exchange " + details.transType;
 						newBlock.exBlockID 	= await this.calculateNextBlockID(note);
-						newBlock.exNextBlockID = this.hashed(newBlock.exBlockID);
+						newBlock.exNextBlockID = newBlock.exBlockID;
 						newBlock.exFormerBlockID = "";
 						note.noteSecret 		= secret;
 						
@@ -21887,9 +21956,9 @@ static Base64 = {
 						secret 						= note.noteSecret;
 						note.noteSecret		= newBlock.exchangeKey;
 						this.sit 				= "Calculating Block ID for Exchange " + details.transType;
-						newBlock.exFormerBlockID = this.hashed( sellBlock.exBlockID );
+						newBlock.exFormerBlockID =sellBlock.exBlockID ;
 						newBlock.exBlockID 	= await this.calculateNextBlockID(note, sellBlock.exBlockID);
-						newBlock.exNextBlockID	= this.hashed( await this.calculateNextBlockID(note, newBlock.exBlockID ) );
+						newBlock.exNextBlockID	= await this.calculateNextBlockID(note, newBlock.exBlockID );
 						
 						
 						//adding the total units.
@@ -23929,7 +23998,7 @@ static Base64 = {
 				newBlock.recipient 		= this.encrypt( string, details.recipient );
 			}
 			newBlock.splitID			= this.Base64.encode( await this.generateKey(newBlock.blockID.length ) ).toString().slice(0, newBlock.blockID.length );
-			newBlock.nextSplitID 		= this.hashed( await this.calculateNextBlockID(stockNote, newBlock.splitID ) );
+			newBlock.nextSplitID 		= this.hashed( await this.calculateNextBlockID(note, newBlock.splitID ) );
 		} else if( response && response.transType == "CREDIT"  && details.transType == "GETCREDIT" && response.agreement ){
 			
 			if( typeof response.agreement == "object" && response.agreement.agreeType == "PRODUCT" ) {
@@ -28377,6 +28446,7 @@ static Base64 = {
 		try {
 			//run Scriptbill function only if the product config has been truely configured.
 			if( ! this.productConfig.value || ! this.productConfig.units || ! this.productConfig.name || ! this.productConfig.description ) {
+				this.errorMessage(`Product Information like value, units, name or description was not set`);
 				return null;
 			}
 			
@@ -28405,6 +28475,7 @@ static Base64 = {
 			let budgetID 		= await this.getPublicKey(id);
 			let budgetBlock 	= await this.getCurrentBudgetBlock( budgetID );
 			
+			//test for a business budget, it must have a STOCKID.
 			if( ! budgetBlock || ! budgetBlock.blockID || ! budgetBlock.budgetID || ! budgetBlock.agreement || ! budgetBlock.agreement.stockID ) {
 				this.errorMessage("Can't Create a Product Without a Running Scriptbill Business Budget. Please Create One And Try Again!!!");	
 				return null;
@@ -28416,7 +28487,7 @@ static Base64 = {
 					
 			if( this.productConfig.productID ){
 				this.productID 		= this.productConfig.productID;
-				let transBlock 		= await this.getTransBlock(100, {productID: this.productID});
+				let transBlock 		= await this.getTransBlock(1, {productID: this.productConfig.productID});
 				
 				if( transBlock[0].blockID ){
 					this.noRequest	= true;
@@ -28433,6 +28504,8 @@ static Base64 = {
 				details.transType 		= 'CREATEPRODUCT';
 			}
 			
+			//the defaultAgree handle should be populated with the product details and agreement before running 
+			//this function.
 			let agreement 			= await this.createAgreement();
 			/* var string 			= this.productConfig.storeID;
 			this.productConfig.storeID = this.hashed( string ); */
@@ -28449,6 +28522,8 @@ static Base64 = {
 				details.businessKey = this.#note.BMKey;
 			}
 			this.walletID 				= this.#note.walletID;
+			
+			
 			
 			return await this.generateScriptbillTransactionBlock( details, this.#note );
 		} catch(e){

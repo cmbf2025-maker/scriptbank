@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1.0, shrink-to-fit=no">
+<link href="/images/icon32x32.png" rel="icon" />
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"> 
+<title>Scriptbank - Create Budget</title>
+<meta name="description" content="A app used to manage Scriptbill, a Cryptocurrency built against financial mishandling and misappropraition..">
+<meta name="author" content="scriptbank.com.ng">
+
+<!-- Web Fonts
+============================================= -->
+<link rel='stylesheet' href='https://fonts.googleapis.com/css?family=Rubik:300,300i,400,400i,500,500i,700,700i,900,900i' type='text/css'>
+
+<!-- Stylesheet
+============================================= -->
+<link rel="stylesheet" type="text/css" href="/vendor/bootstrap/css/bootstrap.min.css" />
+<link rel="stylesheet" type="text/css" href="/vendor/font-awesome/css/all.min.css" />
+<link rel="stylesheet" type="text/css" href="/vendor/bootstrap-select/css/bootstrap-select.min.css" />
+<link rel="stylesheet" type="text/css" href="/vendor/currency-flags/css/currency-flags.min.css" />
+<link rel="stylesheet" type="text/css" href="/css/stylesheet.css" />
+<link rel="stylesheet" type="text/css" href="/vendor/daterangepicker/daterangepicker.css" />
+<link rel="stylesheet" type="text/css" href="/css/css.css" />
+</head>
+<body>
+
+<!-- Preloader -->
+<div id="preloader">
+  <div data-loader="dual-ring"></div>
+</div>
+<!-- Preloader End --> 
+
+<!-- Document Wrapper   
+============================================= -->
+<div id="main-wrapper"> 
+  <!-- Header
+  ============================================= -->
+  <header id="header">
+    <div class="container">
+      <div class="header-row">
+        <div class="header-column justify-content-start"> 
+          <!-- Logo
+          ============================= -->
+          <div class="logo"> <a class="d-flex" href="/" title="Scriptbill Cryptonote"><img src="/images/scriptbankLogo2.png" alt="Scriptbank" /></a> </div>
+          <!-- Logo end --> 
+          <!-- Collapse Button
+          ============================== -->
+          <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#header-nav"> <span></span> <span></span> <span></span> </button>
+          <!-- Collapse Button end --> 
+          
+             <!-- Primary Navigation
+          ============================== -->
+          <nav class="primary-menu navbar navbar-expand-lg">
+            <div id="header-nav" class="collapse navbar-collapse">
+              <ul class="navbar-nav mr-auto">
+                <li><a href="/dashboard">Dashboard</a></li>
+                <li><a href="/transactions">Transactions</a></li>
+                <li><a href="/send-money">Send/Request</a></li>
+                <li><a href="/help">Help</a></li>                
+                <li><a href="/login?loggout=TRUE">Logout</a></li>                
+              </ul>
+            </div>
+          </nav>
+          <!-- Primary Navigation end -->  
+        </div>
+        <div class="header-column justify-content-end"> 
+          <!-- Login & Signup Link
+          ============================== -->
+          <nav class="login-signup navbar navbar-expand">
+            <ul class="navbar-nav">
+              <li><a href="/profile">Settings</a> </li>
+              <li class="align-items-center h-auto ml-sm-3"><a class="btn btn-outline-primary shadow-none d-none d-sm-block" href="/login?loggout=TRUE">Sign out</a></li>
+            </ul>
+          </nav>
+          <!-- Login & Signup Link end --> 
+        </div>
+      </div>
+    </div>
+  </header>
+  <!-- Header End -->
+  
+  <!-- Secondary menu
+  ============================================= -->
+  <div class="bg-primary">
+    <div class="container d-flex justify-content-center">
+      <ul class="nav secondary-nav">
+        <li class="nav-item"> <a class="nav-link" href="/create-item">Create Budget Item</a></li>
+        <li class="nav-item"> <a class="nav-link active" href="/create-budget">Create Budget</a></li>
+      </ul>
+    </div>
+  </div>
+  <!-- Secondary menu end --> 
+  
+  <!-- Content
+  ============================================= -->
+  <div id="content" class="py-4">
+    <div class="container">
+      <h2 class="font-weight-400 text-center mt-3">Create Budget</h2>
+      <p class="text-4 text-center mb-4">Create Budget for your Business <span class="text-4 script-text-blue" id="stockWebsite"></span>.</p>
+      <div class="row" id="createBudget">
+        <div class="col-md-8 col-lg-6 col-xl-5 mx-auto">
+          <div class="bg-light shadow-sm rounded p-3 p-sm-4 mb-4">
+            <h3 class="text-5 font-weight-400 mb-3">Stock Budget Details</h3>
+            <!-- Send Money Form
+            ============================================= -->
+            <form id="form-send-money" method="post">
+              <div class="form-group">
+                <label for="budgetname">Budget Name</label>
+                <input type="text" value="" class="form-control" data-bv-field="budgetname" id="budgetname" required placeholder="Budget or Business Name">
+                <i class="text-3 text-muted">This can be your business name.</i>			
+              </div>
+			  <div class="form-group">
+                <label for="budgetid">Budget ID</label>
+                <input type="text" value="" class="form-control" data-bv-field="budgetid" id="budgetid" placeholder="ABCD">
+                <i class="text-3 text-muted">This will be the listing ID for your company's stocks in the Scriptbank network. Ex. for Scriptbank our listing ID is SBSTK. In this case STK is just a prefix SB is the main ID.</i>
+                <div class="error" id="budgetError"></div>			
+              </div>
+               <div class="form-group">
+                <label for="weburl">Business Server URL</label>
+                <input type="text" value="" class="form-control" data-bv-field="weburl" id="weburl" placeholder="https://<project-ref>.supabase.co" required>
+                <i class="text-3 text-muted">This should be the url of the websocket server where you will be storing your transactions. You can simply use <a href="https://supabase.com">Supabase</a> for this.</i>		
+              </div>
+              <div class="form-group">
+                <label for="webkey">Business Server Key</label>
+                <input type="text" value="" class="form-control" data-bv-field="webkey" id="webkey" placeholder="abcdefghtijk...">
+                <i class="text-3 text-muted">If you are using supabase this should be your anon key, but if you set up this server with Scriptbill, then this would be your note address.</i>	
+              </div>			
+              <div class="form-group">
+                <label for="youSend">Business Value</label>
+                <div class="input-group">
+                  <div class="input-group-prepend"> <span class="input-group-text symbol">$</span> </div>
+                  <input type="text" class="form-control" data-bv-field="youSend" id="youSend" value="1,000" placeholder="">
+                  <div class="input-group-append"> <span class="input-group-text p-0">
+                    <select id="youSendCurrency" data-style="custom-select bg-transparent border-0" data-container="body" data-live-search="true" class="selectpicker form-control bg-transparent" required="">
+                       <optgroup label="Popular Currency">
+                      <option data-icon="currency-flag currency-flag-usd mr-1" data-subtext="United States dollar" value="USD">USD</option>
+                      <option data-icon="currency-flag currency-flag-aud mr-1" data-subtext="Australian dollar" value="AUD">AUD</option>
+                      <option data-icon="currency-flag currency-flag-inr mr-1" data-subtext="Scriptbil Credit" value="SB">SBCRD</option>
+                      </optgroup>
+                      <option value="" data-divider="true">divider</option>
+                      <optgroup label="Other Currency">
+					  <option data-icon="currency-flag currency-flag-inr mr-1" data-subtext="Scriptbil Credit" value="BTC">BTC</option>
+                      <option data-icon="currency-flag currency-flag-aed mr-1" data-subtext="United Arab Emirates dirham" value="AED">AED</option>
+                      <option data-icon="currency-flag currency-flag-ars mr-1" data-subtext="Argentine peso" value="ARS">ARS</option>
+                      <option data-icon="currency-flag currency-flag-aud mr-1" data-subtext="Australian dollar" value="AUD">AUD</option>
+                      <option data-icon="currency-flag currency-flag-bdt mr-1" data-subtext="Bangladeshi taka" value="BDT">BDT</option>
+                      <option data-icon="currency-flag currency-flag-bgn mr-1" data-subtext="Bulgarian lev" value="BGN">BGN</option>
+                      <option data-icon="currency-flag currency-flag-brl mr-1" data-subtext="Brazilian real" value="BRL">BRL</option>
+                      <option data-icon="currency-flag currency-flag-cad mr-1" data-subtext="Canadian dollar" value="CAD">CAD</option>
+                      <option data-icon="currency-flag currency-flag-chf mr-1" data-subtext="Swiss franc" value="CHF">CHF</option>
+                      <option data-icon="currency-flag currency-flag-clp mr-1" data-subtext="Chilean peso" value="CLP">CLP</option>
+                      <option data-icon="currency-flag currency-flag-cny mr-1" data-subtext="Chinese yuan" value="CNY">CNY</option>
+                      <option data-icon="currency-flag currency-flag-czk mr-1" data-subtext="Czech koruna" value="CZK">CZK</option>
+                      <option data-icon="currency-flag currency-flag-dkk mr-1" data-subtext="Danish krone" value="DKK">DKK</option>
+                      <option data-icon="currency-flag currency-flag-egp mr-1" data-subtext="Egyptian pound" value="EGP">EGP</option>
+                      <option data-icon="currency-flag currency-flag-eur mr-1" data-subtext="Euro" value="EUR">EUR</option>
+                      <option data-icon="currency-flag currency-flag-gbp mr-1" data-subtext="British pound" value="GBP">GBP</option>
+                      <option data-icon="currency-flag currency-flag-gel mr-1" data-subtext="Georgian lari" value="GEL">GEL</option>
+                      <option data-icon="currency-flag currency-flag-ghs mr-1" data-subtext="Ghanaian cedi" value="GHS">GHS</option>
+                      <option data-icon="currency-flag currency-flag-hkd mr-1" data-subtext="Hong Kong dollar" value="HKD">HKD</option>
+                      <option data-icon="currency-flag currency-flag-hrk mr-1" data-subtext="Croatian kuna" value="HRK">HRK</option>
+                      <option data-icon="currency-flag currency-flag-huf mr-1" data-subtext="Hungarian forint" value="HUF">HUF</option>
+                      <option data-icon="currency-flag currency-flag-idr mr-1" data-subtext="Indonesian rupiah" value="IDR">IDR</option>
+                      <option data-icon="currency-flag currency-flag-ils mr-1" data-subtext="Israeli shekel" value="ILS">ILS</option>
+                      <option data-icon="currency-flag currency-flag-inr mr-1" data-subtext="Indian rupee" value="INR">INR</option>
+                      <option data-icon="currency-flag currency-flag-jpy mr-1" data-subtext="Japanese yen" value="JPY">JPY</option>
+                      <option data-icon="currency-flag currency-flag-kes mr-1" data-subtext="Kenyan shilling" value="KES">KES</option>
+                      <option data-icon="currency-flag currency-flag-krw mr-1" data-subtext="South Korean won" value="KRW">KRW</option>
+                      <option data-icon="currency-flag currency-flag-lkr mr-1" data-subtext="Sri Lankan rupee" value="LKR">LKR</option>
+                      <option data-icon="currency-flag currency-flag-mad mr-1" data-subtext="Moroccan dirham" value="MAD">MAD</option>
+                      <option data-icon="currency-flag currency-flag-mxn mr-1" data-subtext="Mexican peso" value="MXN">MXN</option>
+                      <option data-icon="currency-flag currency-flag-myr mr-1" data-subtext="Malaysian ringgit" value="MYR">MYR</option>
+                      <option data-icon="currency-flag currency-flag-ngn mr-1" data-subtext="Nigerian naira" value="NGN">NGN</option>
+                      <option data-icon="currency-flag currency-flag-nok mr-1" data-subtext="Norwegian krone" value="NOK">NOK</option>
+                      <option data-icon="currency-flag currency-flag-npr mr-1" data-subtext="Nepalese rupee" value="NPR">NPR</option>
+                      <option data-icon="currency-flag currency-flag-nzd mr-1" data-subtext="New Zealand dollar" value="NZD">NZD</option>
+                      <option data-icon="currency-flag currency-flag-pen mr-1" data-subtext="Peruvian nuevo sol" value="PEN">PEN</option>
+                      <option data-icon="currency-flag currency-flag-php mr-1" data-subtext="Philippine peso" value="PHP">PHP</option>
+                      <option data-icon="currency-flag currency-flag-pkr mr-1" data-subtext="Pakistani rupee" value="PKR">PKR</option>
+                      <option data-icon="currency-flag currency-flag-pln mr-1" data-subtext="Polish złoty" value="PLN">PLN</option>
+                      <option data-icon="currency-flag currency-flag-ron mr-1" data-subtext="Romanian leu" value="RON">RON</option>
+                      <option data-icon="currency-flag currency-flag-rub mr-1" data-subtext="Russian rouble" value="RUB">RUB</option>
+                      <option data-icon="currency-flag currency-flag-sek mr-1" data-subtext="Swedish krona" value="SEK">SEK</option>
+                      <option data-icon="currency-flag currency-flag-sgd mr-1" data-subtext="Singapore dollar" value="SGD">SGD</option>
+                      <option data-icon="currency-flag currency-flag-thb mr-1" data-subtext="Thai baht" value="THB">THB</option>
+                      <option data-icon="currency-flag currency-flag-try mr-1" data-subtext="Turkish lira" value="TRY">TRY</option>
+                      <option data-icon="currency-flag currency-flag-uah mr-1" data-subtext="Ukrainian hryvnia" value="UAH">UAH</option>
+                      <option data-icon="currency-flag currency-flag-ugx mr-1" data-subtext="Ugandan shilling" value="UGX">UGX</option>
+                      <option data-icon="currency-flag currency-flag-vnd mr-1" data-subtext="Vietnamese dong" value="VND">VND</option>
+                      <option data-icon="currency-flag currency-flag-zar mr-1" data-subtext="South African rand" value="ZAR">ZAR</option>
+                      </optgroup>
+                    </select>
+                    </span> </div>
+					<i class="text-3 text-muted">This affects how much your stocks are worth, entering 100 means 1% of your company is worth 1. However, if your company's turnover can't prove your worth, it will likely scare investors away.</i>
+                </div>
+              </div>
+                          
+			  <div class="form-group">
+                <label for="stockAgree">Budget Stock Agreement Value For Active Investor</label>
+                <div class="input-group">
+                <div class="input-group-prepend"> <span class="input-group-text activeSymbol">$</span> </div>
+                  <input type="text" class="form-control" data-bv-field="activeSend" id="activeSend" value="1,000" placeholder="">
+                  <div class="input-group-append"> <span class="input-group-text p-0">
+                    <select id="activeSendCurrency" data-style="custom-select bg-transparent border-0" data-container="body" data-live-search="true" class="selectpicker form-control bg-transparent" required="">
+                       <optgroup label="Popular Currency">
+                      <option data-icon="currency-flag currency-flag-usd mr-1" data-subtext="United States dollar" value="USD">USD</option>
+                      <option data-icon="currency-flag currency-flag-aud mr-1" data-subtext="Australian dollar" value="AUD">AUD</option>
+                      <option data-icon="currency-flag currency-flag-inr mr-1" data-subtext="Scriptbil Credit" value="SB">SBCRD</option>
+                      </optgroup>
+                      <option value="" data-divider="true">divider</option>
+                      <optgroup label="Other Currency">
+					  <option data-icon="currency-flag currency-flag-inr mr-1" data-subtext="Scriptbil Credit" value="BTC">BTC</option>
+                      <option data-icon="currency-flag currency-flag-aed mr-1" data-subtext="United Arab Emirates dirham" value="AED">AED</option>
+                      <option data-icon="currency-flag currency-flag-ars mr-1" data-subtext="Argentine peso" value="ARS">ARS</option>
+                      <option data-icon="currency-flag currency-flag-aud mr-1" data-subtext="Australian dollar" value="AUD">AUD</option>
+                      <option data-icon="currency-flag currency-flag-bdt mr-1" data-subtext="Bangladeshi taka" value="BDT">BDT</option>
+                      <option data-icon="currency-flag currency-flag-bgn mr-1" data-subtext="Bulgarian lev" value="BGN">BGN</option>
+                      <option data-icon="currency-flag currency-flag-brl mr-1" data-subtext="Brazilian real" value="BRL">BRL</option>
+                      <option data-icon="currency-flag currency-flag-cad mr-1" data-subtext="Canadian dollar" value="CAD">CAD</option>
+                      <option data-icon="currency-flag currency-flag-chf mr-1" data-subtext="Swiss franc" value="CHF">CHF</option>
+                      <option data-icon="currency-flag currency-flag-clp mr-1" data-subtext="Chilean peso" value="CLP">CLP</option>
+                      <option data-icon="currency-flag currency-flag-cny mr-1" data-subtext="Chinese yuan" value="CNY">CNY</option>
+                      <option data-icon="currency-flag currency-flag-czk mr-1" data-subtext="Czech koruna" value="CZK">CZK</option>
+                      <option data-icon="currency-flag currency-flag-dkk mr-1" data-subtext="Danish krone" value="DKK">DKK</option>
+                      <option data-icon="currency-flag currency-flag-egp mr-1" data-subtext="Egyptian pound" value="EGP">EGP</option>
+                      <option data-icon="currency-flag currency-flag-eur mr-1" data-subtext="Euro" value="EUR">EUR</option>
+                      <option data-icon="currency-flag currency-flag-gbp mr-1" data-subtext="British pound" value="GBP">GBP</option>
+                      <option data-icon="currency-flag currency-flag-gel mr-1" data-subtext="Georgian lari" value="GEL">GEL</option>
+                      <option data-icon="currency-flag currency-flag-ghs mr-1" data-subtext="Ghanaian cedi" value="GHS">GHS</option>
+                      <option data-icon="currency-flag currency-flag-hkd mr-1" data-subtext="Hong Kong dollar" value="HKD">HKD</option>
+                      <option data-icon="currency-flag currency-flag-hrk mr-1" data-subtext="Croatian kuna" value="HRK">HRK</option>
+                      <option data-icon="currency-flag currency-flag-huf mr-1" data-subtext="Hungarian forint" value="HUF">HUF</option>
+                      <option data-icon="currency-flag currency-flag-idr mr-1" data-subtext="Indonesian rupiah" value="IDR">IDR</option>
+                      <option data-icon="currency-flag currency-flag-ils mr-1" data-subtext="Israeli shekel" value="ILS">ILS</option>
+                      <option data-icon="currency-flag currency-flag-inr mr-1" data-subtext="Indian rupee" value="INR">INR</option>
+                      <option data-icon="currency-flag currency-flag-jpy mr-1" data-subtext="Japanese yen" value="JPY">JPY</option>
+                      <option data-icon="currency-flag currency-flag-kes mr-1" data-subtext="Kenyan shilling" value="KES">KES</option>
+                      <option data-icon="currency-flag currency-flag-krw mr-1" data-subtext="South Korean won" value="KRW">KRW</option>
+                      <option data-icon="currency-flag currency-flag-lkr mr-1" data-subtext="Sri Lankan rupee" value="LKR">LKR</option>
+                      <option data-icon="currency-flag currency-flag-mad mr-1" data-subtext="Moroccan dirham" value="MAD">MAD</option>
+                      <option data-icon="currency-flag currency-flag-mxn mr-1" data-subtext="Mexican peso" value="MXN">MXN</option>
+                      <option data-icon="currency-flag currency-flag-myr mr-1" data-subtext="Malaysian ringgit" value="MYR">MYR</option>
+                      <option data-icon="currency-flag currency-flag-ngn mr-1" data-subtext="Nigerian naira" value="NGN">NGN</option>
+                      <option data-icon="currency-flag currency-flag-nok mr-1" data-subtext="Norwegian krone" value="NOK">NOK</option>
+                      <option data-icon="currency-flag currency-flag-npr mr-1" data-subtext="Nepalese rupee" value="NPR">NPR</option>
+                      <option data-icon="currency-flag currency-flag-nzd mr-1" data-subtext="New Zealand dollar" value="NZD">NZD</option>
+                      <option data-icon="currency-flag currency-flag-pen mr-1" data-subtext="Peruvian nuevo sol" value="PEN">PEN</option>
+                      <option data-icon="currency-flag currency-flag-php mr-1" data-subtext="Philippine peso" value="PHP">PHP</option>
+                      <option data-icon="currency-flag currency-flag-pkr mr-1" data-subtext="Pakistani rupee" value="PKR">PKR</option>
+                      <option data-icon="currency-flag currency-flag-pln mr-1" data-subtext="Polish złoty" value="PLN">PLN</option>
+                      <option data-icon="currency-flag currency-flag-ron mr-1" data-subtext="Romanian leu" value="RON">RON</option>
+                      <option data-icon="currency-flag currency-flag-rub mr-1" data-subtext="Russian rouble" value="RUB">RUB</option>
+                      <option data-icon="currency-flag currency-flag-sek mr-1" data-subtext="Swedish krona" value="SEK">SEK</option>
+                      <option data-icon="currency-flag currency-flag-sgd mr-1" data-subtext="Singapore dollar" value="SGD">SGD</option>
+                      <option data-icon="currency-flag currency-flag-thb mr-1" data-subtext="Thai baht" value="THB">THB</option>
+                      <option data-icon="currency-flag currency-flag-try mr-1" data-subtext="Turkish lira" value="TRY">TRY</option>
+                      <option data-icon="currency-flag currency-flag-uah mr-1" data-subtext="Ukrainian hryvnia" value="UAH">UAH</option>
+                      <option data-icon="currency-flag currency-flag-ugx mr-1" data-subtext="Ugandan shilling" value="UGX">UGX</option>
+                      <option data-icon="currency-flag currency-flag-vnd mr-1" data-subtext="Vietnamese dong" value="VND">VND</option>
+                      <option data-icon="currency-flag currency-flag-zar mr-1" data-subtext="South African rand" value="ZAR">ZAR</option>
+                      </optgroup>
+                    </select>
+                    </span> </div>
+                
+				<i class="text-3 text-muted activeMes">Active Investors are people who will work in your company. You can use this to separately evaluate their stock value.</i>
+                </div>
+              </div>
+			  <div class="form-group">
+                <label for="vote-right-active">Voting Right Rate for Active Investor</label>                
+                <input id="vote-right-active" value="" type="text" class="form-control" placeholder="55">
+				<i class="text-3 text-muted">Voting right is the influence an investor has over changes in the budget. Entering 55 here means you give Active Investor 5% more right than a Normal Investor.</i>
+              </div>
+			  <div class="form-group">
+                <label for="vote-right-normal">Voting Right Rate for Normal Investor</label>                
+                <input id="vote-right-normal" value="" type="text" class="form-control" placeholder="45">
+				<i class="text-3 text-muted">Voting right is the influence an investor has over changes in the budget. Entering 45 here means you give Normal Investor 5% less right than an Active Investor.</i>
+              </div>              
+              <p class="text-muted text-center">Total stock rate is <span class="font-weight-500 exchange">1 USD = 1.42030 STK</span></p>
+              <div class="form-group">
+                <label for="dividendPay">Dividend Payment</label>
+                <select name="dividendPay" id="dividendPay"data-style="custom-select bg-transparent border-0" data-container="body" data-live-search="true" class="selectpicker form-control bg-transparent" required="">
+                       <optgroup label="Within the Day Payment">
+                      <option data-subtext="Pay on every sales" value="PerSale">Per Sale</option>
+                      <option data-subtext="Pay Every Minute" value="PerMin">Per Minute</option>
+                      <option data-subtext="Pay Every Hour" value="PerHour">Per Hour</option>
+                      <option data-subtext="Pay Every 3 Hour" value="Per3H">Every Third Hour</option>
+                      <option data-subtext="Pay Every 6 Hour" value="Per6H">Every Sixth Hour</option>
+                      <option data-subtext="Pay Every 12 Hour" value="Per12H">Every 12 Hours</option>
+                      <option data-subtext="Pay Every Single Day" value="Daily">Daily</option>
+                      </optgroup>
+                      <optgroup label="Within the Week Payment">
+                      <option data-subtext="Pay on every 2 Days" value="Per2D">Every 2 Days</option>
+                      <option data-subtext="Pay Every 3 Days" value="Per3D">Every 3 Days</option>
+                      <option data-subtext="Pay Every Forth Night" value="Per4D">Every 4 Days</option>
+                      <option data-subtext="Pay Every 5 Days" value="Per5D">Every Five Days</option>
+                      <option data-subtext="Pay Every 6 Days" value="Per6D">Every Six Days</option>
+                      <option data-subtext="Pay Every Week" value="PerWeek">Every Week</option>
+                      </optgroup>
+                      <optgroup label="Within the Month Payment">
+                      <option data-subtext="Pay on every two weeks" value="Per2W">Every 2 Weeks</option>
+                      <option data-subtext="Pay Every three weeks" value="Per3W">Every 3 weeks</option>
+                      <option data-subtext="Pay Every Four Weeks" value="Per4W">Every 4 Weeks</option>
+                      <option data-subtext="Pay Every Five Weeks" value="Per5W">Every Five Weeks</option>
+                      <option data-subtext="Pay Every 6 Weeks" value="Per6W">Every Six Weeks</option>
+                      <option data-subtext="Pay Every 7 Weeks" value="Per7W">Every 7 Weeks</option>
+                      <option data-subtext="Pay Every 8 Weeks" value="Per8W">Every 8 Weeks</option>
+                      </optgroup>
+                      <optgroup label="Within the Year Payment">
+                      <option data-subtext="Pay Every 3 Month" value="Per3M">Per 3 Month</option>
+                      <option data-subtext="Pay Every 4 Month" value="Per4M">Per 4 Months</option>
+                      <option data-subtext="Pay Every 6 Month" value="Per6M">Per 6 Month</option>
+                      <option data-subtext="Pay Every 8 Month" value="Per8M">Every 8 Month</option>
+                      <option data-subtext="Pay Every 10 Month" value="Per10M">Every 10 Month</option>
+                      <option data-subtext="Pay Every Year" value="PerYear">Every Year</option>
+                      </optgroup>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="activeShare">Active Investor Share of the Profit</label>
+                <input type="number" name="activeShare" id="activeShare" class="form-control" placeholder="55" required />
+                <i class="text-3 text-muted">This is what Active Investor will get when profit is shared. 55 means an Active Investor will get 5% more than a normal Investor who gets 45. Total sum must add up to 100</i>
+              </div>
+              <div class="form-group">
+                <label for="normalShare">Normal Investor Share of the Profit</label>
+                <input type="number" name="normalShare" id="normalShare" class="form-control" placeholder="55" required />
+                <i class="text-3 text-muted">This is what Normal Investor will get when profit is shared. 45 means a Normal Investor will get 5% less of what an Active Investor will get, who gets 55. Total sum must add up to 100</i>
+              </div>
+              <div class="form-group">
+                <label for="description">Your Budget Description</label>
+                <textarea cols="3" rows="4" id="description" name="description" class="form-control"></textarea>
+              </div>
+               <!-- dynamic container for url fields -->
+                <div class="form-group">
+                    <label for="">Enter Image Urls to describe your budget to Investors</label>
+              <div id="urlContainer">
+                <!-- 
+                  Initial URL field (first row) 
+                  All classes are pure Bootstrap: row, col, input-group, etc.
+                -->
+                <div class="url-row mb-3">
+                  <div class="row g-2 align-items-center">
+                    <!-- URL input with icon prefix (input-group) -->
+                    <div class="col-12 col-sm-10">
+                      <div class="input-group">
+                        <span class="input-group-text bg-white border-end-0">
+                          <i class="bi bi-globe2 text-secondary"></i>
+                        </span>
+                        <input type="url" 
+                               class="form-control border-start-0 ps-0 url-input image-urls" 
+                               name="url[]" 
+                               placeholder="https://example.com" 
+                               required>
+                        <div class="invalid-feedback">
+                          Please enter a valid URL (including http:// or https://).
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- remove button (initially hidden? we show it always, but it's okay if only one) -->
+                    <div class="col-12 col-sm-2 d-grid">
+                      <button type="button" 
+                              class="btn btn-outline-danger my-2 remove-url-btn" 
+                              title="Remove this URL">
+                        <i class="bi bi-trash3"></i>
+                        <span class="d-sm-none ms-1">Remove</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Add + action buttons -->
+              <div class="d-flex flex-wrap justify-content-center gap-3 mt-4 pt-2 border-top border-light">
+                <button type="button" id="addUrlBtn" class="btn btn-primary px-4 mx-2">
+                  <i class="bi bi-plus-circle me-2"></i>Add Image
+                </button>
+                <button type="reset" id="resetFormBtn" class="btn btn-outline-secondary px-4 mx-2">
+                  <i class="bi bi-arrow-counterclockwise me-2"></i>Reset
+                </button>
+              </div>
+              </div>
+              <div class="form-group">
+                <label for="">Add Video Urls that describes your Company to potential Investors</label>
+              <div id="videoContainer">
+                <!-- 
+                  Initial URL field (first row) 
+                  All classes are pure Bootstrap: row, col, input-group, etc.
+                -->
+                <div class="url-row mb-3">
+                  <div class="row g-2 align-items-center">
+                    <!-- URL input with icon prefix (input-group) -->
+                    <div class="col-12 col-sm-10">
+                      <div class="input-group">
+                        <span class="input-group-text bg-white border-end-0">
+                          <i class="bi bi-globe2 text-secondary"></i>
+                        </span>
+                        <input type="url" 
+                               class="form-control border-start-0 ps-0 url-input video-urls" 
+                               name="vurl[]" 
+                               placeholder="https://example.com" 
+                               required>
+                        <div class="invalid-feedback">
+                          Please enter a valid URL (including http:// or https://).
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- remove button (initially hidden? we show it always, but it's okay if only one) -->
+                    <div class="col-12 col-sm-2 d-grid">
+                      <button type="button" 
+                              class="btn btn-outline-danger my-2 remove-url-btn" 
+                              title="Remove this URL">
+                        <i class="bi bi-trash3"></i>
+                        <span class="d-sm-none ms-1">Remove</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Add + action buttons -->
+              <div class="d-flex flex-wrap justify-content-center gap-3 mt-4 pt-2 border-top border-light">
+                <button type="button" id="addVideoBtn" class="btn btn-primary px-4 mx-2">
+                  <i class="bi bi-plus-circle me-2"></i>Add Video
+                </button>
+                
+                <button type="reset" id="resetVideoBtn" class="btn btn-outline-secondary px-4 mx-2">
+                  <i class="bi bi-arrow-counterclockwise me-2"></i>Reset
+                </button>
+              </div>
+              </div>
+              <hr>
+              <button class="btn btn-primary btn-block continue">Create Budget</button>
+            </form>
+			<div id="error" class="error"></div>
+			<!-- <span>Share this stock to upto 5 social groups for a chance of getting more loans and earning more interest.</span> -->
+            <!-- Send Money Form end --> 
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Content end --> 
+  
+   <!-- Footer
+  ============================================= -->
+  <footer id="footer">
+    <div class="container">
+      <div class="row">
+        <div class="col-lg d-lg-flex align-items-center">
+          <ul class="nav justify-content-center justify-content-lg-start text-3">
+            <li class="nav-item"> <a class="nav-link active" href="/about-us">About Us</a></li>
+            <li class="nav-item"> <a class="nav-link" href="/https://t.me/companymatrix">Support</a></li>
+            <li class="nav-item"> <a class="nav-link" href="/help">Help</a></li>
+            <li class="nav-item"> <a class="nav-link" href="/https://t.me/companymatrix/41">Careers</a></li>
+            <li class="nav-item"> <a class="nav-link" href="/https://t.me/companymatrix/66">Affiliate</a></li>
+            <li class="nav-item"> <a class="nav-link" href="/fees">Fees</a></li>
+          </ul>
+        </div>
+        <div class="col-lg d-lg-flex justify-content-lg-end mt-3 mt-lg-0">
+          <ul class="social-icons justify-content-center">
+            <li class="social-icons-facebook"><a data-toggle="tooltip" href="/http://www.facebook.com/" target="_blank" title="Facebook"><i class="fab fa-facebook-f"></i></a></li>
+            <li class="social-icons-twitter"><a data-toggle="tooltip" href="/http://www.twitter.com/" target="_blank" title="Twitter"><i class="fab fa-twitter"></i></a></li>
+            <li class="social-icons-google"><a data-toggle="tooltip" href="/http://www.google.com/" target="_blank" title="Google"><i class="fab fa-google"></i></a></li>
+            <li class="social-icons-youtube"><a data-toggle="tooltip" href="/http://www.youtube.com/" target="_blank" title="Youtube"><i class="fab fa-youtube"></i></a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-copyright pt-3 pt-lg-2 mt-2">
+        <div class="row">
+          <div class="col-lg">
+            <p class="text-center text-lg-left mb-2 mb-lg-0">Copyright &copy; 2024 <a href="/https://t.me/companymatrix">Scriptbank & Company Matrix</a>. All Rights Reserved.</p>
+          </div>
+          <div class="col-lg d-lg-flex align-items-center justify-content-lg-end">
+            <ul class="nav justify-content-center">
+              <li class="nav-item"> <a class="nav-link active" href="/security">Security</a></li>
+              <li class="nav-item"> <a class="nav-link" href="/term">Terms</a></li>
+              <li class="nav-item"> <a class="nav-link" href="/privacy">Privacy</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </footer>
+  <!-- Footer end -->
+  
+</div>
+<!-- Document Wrapper end -->
+
+<!-- Back to Top
+============================================= -->
+<a id="back-to-top" data-toggle="tooltip" title="Back to Top" href="/javascript:void(0)"><i class="fa fa-chevron-up"></i></a>
+<div class="script-modal" id="update-el"><div class="script-modal-content script-padding-48"><p class="text-center text-7 mb-2 mb-lg-0">Please <a href="/https://t.me/companymatrix/41/80">click here</a> to update Scriptbill before using</p></div></div>
+
+<!-- Script -->
+<script src="/vendor/jquery/jquery.min.js"></script> 
+<script src="/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+<script src="/vendor/bootstrap-select/js/bootstrap-select.min.js"></script>  
+<script src="/js/theme.js"></script>
+<script src="/vendor/daterangepicker/moment.min.js"></script> 
+<script src="/vendor/daterangepicker/daterangepicker.js"></script>
+<script src="/js/supabase.js"></script>
+   <script src="/js/crypto-js.js"></script>
+<script src="/js/scriptbill.js"></script>
+<script src="/js/checkLogin.js"></script>
+</body>
+</html>

@@ -348,6 +348,7 @@
 				<div class="form-group">
                   <label for="walletID">Wallet ID</label>
                   <input type="tel" class="form-control" id="walletID" placeholder="Your Wallet ID if Available">
+				  <i>Created an account before? Use the Wallet ID here</i>
                 </div>
 				<div class="form-group"> 
 				<label for="prefCurrency">Your Preferred Currency</label>
@@ -413,13 +414,13 @@
                         </select>
                         </span> </div>
                 <div class="form-group">
-                  <label for="loginPassword">note's Password</label>
-                  <div style="display:flex; justify-content: space-between;"><input type="password" class="form-control" id="loginPassword" required placeholder="Enter Password you'll be required a four digit key"><span id="clickReveal" style="cursor:pointer; align-self:center;"><i class="fa fa-eye"></i></span></div>
-				  <i class="text-3 text-muted">Used to encrypt your Scriptbill Note</i>
+                  <label for="loginPassword">Note's Password</label>
+                  <div style="display:flex; justify-content: space-between;"><input type="password" class="form-control" id="loginPassword" required placeholder="Enter Password"><span id="clickReveal" style="cursor:pointer; align-self:center;position:absolute;right:20px;"><i class="fa fa-eye"></i></span></div>
+				  <i class="text-3 text-muted">Password to your account: Used to encrypt your Scriptbill Note</i>
                 </div>
 				<div class="form-group">
                   <label for="loginKey">Note's Key</label>
-                  <div style="display:flex; justify-content: space-between;"><input type="password" class="form-control" id="loginKey" required placeholder="Enter Your four digit key"><span id="clickReveal2" style="cursor:pointer; align-self:center;"><i class="fa fa-eye"></i></span></div>
+                  <div style="display:flex; justify-content: space-between;"><input type="text" class="form-control" id="loginKey" autocomplete="off" placeholder="Enter Your four digit key" style="-webkit-text-security:disc;"><span id="clickReveal2" style="cursor:pointer; align-self:center;position:absolute;right:20px;"><i class="fa fa-eye"></i></span></div>
 				  <i class="text-3 text-muted">Used to secure transactions with your Scriptbill Note</i>
                 </div>
                 <button id="signupBtn" class="btn btn-primary btn-block my-4" type="submit">Sign Up</button>

@@ -38,8 +38,17 @@ let sellWebsite		= window.location.origin + '/sellWebsite';
 let sellStocks		= window.location.origin + '/sellStocks';
 let createAds		= window.location.origin + '/create-advert';
 let createItem		= window.location.origin + '/create-item';
+let createBudget		= window.location.origin + '/create-budget';
 let sellProduct		= window.location.origin + '/sell-product';
 let conUrl   		= new URL( window.location.href );
+
+function generateRandomString(source, length){
+	let result = "";
+	for(let i = 0; i <  length; i++){
+		result += source[Math.floor(Math.random() * source.length)];
+	}
+	return result;
+}
 
 function scanWallets(){
 	if(!Scriptbill.s.currentNote) return;
@@ -6046,11 +6055,10 @@ if( location.href.includes( requestSuccess ) ){
 }
 
 
-if( location.href.includes( buyProduct ) ){
-	if( ! Scriptbill.s.currentNote || ! Scriptbill.isJsonable( Scriptbill.s.currentNote ) )
-		location.href = loginUrl;
+if( location.href.toLowerCase().includes( buyProduct.toLowerCase() ) ){
 	
-	let note 		= JSON.parse( Scriptbill.s.currentNote );
+	let redirect 	= location.href;
+	let note 		= JSON.parse( Scriptbill.s.currentNote ?? "{}" );
 	let url 		= new URL( location.href );
 	let productID 	= url.searchParams.get("location");
 	let amount	 	= url.searchParams.get("amount");
@@ -6188,6 +6196,49 @@ if( location.href.includes( buyProduct ) ){
 
 			
 		}
+		else if(productID){
+			//try to get the product from the database if the productID is known
+			let block 	= await Scriptbill.getTransBlock(1, {productID});
+
+			if( block.length ){
+				let agreement = block[0].agreement;
+				buyConfig.block 	= block[0];
+
+				if(agreement.productConfig.images){
+					productImg.style.display = "block";
+					productImg.querySelector("#rankImage").src = typeof agreement.productConfig.images == "object" ? agreement.productConfig.images[0] : agreement.productConfig.images;
+					productImg.querySelector("#productNameView").innerText = agreement.productConfig.name;
+					productImg.querySelector("#storeNameView").innerText = agreement.productConfig.units + " Units";
+					productImg.querySelector("#productDesc").innerText = agreement.productConfig.description;
+				}
+
+				
+				productDiv.style.display = "block";
+				productDiv.querySelector("#productName").value = agreement.productConfig.name;
+				productDiv.querySelector("#productName").setAttribute("disabled", "disabled");
+				
+				let rates = 1;
+				if( repCur.value != sendCur.value ){
+					if( Scriptbill.s.rates )
+						rates 	= parseFloat(Scriptbill.s.rates);
+				}
+				
+				recipient.value 		= agreement.storeName;
+				recipient.setAttribute("disabled", "disabled");
+				send.value 				= parseFloat(agreement.productConfig.value );
+				
+				if( ! agreement.isPeriodic )
+					send.setAttribute("disabled", "disabled");
+				else {
+					//show the periodic agreement div
+					biddersTerm.click();
+				}
+				recieve.value = 	( send.value * rates ) - ( ( send.value * rates ) * toPay );
+				recieve.setAttribute("disabled", "disabled");
+				total.innerHTML 	= send.value + " " + test;
+				fees.innerHTML 	= ( send.value * toPay ).toFixed(2) + " " + test;
+			}
+		}
 		
 		let noagree = document.querySelector(".nogree");
 		
@@ -6198,7 +6249,7 @@ if( location.href.includes( buyProduct ) ){
 				location.href = dashboardUrl;
 			
 			else if( buyConfig.block ){
-				send.value = parseFloat( buyConfig.block.transValue );
+				send.value = parseFloat( buyConfig.block.agreement.productConfig.value );
 				send.setAttribute("disabled", "disabled");
 			}
 		});
@@ -6378,6 +6429,13 @@ if( location.href.includes( buyProduct ) ){
 		
 		button.onclick 		= async function(e){
 			e.preventDefault();
+			
+			if( ! Scriptbill.s.currentNote || ! Scriptbill.isJsonable( Scriptbill.s.currentNote )  ){
+				await Scriptbill.createAlert(`Can't Purchase a Product without a Valid Scriptbank Account Logged In. Please Log in First.`);				
+				Scriptbill.s.redirect 	= redirect;
+				location.href = loginUrl;
+				return;			
+			}
 			let sendConfig = {};
 			
 			if( periodic.value ){
@@ -7534,7 +7592,7 @@ if( location.href.includes( sellProduct )){
 					repCur.querySelector("option[value='"+test+"']").setAttribute("selected", "selected");
 					repCur.setAttribute("disabled", "disabled");
 				}
-			}, 2000)
+			}, 2000);
 			
 			
 			amount.oninput = function(){
@@ -7778,7 +7836,7 @@ if( location.href.includes( sellProduct )){
 				
 				Scriptbill.details 					= JSON.parse( JSON.stringify( Scriptbill.defaultBlock ));
 				
-				if( ! productUrl ){
+				/* if( ! productUrl ){
 					Scriptbill.details.transType 		= "CREDIT";
 					Scriptbill.details.transValue 		= sendConfig.value;
 					Scriptbill.details.recipient 		= sendConfig.recipient;
@@ -7842,11 +7900,12 @@ if( location.href.includes( sellProduct )){
 						}
 					});
 				}
-				else {
+				else {*/
 					Scriptbill.productConfig.value 	= amount.value;
 					Scriptbill.productConfig.name 	= recipient.value;
 					Scriptbill.productConfig.description 	= description.value;
 					Scriptbill.productConfig.units 	= units.value;
+					Scriptbill.productConfig.images = [Scriptbill.s.productImgURL];
 					Scriptbill.defaultAgree.description = sendConfig.description;
 					Scriptbill.defaultAgree.storeName  = sendConfig.storeName;
 					Scriptbill.defaultAgree.storeAddress = sendConfig.storeAddress;
@@ -7888,19 +7947,22 @@ if( location.href.includes( sellProduct )){
 							this.innerText 	= "Unsuccessful";
 							let url = new URL( requestSuccess );
 							url.searchParams.set("error", "true");
+							var error = JSON.parse( Scriptbill.s.eMessages );
+							var keys 	= Object.keys( error );
+							keys 		= keys.reverse();
+							document.getElementById("error").innerHTML = error[keys[0]];
 							setTimeout(()=>{
 								location.reload();
-							}, 5000);
+							}, 115000);
 						}
 					});
-				}
+				//}
 				
 			} 		
 			//sendCur.setAttribute("disabled", "disabled");		
 			
 		});
 		window.jQuery(function() {
-			'use strict';
 			// Payment due by
 			window.jQuery('#paymentDue').daterangepicker({
 				singleDatePicker: true,
@@ -8384,6 +8446,658 @@ if( location.href.includes( createItem )){
 		  });
 	}	  
 }
+
+if( location.href.includes( createBudget )){
+	if( ! Scriptbill.s.currentNote || ! Scriptbill.isJsonable( Scriptbill.s.currentNote ) )
+		location.href = loginUrl;
+	
+	let url, productUrl;
+	
+	loadingDiv();
+	try {
+		url 		= new URL( location.href );
+		productUrl 	= url.searchParams.get("url");
+	} catch(e){
+		productUrl 	= null;
+	} finally {
+	
+		let note 		= JSON.parse( Scriptbill.s.currentNote );
+		
+		fetch("/currencies.json").then( resp =>{ return resp.json(); } ).then( async result =>{
+			let budgetName	 		= document.getElementById("budgetname");
+			let budgetID 			= document.getElementById("budgetid");
+			let businessValue		= document.getElementById("youSend");
+			let businessCurrency	= document.getElementById("youSendCurrency");
+			let activeValue			= document.getElementById("activeSend");
+			let activeCurrency		= document.getElementById("activeSendCurrency");
+			let voteActive			= document.getElementById("vote-right-active");
+			let voteNormal			= document.getElementById("vote-right-normal");
+			let dividendPay			= document.getElementById("dividendPay");
+			let activeShare			= document.getElementById("activeShare");
+			//let uploadImg	= document.getElementById("customFile");
+			let normalShare			= document.getElementById("normalShare");
+			let desc 				= document.getElementById("description");
+			let storeUrl 			= document.getElementById("weburl");
+			let storeKey 			= document.getElementById("webkey");
+			let exchange 			= document.querySelector(".exchange");
+			
+			let inner		= document.getElementsByClassName("input-group-append");		
+			let symbol 		= document.querySelector(".symbol");
+			let repSymbol 		= document.querySelector(".activeSymbol");
+			let button		= document.querySelector(".continue");
+			let test 		= note.noteType.slice( 0, note.noteType.lastIndexOf("CRD"));
+			let symbole 	= test;
+			
+			
+			let toPay 		= 0.25;
+			let rates 		= 1;
+
+
+			      // --- elements ---
+			//const form = document.getElementById('urlForm');
+			const container = document.getElementById('urlContainer');
+			const v_container = document.getElementById('videoContainer');
+			const addBtn = document.getElementById('addUrlBtn');
+			const addVidBtn = document.getElementById('addVideoBtn');
+			const resetBtn = document.getElementById('resetFormBtn');
+			const resetVid = document.getElementById('resetVideoBtn');
+			const images  = document.querySelectorAll(".image-urls");
+			const videos 	= document.querySelectorAll(".video-urls");
+			//const submittedPreview = document.getElementById('submittedPreview');
+			//const submittedList = document.getElementById('submittedList');
+
+			// --- helper: create a fresh URL row (clone of the first one) ---
+			function createUrlRow(container) {
+				// get the first .url-row as a template (it always exists)
+				const templateRow = container.querySelector('.url-row');
+				if (!templateRow) return null;
+
+				// clone deeply
+				const newRow = templateRow.cloneNode(true);
+
+				// clear any entered value and reset validation classes
+				const input = newRow.querySelector('.url-input');
+				if (input) {
+				input.value = '';
+				input.classList.remove('is-invalid', 'is-valid');
+				// make sure placeholder is visible
+				input.placeholder = 'https://example.com';
+				}
+
+				// remove any lingering invalid feedback (it's inside input-group, fine)
+				// but we also want to reset any validation state on the row itself.
+				// (the invalid-feedback div is inside, no extra classes needed)
+
+				// Ensure remove button works in the new row (it already will, due to event delegation)
+				// but we can explicitly set a title
+				const removeBtn = newRow.querySelector('.remove-url-btn');
+				if (removeBtn) {
+				removeBtn.title = 'Remove this URL';
+				}
+
+				return newRow;
+			}
+
+			// --- add a new URL row ---
+			function addUrlRow(container) {
+				const newRow = createUrlRow(container);
+				if (newRow) {
+				container.appendChild(newRow);
+				// focus the new input for quick entry
+				const newInput = newRow.querySelector('.url-input');
+				if (newInput) newInput.focus();
+				}
+			}
+
+			// --- remove a URL row (but keep at least one) ---
+			function removeUrlRow(button, container) {
+				const row = button.closest('.url-row');
+				if (!row) return;
+
+				const allRows = container.querySelectorAll('.url-row');
+				if (allRows.length <= 1) {
+				// if it's the last row, just clear the input and reset validation
+				const input = row.querySelector('.url-input');
+				if (input) {
+					input.value = '';
+					input.classList.remove('is-invalid', 'is-valid');
+				}
+				// hide any preview if shown
+				//submittedPreview.classList.add('d-none');
+				return;
+				}
+
+				row.remove();
+				// if the removed row was the only one? no, we have >1
+				// if preview is visible, we might hide it because list changed
+				//submittedPreview.classList.add('d-none');
+			}
+
+			// --- Event delegation for remove buttons (works for current and future rows) ---
+			container.addEventListener('click', function(e) {
+				const removeBtn = e.target.closest('.remove-url-btn');
+				if (removeBtn) {
+				e.preventDefault();   // prevent any weird form submission
+				removeUrlRow(removeBtn, this);
+				}
+			});
+
+			v_container.addEventListener('click', function(e) {
+				const removeBtn = e.target.closest('.remove-url-btn');
+				if (removeBtn) {
+				e.preventDefault();   // prevent any weird form submission
+				removeUrlRow(removeBtn, this);
+				}
+			});
+
+			// --- Add button click ---
+			addBtn.addEventListener('click', function(e) {
+				e.preventDefault();
+				addUrlRow(container);
+			});
+
+			// --- Add button click ---
+			addVidBtn.addEventListener('click', function(e) {
+				e.preventDefault();
+				addUrlRow(v_container);
+			});
+
+			// --- Reset handling (clear all extra rows, keep only the first one empty) ---
+			resetBtn.addEventListener('click', function(e) {
+				e.preventDefault();   // we handle reset manually to clean dynamic rows
+
+				// remove all rows except the first one
+				const rows = container.querySelectorAll('.url-row');
+				for (let i = rows.length - 1; i > 0; i--) {
+				rows[i].remove();
+				}
+
+				// clear the first row's input and validation
+				const firstInput = container.querySelector('.url-input');
+				if (firstInput) {
+				firstInput.value = '';
+				firstInput.classList.remove('is-invalid', 'is-valid');
+				}
+
+				// hide preview
+				//submittedPreview.classList.add('d-none');
+				// also remove any 'was-validated' class from form
+				//form.classList.remove('was-validated');
+			});
+
+			// --- Reset handling (clear all extra rows, keep only the first one empty) ---
+			resetVid.addEventListener('click', function(e) {
+				e.preventDefault();   // we handle reset manually to clean dynamic rows
+
+				// remove all rows except the first one
+				const rows = v_container.querySelectorAll('.url-row');
+				for (let i = rows.length - 1; i > 0; i--) {
+				rows[i].remove();
+				}
+
+				// clear the first row's input and validation
+				const firstInput = v_container.querySelector('.url-input');
+				if (firstInput) {
+				firstInput.value = '';
+				firstInput.classList.remove('is-invalid', 'is-valid');
+				}
+
+				// hide preview
+				//submittedPreview.classList.add('d-none');
+				// also remove any 'was-validated' class from form
+				//form.classList.remove('was-validated');
+			});
+
+			budgetID.oninput 	= async function(){
+				const block = await Scriptbill.getTransBlock(1, {noteType: this.value.toUpperCase() + "STK"});
+
+				if(block && block[0] && block[0].blockID){
+					document.querySelector("#budgetError").innerText = `Budget ID already exist`;
+				} else {
+					document.querySelector("#budgetError").innerText = ``;
+				}
+			}
+
+			voteActive.oninput = function(){
+				const num = parseInt( this.value );
+				const remaining = 100 - num;
+				voteNormal.value = remaining.toString();
+			}
+
+			voteNormal.oninput = function(){
+				const num = parseInt( this.value );
+				const remaining = 100 - num;
+				voteActive.value = remaining.toString();
+			}
+
+			activeShare.oninput = function(){
+				const num = parseInt( this.value );
+				const remaining = 100 - num;
+				normalShare.value = remaining.toString();
+			}
+
+			normalShare.oninput = function(){
+				const num = parseInt( this.value );
+				const remaining = 100 - num;
+				activeShare.value = remaining.toString();
+			}
+
+			budgetName.oninput = async function() {
+				const name 	= this.value;
+				if( name.length > 5 ){
+					let letter = generateRandomString(name, 5);
+					const block = await Scriptbill.getTransBlock(1, {noteType: letter.toUpperCase() + "STK"});
+
+					if(! block && ! block[0] && ! block[0].blockID){
+						budgetID.value = letter.toUpperCase();
+					}
+				}
+			}
+			
+			
+			activeCurrency.onchange = async function(){
+				if( result[ this.value ] ){
+					symbole 	= result[ this.value ].symbol;
+				}
+				let value 		= amount.value;
+				if( this.value != test ){			
+							
+					repSymbol.innerHTML = symbole;
+					let rates 		= await fetch("/exRate.json").then( resp =>{ return resp.json(); }).then( result =>{ return result; });
+					
+					if( rates ){
+						rates = rates.rates;
+					}				
+					
+					if( rates && rates[ this.value ] ){
+						let rate = 1;
+						if( sendCur.value != "USD" ){
+							rate 		= 1/parseFloat(rates[sendCur.value]);
+						} 
+						if( this.value != "USD" ){
+							rate 		= rate / ( 1/parseFloat(rates[this.value]) );
+						}
+						//exchange.innerHTML = "1 " + test + " = " + parseFloat( rates[ this.value ] * rate ).toFixed(4) + " " + this.value;
+						Scriptbill.s.toPay = toPay;
+						Scriptbill.s.rates = parseFloat(rates[ this.value ]) * rate;
+						
+					} else {
+						//exchange.innerHTML = "exchange rate not available";
+					}
+				} else {
+					repSymbol.innerHTML = symbole;
+					//exchange.innerHTML = "";
+				}
+				
+				//fees.innerHTML 	= ( value * toPay ).toFixed(4) + " " + test;
+			}
+
+			if( activeCurrency.querySelector("option[value='"+test+"']") ){
+				inner[1].children[0].children[0].children[1].children[0].children[0].children[0].innerHTML = '<i class=" currency-flag currency-flag-'+ test.toLowerCase() +' mr-1"></i>&nbsp;' + test.toUpperCase();
+				activeCurrency.querySelector("option[value='"+test+"']").setAttribute("selected", "selected");
+				activeCurrency.setAttribute("disabled", "disabled");
+			}
+			
+			businessValue.oninput = function(){
+				
+				let value = this.value.replaceAll(',','').split('.');
+				/* await Scriptbill.createAlert( value[1] );			
+				await Scriptbill.createAlert( value[0] ); */			
+							
+				if( typeof value == "object" && value[1] && value[1].length == 1 ){			
+					let values = value[0].split('');
+					let val = values[ values.length - 1 ];
+					val 	+= value[1];
+					//await Scriptbill.createAlert( val );
+					value[1] = val;
+					values.pop();
+					value[0] = values.join('');
+					this.value 		= value[0] + '.' + value[1];
+				} else if( typeof value == "object" && value[1] && value[1].length == 3 ){
+					let values = value[1].split('');
+					value[0] += values[0];
+					values.splice(0,1);
+					value[1] = values.join('');
+					this.value 		= value[0] + '.' + value[1];
+					//await Scriptbill.createAlert( this.value );
+				}
+				else if( ! value[1] ){
+					this.value = "0.0" + value[0];
+				}
+				
+				this.value 	= parseFloat( this.value.replaceAll(',','') );
+				let stockNum 	= (this.value / 100).toFixed(2);
+				exchange.innerHTML = `1 ${budgetID.value}STK = ${stockNum} ${test}`;
+				activeValue.value = 	formatCurrency( parseFloat( ( this.value * rates ) - ( ( this.value * rates ) * toPay ) ) );
+				this.value = formatCurrency( this.value );
+				
+			}
+			activeValue.value 		= "";			
+			
+			let tests 		= Object.keys( result );
+			let options		= businessCurrency.querySelectorAll("option"), index;
+			for( let x = 0; x < options.length; x++ ){
+				if( tests.indexOf( options[x].innerText ) < 0 ) continue;
+				index 				= tests.indexOf( options[x].innerText );
+				options[x].value 	= tests[index];
+			}
+					
+			 if( result[test] ){
+				symbole 		= result[test].symbol;
+			}
+			symbol.innerHTML 	= symbole;
+			repSymbol.innerHTML = symbole;
+			
+			if( businessCurrency.querySelector("option[value='"+test+"']") ){			
+				inner[0].children[0].children[0].children[1].children[0].children[0].children[0].innerHTML = '<i class=" currency-flag currency-flag-'+test.toLowerCase()+' mr-1"></i>&nbsp;' + test.toUpperCase();
+				businessCurrency.querySelector("option[value='"+test+"']").setAttribute("selected", "selected");
+			}
+
+					
+			desc.value = "";	
+			businessValue.value = "";
+			
+				
+			
+			button.onclick 		= async function(e){
+				e.preventDefault();			
+				 let sendConfig = {};
+				 let itemConfig 	= JSON.parse( JSON.stringify( Scriptbill.budgetConfig ));
+				 itemConfig.agreement = JSON.parse( JSON.stringify( Scriptbill.defaultAgree ));				
+								
+				if( ! budgetName.value ){
+					await Scriptbill.createAlert("You need a name for your budget");
+					return;
+				} else {
+					sendConfig.storeName 	= budgetName.value;
+					itemConfig.name 		= budgetName.value;
+				}
+				
+				if( ! budgetID.value ){
+					await Scriptbill.createAlert("You need a Unique Budget Stock ID to create this Budget");
+					return;
+				} else {
+					const block = await Scriptbill.getTransBlock(1, {noteType: budgetID.value.toUpperCase() + "STK"});
+
+					console.log("STOCK BLOCK: ", block);
+
+					if(! block.length || ! block[0].blockID){
+						sendConfig.budgetID = budgetID.value.toUpperCase();
+						itemConfig.stockID = budgetID.value.toUpperCase();
+					}
+					else {
+						await Scriptbill.createAlert(`Your Budget Stock ID was already found in the Scriptbank Network. Create a new ID and try again`);
+						return;
+					}					
+				}
+
+				if(!businessValue.value){
+					await Scriptbill.createAlert(`Business Value needed to build up budget`);
+					return;
+				}
+				sendConfig.value 	= parseFloat( businessValue.value.replaceAll(",", "") );
+				itemConfig.value 	= parseFloat( businessValue.value.replaceAll(",", "") );//tk3UsJzU3AYQKUJx7WMNsjUge_ePZ4m4DzBQ6_Pkpb4Os07uWU41fGX-i_pGS9qTQseKUPn8OSIaW7m88prv9nAXbElxAVxfOmiHmNn_J_xMo3OD7oT-_l_AXHjh1JMb2knq3yPSr4gcTCncSIweuCUtAkN0feOTjWCQ3J1XUVs
+				
+				if( desc.value ){
+					sendConfig.description 		= desc.value;
+					itemConfig.budgetDesc		= desc.value;
+				}				
+				
+				if( businessCurrency.value ){
+					sendConfig.currency 		= businessCurrency.value;
+					itemConfig.budgetCredit	    = businessCurrency.value + "CRD";
+				} else {
+					sendConfig.currency 		= note.noteType;
+					itemConfig.budgetCredit		=  note.noteType;
+				}			
+				
+				
+				if( storeUrl.value && storeUrl.value.includes("http")){
+					sendConfig.storeUrl 			= storeUrl.value;					
+					itemConfig.storeUrl 			= storeUrl.value;
+				}  else {
+					await Scriptbill.createAlert(`You Must Provide a Valid Url for yoour websocket connection`);
+					return;
+				}
+
+				if(storeKey.value){
+					let client = Scriptbill.createClient(false, itemConfig.storeUrl, storeKey.value);
+
+					if(! client){
+						await Scriptbill.createAlert(`Store URL WebSocket Server seems not to be responding. You can only continue to create this budget if the websocket server is active.`);
+					}
+				}
+				
+				if(images[0].value ){
+					//at least we have one images with value
+					const image_urls = images.map((img)=>{
+						return img.value;
+					}).filter((img_url)=>{
+						return img_url.length > 0;
+					});
+					sendConfig.image_urls 	= image_urls;
+					itemConfig.budgetImages = image_urls;
+				}
+
+				if(videos[0].value ){
+					//at least we have one images with value
+					const video_urls = videos.map((vid)=>{
+						return vid.value;
+					}).filter((vid_url)=>{
+						return vid_url.length > 0;
+					});
+					sendConfig.video_urls 	= video_urls;
+					itemConfig.budgetVideos = video_urls;
+				}			
+				
+				
+				this.innerText 					= "Creating Budget...";
+				this.setAttribute("disabled", "disabled");
+
+				//adding the stock rules to the budget.
+				itemConfig.budgetType 	= "business";
+				itemConfig.orientation  = "recursive";
+
+				if(voteActive.value){
+					const rate = parseInt(voteActive.value) / 100;
+					itemConfig.activePartnerRight = rate;
+					sendConfig.voteActive = voteActive.value;
+				}
+
+				if(voteNormal.value){
+					const rate = parseInt(voteNormal.value) / 100;
+					itemConfig.sleepingPartnerRight = rate;
+					sendConfig.voteNormal = voteNormal.value;
+				}
+
+				if(activeShare.value){
+					const rate = parseInt(activeShare.value) / 100;
+					itemConfig.activePartnerShare = rate;
+					itemConfig.activePartner = activeShare.value >= normalShare.value ? "percent-high" : "percent-low";
+					sendConfig.activeShare 	= activeShare.value;
+				}
+
+				if(normalShare.value){
+					const rate = parseInt(normalShare.value) / 100;
+					itemConfig.sleepingPartnerShare = rate;
+					itemConfig.sleepingPartner = normalShare.value >= activeShare.value ? "percent-high" : "percent-low";
+					sendConfig.normalShare 	= normalShare.value;
+				}
+
+				const agreement = JSON.parse(JSON.stringify(Scriptbill.defaultAgree));
+
+				if( activeValue.value){
+					agreement.value 	= activeValue.value;
+				}
+
+				agreement.maxExecTime = itemConfig.max_exec;
+				agreement.isPeriodic 	= true;
+
+				if(dividendPay.value){
+					switch(dividendPay.value){
+						case "PerSale":
+							agreement.ExecTime = 0;
+							break;
+						
+						case "PerMin":
+							agreement.ExecTime = new Date(Date.now() + 60_000);
+							break;
+
+						case "PerHour":
+							agreement.ExecTime = new Date(Date.now() + (60 * 60_000));
+							break;
+
+						case "Per3H":
+							agreement.ExecTime = new Date(Date.now() + (3 * 60 * 60_000));
+							break;
+
+						case "Per6H":
+							agreement.ExecTime = new Date(Date.now() + (6 * 60 * 60_000));
+							break;
+
+						case "Per12H":
+							agreement.ExecTime = new Date(Date.now() + (12 * 60 * 60_000));
+							break;
+
+						case "Daily":
+							agreement.ExecTime = new Date(Date.now() + (24 * 60 * 60_000));
+							break;
+
+						case "Per2D":
+							agreement.ExecTime = new Date(Date.now() + (2 * 24 * 60 * 60_000));
+							break;
+
+						case "Per3D":
+							agreement.ExecTime = new Date(Date.now() + (3 * 24 * 60 * 60_000));
+							break;
+
+						case "Per4D":
+							agreement.ExecTime = new Date(Date.now() + (4 * 24 * 60 * 60_000));
+							break;
+
+						case "Per5D":
+							agreement.ExecTime = new Date(Date.now() + (5 * 24 * 60 * 60_000));
+							break;
+
+						case "Per6D":
+							agreement.ExecTime = new Date(Date.now() + (6 * 24 * 60 * 60_000));
+							break;
+
+						case "PerWeek":
+							agreement.ExecTime = new Date(Date.now() + (7 * 24 * 60 * 60_000));
+							break;
+						case "Per2W":
+							agreement.ExecTime = new Date(Date.now() + (2 * 7 * 24 * 60 * 60_000));
+							break;
+						case "Per3W":
+							agreement.ExecTime = new Date(Date.now() + (3 * 7 * 24 * 60 * 60_000));
+							break;
+						case "Per4W":
+							agreement.ExecTime = new Date(Date.now() + (4 * 7 * 24 * 60 * 60_000));
+							break;
+
+						case "Per5W":
+							agreement.ExecTime = new Date(Date.now() + (5 * 7 * 24 * 60 * 60_000));
+							break;
+
+						case "Per6W":
+							agreement.ExecTime = new Date(Date.now() + (6 * 7 * 24 * 60 * 60_000));
+							break;
+
+						case "Per7W":
+							agreement.ExecTime = new Date(Date.now() + (7 * 7 * 24 * 60 * 60_000));
+							break;
+
+						case "Per8W":
+							agreement.ExecTime = new Date(Date.now() + (8 * 7 * 24 * 60 * 60_000));
+							break;
+
+						case "Per3M":
+							agreement.ExecTime = new Date(Date.now() + (3 * 30 * 24 * 60 * 60_000));
+							break;
+						case "Per4M":
+							agreement.ExecTime = new Date(Date.now() + (4 * 30 * 24 * 60 * 60_000));
+							break;
+
+						case "Per6M":
+							agreement.ExecTime = new Date(Date.now() + (6 * 30 * 24 * 60 * 60_000));
+							break;
+						case "Per8M":
+							agreement.ExecTime = new Date(Date.now() + (8 * 30 * 24 * 60 * 60_000));
+							break;
+						case "Per10M":
+							agreement.ExecTime = new Date(Date.now() + (10 * 30 * 24 * 60 * 60_000));
+							break;
+						case "PerYear":
+							agreement.ExecTime = new Date(Date.now() + (12 * 30 * 24 * 60 * 60_000));
+							break;
+						
+						default :
+							agreement.ExecTime = 0;
+					}
+				}
+
+				itemConfig.agreement = JSON.parse(JSON.stringify(agreement));
+										
+				
+				Scriptbill.budgetConfig					= JSON.parse( JSON.stringify( itemConfig ));
+				
+				Scriptbill.createScriptbillBudget( Scriptbill.budgetConfig ).then( async block =>{
+					console.log("Budget Block: ", block);
+					if( block && block.transType == "CREATEBUDGET" && block.agreement ){
+						sendConfig.block 			=		JSON.parse( JSON.stringify( block ));
+						Scriptbill.s.requestMoneyConfig 	= JSON.stringify( sendConfig );
+						Scriptbill.s.requestProcessing		= 'TRUE';
+						this.innerText 						= "Successful";
+						block.agreement.blockID 			= block.blockID;
+						await Scriptbill.getData("itemConfig", Scriptbill.Base64.encode(JSON.stringify( block.agreement ) ), SERVER );
+						setTimeout(()=>{
+							let url 	= new URL( requestSuccess );
+							url.searchParams.set("addItem", "true" );
+							location.href = url.href;
+						}, 5000);
+						
+					} else {
+						this.innerText 	= "Unsuccessful";
+						let url = new URL( requestSuccess );
+						url.searchParams.set("error", "true");
+						var error = JSON.parse( Scriptbill.s.eMessages );
+						var keys 	= Object.keys( error );
+						keys 		= keys.reverse();
+						document.getElementById("error").innerHTML = error[keys[0]];
+						setTimeout(()=>{
+							location.reload();
+						}, 10000);
+					}
+				});			
+			} 		
+			//sendCur.setAttribute("disabled", "disabled");		
+			
+		});
+		window.jQuery(function() {
+			'use strict';
+			// Payment due by
+			window.jQuery('#paymentDue').daterangepicker({
+				singleDatePicker: true,
+				minDate: moment(),
+				autoUpdateInput: false,
+				}, function(chosen_date) {
+			  window.jQuery('#paymentDue').val(chosen_date.format('MM-DD-YYYY'));
+			  });
+		  });
+		  window.jQuery(function() {
+			'use strict';
+			// Payment due by
+			window.jQuery('#executionDate').daterangepicker({
+				singleDatePicker: true,
+				minDate: moment(),
+				autoUpdateInput: false,
+				}, function(chosen_date) {
+			  window.jQuery('#executionDate').val(chosen_date.format('MM-DD-YYYY'));
+			  });
+		  });
+	}	  
+}//
 
 if( location.href.includes( createAds )){
 	if( ! Scriptbill.s.currentNote || ! Scriptbill.isJsonable( Scriptbill.s.currentNote ) )
