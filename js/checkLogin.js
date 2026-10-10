@@ -7456,8 +7456,20 @@ if( location.href.includes( sellProduct )){
 	} finally {
 	
 		let note 		= JSON.parse( Scriptbill.s.currentNote );
-		
+
+				
 		fetch("/currencies.json").then( resp =>{ return resp.json(); } ).then( async result =>{
+			if(! note.budgetID){
+				await Scriptbill.createAlert(`You need a running Scriptbank Budget to create a Product in the Scriptbank Network`);
+				location.href = createBudget;
+				return;
+			}
+
+			const budgetBlock 	= await Scriptbill.getTransBlock(1, {budgetID: note.budgetID});
+			let agreement;
+			if(budgetBlock.length && budgetBlock[0].agreement ){
+				agreement = budgetBlock[0].agreement;
+			}
 			let enddate	 	= document.getElementById("paymentDue");
 			let recipient	= document.getElementById("productName");
 			let storeName	= document.getElementById("storeName");
@@ -7504,10 +7516,13 @@ if( location.href.includes( sellProduct )){
 					accNumber.querySelector("input").value = "";
 				}
 			}
-			
-			if( Scriptbill.l[note.noteAddress + '_storeName' ] ){
-				storeName.value			= Scriptbill.l[note.noteAddress + '_storeName' ];
+			if(agreement && agreement.name){
+				storeName.value = agreement.name;
+				Scriptbill.l[note.noteAddress + '_storeName' ] = agreement.name;
 				storeName.setAttribute("disabled", "disabled" );
+			}
+			else if( Scriptbill.l[note.noteAddress + '_storeName' ] ){
+				storeName.value			= Scriptbill.l[note.noteAddress + '_storeName' ];
 				storeShow.innerText		= storeName.value;
 			}
 			if( Scriptbill.l[note.noteAddress + '_storeAddress' ] ){
@@ -7520,12 +7535,12 @@ if( location.href.includes( sellProduct )){
 				else
 					storeUrl.value			= Scriptbill.l[note.noteAddress + '_storeUrl' ];
 				
-				storeUrl.setAttribute("disabled", "disabled" );
+				if(productUrl)
+					storeUrl.setAttribute("disabled", "disabled" );
 			} else if( productUrl ){
 				storeUrl.value			= productUrl;
 				storeUrl.setAttribute("disabled", "disabled" );
-			}
-			
+			}		
 			
 			
 			uploadImg.onchange = function(){
@@ -7905,6 +7920,7 @@ if( location.href.includes( sellProduct )){
 					Scriptbill.productConfig.name 	= recipient.value;
 					Scriptbill.productConfig.description 	= description.value;
 					Scriptbill.productConfig.units 	= units.value;
+					Scriptbill.productConfig.productUrl = storeUrl.value;
 					Scriptbill.productConfig.images = [Scriptbill.s.productImgURL];
 					Scriptbill.defaultAgree.description = sendConfig.description;
 					Scriptbill.defaultAgree.storeName  = sendConfig.storeName;
