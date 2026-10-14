@@ -7840,13 +7840,16 @@ if( location.href.includes( sellProduct )){
 					sendConfig.bank.number = accNumber.querySelector('input').value;
 					sendConfig.bank.account = accName.querySelector('input').value;
 				}
-				this.innerText 					= "Please Wait...";
+				
 				if( Scriptbill.s.productImgURL ){
 					sendConfig.productImgURL 	= Scriptbill.s.productImgURL;
 				}			
 				Scriptbill.blockId 					= note.blockID;
 				let block 							= await Scriptbill.getTransBlock();
 				block 								= block[0];
+
+				this.innerText 					= "Please Wait...";
+				this.setAttribute("disabled", "disabled");
 						
 				
 				Scriptbill.details 					= JSON.parse( JSON.stringify( Scriptbill.defaultBlock ));
@@ -7916,7 +7919,7 @@ if( location.href.includes( sellProduct )){
 					});
 				}
 				else {*/
-					Scriptbill.productConfig.value 	= amount.value;
+					Scriptbill.productConfig.value 	= sendConfig.value;
 					Scriptbill.productConfig.name 	= recipient.value;
 					Scriptbill.productConfig.description 	= description.value;
 					Scriptbill.productConfig.units 	= units.value;

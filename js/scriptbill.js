@@ -17,6 +17,266 @@
 	//and set it once. Only when it is false will we have to recreate it.
 	static #passwordKey = false;
 	
+	static schema      = `
+		-- ============================================================
+-- BLOCKS TABLE
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.blocks (
+    id                      BIGSERIAL PRIMARY KEY,
+    
+    -- Core block identifiers
+    blockID                TEXT UNIQUE NOT NULL,
+    formerBlockID         TEXT UNIQUE NOT NULL,
+    nextBlockID           TEXT UNIQUE NOT NULL,
+    
+    -- Hashes
+    noteHash               TEXT,
+    transHash              TEXT,
+    realHash               TEXT,
+    totalHASH              TEXT,
+    blockHash              TEXT,
+    
+    -- Note fields
+    noteSign               TEXT,
+    noteServer             TEXT,
+    noteValue              NUMERIC DEFAULT 0,
+    noteType               TEXT,
+    noteID                 TEXT,
+    
+    -- Transaction fields
+    transValue             NUMERIC DEFAULT 0,
+    rankPref               TEXT,
+    transType              TEXT,
+    creditType             TEXT,
+    transTime              TIMESTAMPTZ,
+    recipient               TEXT,
+    
+    -- Reference fields
+    referenceID            TEXT,
+    referenceKey           TEXT,
+    splitID                TEXT,
+    
+    -- Wallet fields
+    walletHASH             TEXT,
+    formerWalletHASH      TEXT,
+    walletSign             TEXT,
+    
+    -- Block keys / signatures
+    blockKey               TEXT,
+    blockSign              TEXT,
+    blockRef               TEXT,
+    signRef                TEXT,
+    
+    -- Agreements (block-level)
+    agreements              JSONB,
+    lastAgreeHash         TEXT,
+    agreeHash              TEXT,
+    
+    -- Expiry / interest
+    expiry                  TIMESTAMPTZ,
+    interestRate           NUMERIC,
+    interestType           TEXT,
+    
+    -- Budget references
+    budgetRefs             JSONB,
+    budgetID               TEXT,
+    productID              TEXT,
+    
+    -- Agreement payload (the big object attached to the block)
+    agreement               JSONB,
+    
+    -- Exchange note fields
+    exchangeNote           JSONB,
+    exBlockID             TEXT UNIQUE,
+    exNextBlockID        TEXT UNIQUE,
+    exFormerBlockID      TEXT UNIQUE,
+    
+    -- Product block chain fields
+    productBlockID        TEXT UNIQUE,
+    productNextBlockID   TEXT UNIQUE,
+    productFormerBlockID TEXT UNIQUE,
+    
+    created_at              TIMESTAMPTZ DEFAULT NOW(),
+    updated_at              TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_blocks_block_id            ON public.blocks(blockID);
+CREATE INDEX IF NOT EXISTS idx_blocks_former_block_id     ON public.blocks(formerBlockID);
+CREATE INDEX IF NOT EXISTS idx_blocks_next_block_id       ON public.blocks(nextBlockID);
+CREATE INDEX IF NOT EXISTS idx_blocks_trans_type          ON public.blocks(transType);
+CREATE INDEX IF NOT EXISTS idx_blocks_budget_id           ON public.blocks(budgetID);
+CREATE INDEX IF NOT EXISTS idx_blocks_product_id          ON public.blocks(productID);
+CREATE INDEX IF NOT EXISTS idx_blocks_recipient           ON public.blocks(recipient);
+CREATE INDEX IF NOT EXISTS idx_blocks_reference_id        ON public.blocks(referenceID);
+
+-- ============================================================
+-- BUDGETS TABLE
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.budgets (
+    id                      BIGSERIAL PRIMARY KEY,
+    
+    -- Links back to the block that created it
+    blockID                TEXT REFERENCES public.blocks(blockID) ON DELETE CASCADE,
+    
+    name                    TEXT,
+    value                   NUMERIC DEFAULT 0,
+    max_exec                NUMERIC,
+    "budgetID"              TEXT UNIQUE,
+    "sleepingPartner"       TEXT,
+    "workingPartner"        TEXT,
+    "sleepingPartnerShare"  NUMERIC,
+    "workingPartnerShare"   NUMERIC,
+    "budgetItems"           JSONB,
+    "budgetSign"            TEXT,
+    "budgetRef"             TEXT,
+    "budgetType"            TEXT,
+    orientation             TEXT,
+    recursion               INTEGER,
+    "budgetSpread"          NUMERIC,
+    "budgetCredit"          TEXT,
+    "budgetDesc"            TEXT,
+    "budgetImages"          JSONB,
+    "budgetVideos"          JSONB,
+    "companyRanks"          JSONB,
+    "stockID"               TEXT UNIQUE,
+    "investorsHub"          JSONB,
+    agreement               JSONB,
+    
+    created_at              TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_budgets_budgetID  ON public.budgets("budgetID");
+CREATE INDEX IF NOT EXISTS idx_budgets_block_id  ON public.budgets(blockID);
+
+-- ============================================================
+-- PRODUCTS TABLE
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.products (
+    id                      BIGSERIAL PRIMARY KEY,
+    
+    blockID                TEXT REFERENCES public.blocks(blockID) ON DELETE CASCADE,
+    productID 				TEXT UNIQUE,
+    value                   NUMERIC DEFAULT 0,
+    units                   INTEGER DEFAULT 1,
+    "totalUnits"            INTEGER DEFAULT 0,
+    name                    TEXT,
+    description             TEXT,
+    images                  JSONB,
+    videos                  JSONB,
+    "creditType"            TEXT,
+    "sharingRate"           NUMERIC,
+    "blockExpiry"           TIMESTAMPTZ,
+    "budgetID"              TEXT,
+    
+    created_at              TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_products_block_id   ON public.products(blockID);
+CREATE INDEX IF NOT EXISTS idx_products_budgetID   ON public.products("budgetID");
+CREATE INDEX IF NOT EXISTS idx_products_name       ON public.products(name);
+
+-- ============================================================
+-- ADVERTS TABLE
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.adverts (
+    id                      BIGSERIAL PRIMARY KEY,
+    
+    blockID                TEXT REFERENCES public.blocks(blockID) ON DELETE CASCADE,
+    
+    "advertID"              TEXT UNIQUE,
+    "productID"             TEXT,
+    viewers                 INTEGER DEFAULT 0,
+    "viewersShare"          NUMERIC DEFAULT 0,
+    publishers              INTEGER DEFAULT 0,
+    "publishShare"          NUMERIC DEFAULT 0,
+    scope                   TEXT,
+    banner                  TEXT,
+    video                   TEXT,
+    interest                JSONB,
+    
+    created_at              TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_adverts_advertID   ON public.adverts("advertID");
+CREATE INDEX IF NOT EXISTS idx_adverts_block_id   ON public.adverts(blockID);
+CREATE INDEX IF NOT EXISTS idx_adverts_productID  ON public.adverts("productID");
+
+-- ============================================================
+-- AGREEMENTS TABLE
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.agreements (
+    id                      BIGSERIAL PRIMARY KEY,
+    
+    blockID                TEXT REFERENCES public.blocks(blockID) ON DELETE CASCADE,
+    
+    "agreeID"               TEXT UNIQUE,
+    "agreeSign"             TEXT,
+    "agreeKey"              TEXT,
+    "senderSign"            TEXT,
+    "senderID"              TEXT,
+    "senderKey"             TEXT,
+    "recieverID"            TEXT,
+    "recieverKey"           TEXT,
+    "maxExecTime"           TIMESTAMPTZ,
+    "agreeType"             TEXT,
+    "ExecTime"              TIMESTAMPTZ,
+    value                   NUMERIC DEFAULT 0,
+    "isPeriodic"            BOOLEAN DEFAULT FALSE,
+    times                   INTEGER,
+    "payTime"               TIMESTAMPTZ,
+    "payPeriod"             NUMERIC,
+    "delayInterest"         NUMERIC,
+    "interestType"          TEXT,
+    "interestSpread"        NUMERIC,
+    "interestRate"          NUMERIC,
+    "timeStamp"             TIMESTAMPTZ,
+    "realNonce"             TEXT,
+    "recieverSign"          TEXT,
+    "quoteID"               TEXT,
+    "sendAddress"           JSONB,
+    
+    created_at              TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_agreements_agreeID      ON public.agreements("agreeID");
+CREATE INDEX IF NOT EXISTS idx_agreements_block_id      ON public.agreements(blockID);
+CREATE INDEX IF NOT EXISTS idx_agreements_senderID     ON public.agreements("senderID");
+CREATE INDEX IF NOT EXISTS idx_agreements_recieverID   ON public.agreements("recieverID");
+
+-- ============================================================
+-- TRIGGER: auto-update updated_at on blocks
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_blocks_updated_at ON public.blocks;
+CREATE TRIGGER trg_blocks_updated_at
+    BEFORE UPDATE ON public.blocks
+    FOR EACH ROW
+    EXECUTE FUNCTION public.set_updated_at();
+
+-- ============================================================
+-- ROW LEVEL SECURITY (adjust to your auth model)
+-- ============================================================
+ALTER TABLE public.blocks      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.budgets     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.products    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.adverts     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.agreements  ENABLE ROW LEVEL SECURITY;
+
+-- Example permissive policies (replace with your actual auth logic)
+CREATE POLICY "blocks_all"      ON public.blocks      FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "budgets_all"     ON public.budgets     FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "products_all"    ON public.products    FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "adverts_all"     ON public.adverts     FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH CHECK (true);
+	`;
+	
 	//the private key of the current note.
 	static #noteSecret  = false;
 
@@ -7460,7 +7720,7 @@
 			let alertInner = document.createElement("div");
 			let alertLogo 	= document.createElement("div");
 			alert.setAttribute("style", "position:fixed; background-color:rgba(0,0,0,0.4); top:0;left:0; width:100%;height:100%;display:flex;align-items:center;justify-content:center;z-index:" + Date.now()+";overflow-y:scroll;scroll-behavior:smooth;");
-			alertInner.setAttribute("style", "background-color:white;padding:4%;padding-bottom:80px;position:relative;width:80%; height:auto;border-radius:8px;word-wrap: break-word;overflow-wrap: break-word;word-break: break-word; max-width:400px;top:25vh;");
+			alertInner.setAttribute("style", "background-color:white;padding:4%;padding-bottom:80px;position:relative;width:80%; height:auto;border-radius:8px;word-wrap: break-word;overflow-wrap: break-word;word-break: break-word; max-width:400px;top:5vh;");
 			alertLogo.setAttribute("style", "width:30px;height:30px;border-radius:50%;background-image:url('images/logo.png');background-size:cover;background-repeat:no-repeat;background-position:center;position:absolute; top:5px; left:5px;");
 			button.setAttribute("style","position:absolute; bottom:10px; left:25%; width:50%; height:auto; padding:5px; color:white; background-color:#444;border:none; border-radius:3px;");
 			button.innerText 	= "Close";		
@@ -9939,64 +10199,345 @@ static Base64 = {
 			)
 			.subscribe()
 	}
+	
+	static async regenerateBlockIds(response, client){
+		const { data, error } = await client
+		.from("blocks")
+		.select("*")
+		.eq("exBlockID", response.exBlockID )
+		.single();
+		
+		if( data ){
+			response.exFormerBlockID = response.exBlockID;
+			response.exBlockID 			= response.exNextBlockID;
+			response.exNextBlockID 		= this.calculateNextBlockID( response.exchangeNote, response.exBlockID );
+			return this.saveBlock( response, client );
+		}
+
+		else if( response.productBlockID ){
+			//we check the product ids
+			const { data: data2, error: error2 } = await client
+			.from("blocks")
+			.select("*")
+			.eq("productBlockID", response.productBlockID )
+			.single();
+			
+			if( data2 ){
+				response.productFormerBlockID 		= response.productBlockID;
+				response.productBlockID 			= response.productNextBlockID;
+				response.productNextBlockID 		= this.calculateNextBlockID( response.productNote, response.productBlockID );
+				return this.saveBlock( response, client );
+			}
+			else {
+				//we check the product ids
+				const { data: data2, error: error2 } = await client
+				.from("blocks")
+				.select("*")
+				.eq("blockID", response.blockID )
+				.single();
+				
+				if( data2 ){
+					response.productFormerBlockID 		= response.productBlockID;
+					response.productBlockID 			= response.productNextBlockID;
+					response.productNextBlockID 		= this.calculateNextBlockID( response.productNote, response.productBlockID );
+					return this.updateBlock( response, client );
+				}
+			}
+		} else {
+			//we check the product ids
+			const { data: data2, error: error2 } = await client
+			.from("blocks")
+			.select("*")
+			.eq("blockID", response.blockID )
+			.single();
+			
+			if( data2 ){
+				response.productFormerBlockID 		= response.productBlockID;
+				response.productBlockID 			= response.productNextBlockID;
+				response.productNextBlockID 		= this.calculateNextBlockID( response.productNote, response.productBlockID );
+				return this.updateBlock( response, client );
+			}
+		}
+	}
+	
+	static async updateBlock(block, client) {
+    try {
+      let { data, error } = await client
+        .from('blocks')
+        .update({
+          blockID: block.blockID,
+          formerBlockID: block.formerBlockID,
+          nextBlockID: block.nextBlockID,
+          noteHash: block.noteHash,
+          transHash: block.transHash,
+          realHash: block.realHash,
+          totalHASH: block.totalHASH,
+          blockHash: block.blockHash,
+          noteSign: block.noteSign,
+          noteServer: block.noteServer,
+          noteValue: block.noteValue,
+          noteType: block.noteType,
+          transValue: block.transValue,
+          rankPref: block.rankPref,
+          transType: block.transType,
+          creditType: block.creditType,
+          transTime: block.transTime,
+          recipient: block.recipient,
+          referenceID: block.referenceID,
+          referenceKey: block.referenceKey,
+          splitID: block.splitID,
+          walletHASH: block.walletHASH,
+          formerWalletHASH: block.formerWalletHASH,
+          walletSign: block.walletSign,
+          blockKey: block.blockKey,
+          blockSign: block.blockSign,
+          blockRef: block.blockRef,
+          signRef: block.signRef,
+          agreements: block.agreements,
+          lastAgreeHash: block.lastAgreeHash,
+          agreeHash: block.agreeHash,
+          noteID: block.noteID,
+          expiry: block.expiry,
+          interestRate: block.interestRate,
+          interestType: block.interestType,
+          budgetRefs: block.budgetRefs,
+          budgetID: block.budgetID,
+          productID: block.productID,
+          agreement: block.agreement,
+          exchangeNote: block.exchangeNote,
+          exBlockID: block.exBlockID,
+          exNextBlockID: block.exNextBlockID,
+          exFormerBlockID: block.exFormerBlockID,
+          productBlockID: block.productBlockID,
+          productNextBlockID: block.productNextBlockID,
+          productFormerBlockID: block.productFormerBlockID
+        })
+        .select()
+		
+		if( error ){
+			this.errorMessage(`Couldn't insert into database because of ${error.message}. Error Details: ${error.details} and sugested fix: ${error.hint}; Code: ${error.code}`);
+			if(!this.regenerateBlockIds(response))
+				return false;
+		}
+
+        const budgets = ["CREATEBUDGET", "UPDATEBUDGET", "REMOVEBUDGET"];
+        const products = [];
+        const adverts = [];
+        let agreement = false;
+
+        if(block.agreement && budgets.includes(block.transType) && block.agreement.budgetID){
+			let {error: error2 } = await supabase
+          .from('budgets')
+          .update({
+            name					: block.agreement.name, //unique name for the budget, can be a business or website name.
+            value					: block.agreement.value, //the total value of a Scriptbill Budget. Always Used to Increase stock value manually
+            max_exec				: block.agreement.max_exec, //maximum time the budget would execute.
+            budgetID				: block.agreement.budgetID,//the public Key of the Budget,the private ke would be set on the note with the block ID where the budget is kept.
+            sleepingPartner 		: block.agreement.sleepingPartner, //this is the description for a sleeping investor.
+            workingPartner		: block.agreement.workingPartner, //this is the description for a working investor.
+            sleepingPartnerShare	: block.agreement.sleepingPartnerShare, //this is the rate that describes the sleepig investor share.
+            workingPartnerShare	: block.agreement.workingPartnerShare, //this is the rate that describes the sleepig investor share.
+            budgetItems			: block.agreement.budgetItems,//items that are in the budget that constitute the budget
+            budgetSign			: block.agreement.budgetSign, //the signature on the budget
+            budgetRef				: block.agreement.budgetRef,//reference to the budget signature.
+            budgetType			: block.agreement.budgetType, // "personal" & "family" tells that this budget 
+            //is not business related budget and won't accept investment. Any investment to this budget type will not 
+            //issue any stocks. "governmental" budget will issue bonds not stocks to the investor and used by 
+            //business managers and any persons or organization who support the economy, business budget will issue stocks to investor.
+            orientation			: block.agreement.orientation,//telling whether this budget is a "straight" or "recursive" 
+            //budget. If straight the budget block expires when the budget executes. but if recursive, the budget 
+            //block will renew until the time for the recursion stops.
+            recursion				: block.agreement.recursion,//used to describe how many times the budget will execute if the budget is a recursive budget
+            budgetSpread			: block.agreement.budgetSpread, //time required for the budget to spread after it has executed. Works for a recursive budgetType
+            budgetCredit			: block.agreement.budgetCredit, //the acceptable credit for investing and executing this budget. Budget credit should be set according to how the item in the budget is valued.
+            budgetDesc			  : block.agreement.budgetDesc, //the description of the budget. This will give investors view of what product or products that will be produced under this budget, and everything investors need to know about this budget.
+            budgetImages			: block.agreement.budgetImages,//array of image url that can describe the budget products and effects.
+            budgetVideos			  : block.agreement.budgetVideos, //array of videos that describe the budgets to investors.
+            companyRanks			  : block.agreement.companyRanks,//rank codes that will be occupied by users in the company. If you are employed in the company, a special rank code will be assigned you and the public key stored on the budget block
+            stockID				      : block.agreement.stockID,//default scriptbill stocks code.
+            investorsHub			  : block.agreement.investorsHub,//an array of hashes that can only be verified by people who hold stocks to this budget. This hash also test for the values on their stock note.
+            //if an investor sell his stock, the exchange market must test to see if the stock is 
+            //true by testing the hashes, deduct the sold value from his account, issue out money 
+            //to the seller and updating the hub hashes if only the investor hash stocks with the company who owns this budget. InvestorHub works majorly for business and 
+            //governmental budget types. Personal and Family budget types will not trade their 
+            //stocks because it does not have a real business value.
+            agreement				    : block.agreement.agreement,//describes the extra agreenebt the budget creator would like to have with 
+            //their investor. This should only be configured using the this.defaultAgree option.
+            
+          }).select()
+          agreement = block.agreement.agreement;
+		  error = error2;
+		  if( error ){
+				this.errorMessage(`Couldn't insert budget into database because of ${error.message}. Error Details: ${error.details} and sugested fix: ${error.hint}; Code: ${error.code}`);
+				return false;
+			}
+        } 
+        else if(block.agreement && products.includes(block.transType) && block.agreement.productConfig){
+			let {error: error3} = await supabase
+          .from('products')
+          .update( {
+              blockID		: block.blockID,
+              value			: block.agreement.productConfig.value,//the original value of the product.
+              units			: block.agreement.productConfig.units,//the units of products available in the System
+			  productID 	: block.productID,
+              totalUnits	: block.agreement.productConfig.totalUnits,//total units of product included to the scriptbill systems
+              name			: block.agreement.productConfig.name, // the name of the product.
+              description	: block.agreement.productConfig.description,//description of product, HTML allowed
+              images		: block.agreement.productConfig.images,//urls to images that describe the product
+              videos		: block.agreement.productConfig.videos, //urls to videos that describe the product
+              creditType	: block.agreement.productConfig.creditType, //the type of credit which the product is being valued.
+              sharingRate	: block.agreement.productConfig.sharingRate,//the profit sharing rate on the product
+              blockExpiry	: block.agreement.productConfig.blockExpiry, //tells time the transaction block of the buyer will expire.
+              budgetID		: block.agreement.productConfig.budgetID,//the ID of the budget the product belongs to. Budget IDs in the Scriptbill Network is an ID of a Company in the Network that manages the STOCK note credit the budget produces. business and governmental budget are budget that produces exchangeable credits in the network.
+              
+            }).select()
+          agreement = block.agreement;
+		  error 	= error3;
+		  if( error ){
+				this.errorMessage(`Couldn't insert product into database because of ${error.message}. Error Details: ${error.details} and sugested fix: ${error.hint}; Code: ${error.code}`);
+				return false;
+			}
+        } 
+
+        
+        else if(block.agreement && adverts.includes(block.transType) && block.agreement.advertID){
+		  let {error: error4} = await supabase
+          .from('adverts')
+          .update( {
+            blockID:block.blockID,
+            advertID : block.agreement.advertID,//this carries the id of the advert to be created
+            productID : block.agreement.productID,//this carries the product that the advert is promoting
+            viewers		: block.agreement.viewers, //number of viewers you are planning to send this advert to.
+            viewersShare : block.agreement.viewersShare,//this is the rate of the transvalue going to viewers.
+            publishers 	: block.agreement.publishers, //number of publishers you want to show this advert to.
+            publishShare 	: block.agreement.publishShare,//rate of advert funds going to publishers.
+            scope 		: block.agreement.scope, //this is the name of the area the advert will be shown to, people not living in this area won't participate in the view or view share of the advert.
+            banner 		: block.agreement.banner,//this is the url of the banner that this advert represent.
+            video 		: block.agreement.video,//this is the url of the video that will show this ads.
+            interest 	: block.agreement.interest,//an array of interest that you are targetting with your advert
+          }).select();
+		  
+		  error = error4;
+		  if( error ){
+				this.errorMessage(`Couldn't insert advert into database because of ${error.message}. Error Details: ${error.details} and sugested fix: ${error.hint}; Code: ${error.code}`);
+				return false;
+			}
+        } 
+        else if(block.agreement && block.agreement.agreeID){
+          agreement = block.agreement;
+        }
+        
+        if( agreement && agreement.agreeID ){
+			let {error: error5} = await supabase
+			.from('agreements')
+			.update({
+			  blockID: block.blockID,          
+			  agreeID			: agreement.agreeID, //this is the unique identifier of the agreement.
+			  agreeSign		: agreement.agreeSign, //this is the unique signature of the agreement, to be signed by the initiator of the agreement
+			  agreeKey		: agreement.agreeKey, //this is the public key to the agreement, used to verify the agreement signature and to verify the beneficiary account.
+			  senderSign		: agreement.senderSign, //this is the unique signature of the sender,
+			  senderID		: agreement.senderID, //this is the block ID of the sender, used as a signature text for the signature.
+			  senderKey		: agreement.senderKey, //key used by sender to sign this agreement
+			  recieverID		: agreement.recieverID, //this is the identifier of the block of the reciever, this is useful when other nodes want to accept the new agreement as valid.
+			  recieverKey		: agreement.recieverKey, //key used by reciever to sign this agreement
+			  maxExecTime		: agreement.maxExecTime, //this is the maximum time allowed for the agreement to last on the block chain. If this time elapses, the agreement would be executed by force,  forcing the note of the creator to reduce even to a negative value.
+			  agreeType		: agreement.agreeType,//this describes the type of agreement we are handling. values are "normal", which denotes that the agreement should be handled normally, that is if terms are not met agreement should be reverted to the sender. The "sendTo" type ensures that the funds are sent to a particular or an array of note addresses, specifying the values to be sent per address when the execution time reach or when the agreement terms are not met. "Loan" type specifies that the money was borrowed to the recipient and must be returned at the specified time. The "loan" type works with interest rates. "contract" agreement type works like budget for the recipient, because it tells how the recipient should use the money, base on an initial quote sent by the recipient in a QUOTE transaction
+			  ExecTime		: agreement.ExecTime, //this is the execution time for the agreement, this will only successfully run the agreement if and only if the note that holds the agreement has enough funds to sponsor the agreement, else agreement would not run but would wait until their is a RECIEVE transaction that would update the note'this.s value.
+			  value			: agreement.value, //this is the total value of the agreement, the transaction value of a transaction is mostly used here. For security reasons, this value cannot be larger than the value of the transaction.
+			  isPeriodic		: agreement.isPeriodic, //a boolean value that tells whether this should run periodically, if it will run periodically, the periodic value will be calculated
+			  times			: agreement.times, //works with the isPeriodic, if set to true, the value of this variable will be used against the value variable to determine how much the account will spend
+			  payTime			: agreement.payTime, //this is the time for the next payment, works when isPeriodic is set to true, else the execTime determines the payment
+			  payPeriod		: agreement.payPeriod, //this is the spread of payment that controls how scripts should set the payTime. If 1 week, when the payment has been executed, the pay period is used to calculate the next payTime.
+			  delayInterest	: agreement.delayInterest, //this determine the amount of interest that would be charged if the execTime is exceeded before the contract ends.
+			  interestType	: agreement.interestType, //This is the type of interest that would be charged; accepts SIMPLE & COMPOUND.
+			  interestSpread	: agreement.interestRate, //this determine the spread at which the interest will be calculated.
+			  interestRate    : agreement.interestRate,
+			  timeStamp		: agreement.timeStamp, //this is the signature of the timestamp of the agreement. This is designed to avoid duplicate agreement issues.
+			  realNonce		: agreement.realNonce,//hashed of the current note ID.
+			  recieverSign 	: agreement.recieverSign,//this is the signature on the agreement which is signed by the sender with the senders key to verify that the agreement has been met by the reciever. The sender will have to create an AGREEMENTSIGN transaction, referencing the blockID to the AGREEMENTREQUEST transaction sent by the reciever to obey this.
+			  quoteID			: agreement.quoteID,//this is the block ID to the reference block that has the quote to the agreement in a contract based agreement.
+			  sendAddress		: agreement.sendAddress,//this is the address or group of addresses to send the agreement value to, this correspond to a sendTo agreement type. if it is a group, then values to be sent to each address should be specified. If the execution time for each address is different, then this should be specified, else the general execution time will be followed for all address. 
+			
+		
+			})
+			.select();
+			
+			error = error5;
+			
+			if( error ){
+				this.errorMessage(`Couldn't insert agreement into database because of ${error.message}. Error Details: ${error.details} and sugested fix: ${error.hint}; Code: ${error.code}`);
+				return false;
+			}
+        }
+
+      
+      console.log('[v0] Block saved successfully:', data)
+      return data
+    } catch (err) {
+      console.error('[v0] Failed to save block:', err)
+      throw err
+    }
+  }
+
 
 	static async saveBlock(block, client) {
     try {
       let { data, error } = await client
         .from('blocks')
         .insert({
-          block_id: block.blockID,
-          former_block_id: block.formerBlockID,
-          next_block_id: block.nextBlockID,
-          note_hash: block.noteHash,
-          trans_hash: block.transHash,
-          real_hash: block.realHash,
-          total_hash: block.totalHASH,
-          block_hash: block.blockHash,
-          note_sign: block.noteSign,
-          note_server: block.noteServer,
-          note_value: block.noteValue,
-          note_type: block.noteType,
-          trans_value: block.transValue,
-          rank_pref: block.rankPref,
-          trans_type: block.transType,
-          credit_type: block.creditType,
-          trans_time: block.transTime,
+          blockID: block.blockID,
+          formerBlockID: block.formerBlockID,
+          nextBlockID: block.nextBlockID,
+          noteHash: block.noteHash,
+          transHash: block.transHash,
+          realHash: block.realHash,
+          totalHASH: block.totalHASH,
+          blockHash: block.blockHash,
+          noteSign: block.noteSign,
+          noteServer: block.noteServer,
+          noteValue: block.noteValue,
+          noteType: block.noteType,
+          transValue: block.transValue,
+          rankPref: block.rankPref,
+          transType: block.transType,
+          creditType: block.creditType,
+          transTime: block.transTime,
           recipient: block.recipient,
-          reference_id: block.referenceID,
-          reference_key: block.referenceKey,
-          split_id: block.splitID,
-          wallet_hash: block.walletHASH,
-          former_wallet_hash: block.formerWalletHASH,
-          wallet_sign: block.walletSign,
-          block_key: block.blockKey,
-          block_sign: block.blockSign,
-          block_ref: block.blockRef,
-          sign_ref: block.signRef,
+          referenceID: block.referenceID,
+          referenceKey: block.referenceKey,
+          splitID: block.splitID,
+          walletHASH: block.walletHASH,
+          formerWalletHASH: block.formerWalletHASH,
+          walletSign: block.walletSign,
+          blockKey: block.blockKey,
+          blockSign: block.blockSign,
+          blockRef: block.blockRef,
+          signRef: block.signRef,
           agreements: block.agreements,
-          last_agree_hash: block.lastAgreeHash,
-          agree_hash: block.agreeHash,
-          note_id: block.noteID,
+          lastAgreeHash: block.lastAgreeHash,
+          agreeHash: block.agreeHash,
+          noteID: block.noteID,
           expiry: block.expiry,
-          interest_rate: block.interestRate,
-          interest_type: block.interestType,
-          budget_refs: block.budgetRefs,
-          budget_id: block.budgetID,
-          product_id: block.productID,
+          interestRate: block.interestRate,
+          interestType: block.interestType,
+          budgetRefs: block.budgetRefs,
+          budgetID: block.budgetID,
+          productID: block.productID,
           agreement: block.agreement,
-          exchange_note: block.exchangeNote,
-          ex_block_id: block.exBlockID,
-          ex_next_block_id: block.exNextBlockID,
-          ex_former_block_id: block.exFormerBlockID,
-          product_block_id: block.productBlockID,
-          product_next_block_id: block.productNextBlockID,
-          product_former_block_id: block.productFormerBlockID
+          exchangeNote: block.exchangeNote,
+          exBlockID: block.exBlockID,
+          exNextBlockID: block.exNextBlockID,
+          exFormerBlockID: block.exFormerBlockID,
+          productBlockID: block.productBlockID,
+          productNextBlockID: block.productNextBlockID,
+          productFormerBlockID: block.productFormerBlockID
         })
         .select()
 		
 		if( error ){
 			this.errorMessage(`Couldn't insert into database because of ${error.message}. Error Details: ${error.details} and sugested fix: ${error.hint}; Code: ${error.code}`);
-			return false;
+			if(!this.regenerateBlockIds(response))
+				return false;
 		}
 
         const budgets = ["CREATEBUDGET", "UPDATEBUDGET", "REMOVEBUDGET"];
@@ -10055,9 +10596,10 @@ static Base64 = {
 			let {error: error3} = await supabase
           .from('products')
           .insert( {
-              block_id:block.blockID,
+              blockID		: block.blockID,
               value			: block.agreement.productConfig.value,//the original value of the product.
               units			: block.agreement.productConfig.units,//the units of products available in the System
+			  productID 	: block.productID,
               totalUnits	: block.agreement.productConfig.totalUnits,//total units of product included to the scriptbill systems
               name			: block.agreement.productConfig.name, // the name of the product.
               description	: block.agreement.productConfig.description,//description of product, HTML allowed
@@ -10082,7 +10624,7 @@ static Base64 = {
 		  let {error: error4} = await supabase
           .from('adverts')
           .insert( {
-            block_id:block.blockID,
+            blockID:block.blockID,
             advertID : block.agreement.advertID,//this carries the id of the advert to be created
             productID : block.agreement.productID,//this carries the product that the advert is promoting
             viewers		: block.agreement.viewers, //number of viewers you are planning to send this advert to.
@@ -10109,7 +10651,7 @@ static Base64 = {
 			let {error: error5} = await supabase
 			.from('agreements')
 			.insert({
-			  block_id: block.blockID,          
+			  blockID: block.blockID,          
 			  agreeID			: agreement.agreeID, //this is the unique identifier of the agreement.
 			  agreeSign		: agreement.agreeSign, //this is the unique signature of the agreement, to be signed by the initiator of the agreement
 			  agreeKey		: agreement.agreeKey, //this is the public key to the agreement, used to verify the agreement signature and to verify the beneficiary account.
@@ -10157,7 +10699,7 @@ static Base64 = {
     }
   }
 
-	static createClient(isNote = false,  superbaseUrl = "https://svtbqnysmjffbstuotwd.supabase.co",superbaseKey= "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN2dGJxbnlzbWpmZmJzdHVvdHdkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM2OTE4NDcsImV4cCI6MjA3OTI2Nzg0N30.5DTPDygrRnQDW5W-NadS7cYr_PmQuVGC5K8BXWBsqtQ" ){
+	static createClient(isNote = false,  superbaseUrl = "https://vqbbepojwyaojyboazrt.supabase.co",superbaseKey= "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZxYmJlcG9qd3lhb2p5Ym9henJ0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyMjMzMzIsImV4cCI6MjA4NTc5OTMzMn0.RUq-VICBBiOEHLDcN135isAFtoqlCVFxMvDJc5kny3k" ){
 
 		if(! supabase )  return false;
 
@@ -11188,7 +11730,7 @@ static Base64 = {
 		if( ! response.productNote ) return response;
 
 		const exchangeID = response.productBlockID;
-		const blocks 	= await this.getTransBlock(-1, {productBlockID: exchangeID});
+		const blocks 	= await this.getTransBlock(100, {productBlockID: exchangeID});
 
 		//if more than one blocks has the same exchange ID in the exchange server we re-iterate
 		if( blocks.length > 1 ){
@@ -15500,6 +16042,8 @@ static Base64 = {
 				let map 	= await access.getFileHandle( directory + "Map.txt", {create:true} ).catch(error =>{this.errorMessage( error.toString() );  return false;});
 				
 				
+				
+				
 				if( map && dataID != "ALL"){
 					//console.log( 'map gotten ' + dataID );
 					file 	= await map.getFile();
@@ -15641,7 +16185,35 @@ static Base64 = {
 									} catch( e ){
 										//console.log(e);
 									}
-								}); 
+								});
+
+							if( ! mop.length ){
+								//alert("entering");
+								let blockIds = mappings.blockID, retData;
+								console.log("blockIDS gotten: ", blockIds );
+								for( let x = 0; x < blockIds.length; x++ ){
+									blockID = blockIds[x];
+									console.log("block ID working with: ", blockID, "number: ", x );
+									blockData 	= await access.getFileHandle( blockID.replaceAll( /[^a-zA-Z0-9]/g, "_" ) + ".txt", {create:false} ).catch( error =>{ this.errorMessage( error.toString()); return false; });
+									if( blockData ){
+										//console.log( 'block data found ' + blockID);
+										file 	= await blockData.getFile();
+										//console.log('getting retData... ' );
+										text 	= await file.text();
+										//console.log('retData: ' + text );
+										if( text && this.isJsonable( text ) ){
+											retData 	= JSON.parse( text );
+										} else {
+											retData 	= text;
+										}
+										//console.log( 'retData data found ' + retData );
+									}
+									
+									if( retData[dataID] == value ){
+										mop.push(retData);
+									}
+								}
+							}
 							
 							return mop;
 								
@@ -16827,7 +17399,7 @@ static Base64 = {
 			}
 			
 			else if( ! this.l.personal )		
-				this.walletID = this.hashed( string );//using the current time as seed makes the new walvar id being created very unique.
+				this.walletID = this.hashed( this.currentTime() );//using the current time as seed makes the new walvar id being created very unique.
 			
 			this.walletID 		= this.walletID.replaceAll("/","").replaceAll("+","");
 			
@@ -20819,7 +21391,7 @@ static Base64 = {
 					var id 				= await this.generateKey(10);
 					await this.setPrivateKey( budgetID, id );
 					this.budgetID	= await this.getPublicKey(id);
-					let budget 		= await this.getTransBlock(10, {budgetID: this.budgetID});
+					let budget 		= await this.getTransBlock(10, {budgetID: this.budgetID, transType: "CREATEBUDGET"});
 					budget 			= await this.getCurrentBlock( budget );
 					budgetID		= await this.getPublicKey(id);
 					/* let budgets = note.noteBudgets, budget;
@@ -20856,7 +21428,9 @@ static Base64 = {
 						}
 					}
 				 */	
-				 console.log("Budget Gotten:", budget, "Budget ID: ", budgetID );
+				 
+					newBlock.productNote 		= budget.productNote;
+					console.log("Budget Gotten:", budget, "Budget ID: ", budgetID, "scriptbank: ", ! this.isScriptbankProduct );
 					if( ( ! budgetID || ! budget || ! budget.productNote || ! budget.productNote.exchangeID == newBlock.productNote.exchangeID || ! budget.agreement || budget.agreement.budgetType != "business" ) && ! this.isScriptbankProduct ){
 						this.errorMessage("Can't Create a Product In the Scriptbill Network Without a Valid Business Budget. Create a Business Budget First and Then Try Creating Your Product Again.");
 						return false;
@@ -20903,7 +21477,6 @@ static Base64 = {
 					//add the product details as agreement to the block.
 					
 					newBlock.agreement 			= details.agreement;
-					newBlock.productNote 		= budget.productNote;
 										
 					//add the business manager key to the block as a refferal.
 					if( note.BMKey ){
@@ -26637,7 +27210,7 @@ static Base64 = {
 		}
 	}
 	
-	static async getData( key, data, url = "", type = "GET" ){
+	static async getData( key, data, url = "", type = "GET", limit = 100 ){
 		//console.log("getData running " + this.funcUp[ this.funcUp.length] );
 		let funcUp  = this.funcUp[ this.funcUp.length];
 		this.funcUp[ this.funcUp.length] = "getData";
@@ -26749,11 +27322,12 @@ static Base64 = {
 					
 
 					const datas = await Promise.all(data.map( async (dat,  x)=>{
+						//console.log("key: ", key[x], key[x].toLowerCase() )
 						const {data: datad} 	= await client
 											.from("block")
 											.select("*")
-											.eq(key[x], dat)
-											.limit(100)
+											.eq(key[x].toLowerCase(), dat)
+											.limit(limit)
 						return datad;
 					}))
 					return datas.reduce((all, dat, x)=>{
@@ -26770,8 +27344,8 @@ static Base64 = {
 					const {data:datad}  = await client
 						.from("blocks")
 						.select("*")
-						.eq(key, data)
-						.limit(100)
+						.eq(key.toLowerCase(), data)
+						.limit(limit)
 						return datad?.length == 1 ?  datad[0]:datad;
 				}
 				
@@ -29015,6 +29589,103 @@ static Base64 = {
 		}
 		
 		return result;
+	}
+	
+	static async #createDefaultBudget(){
+		let note 		= await this.#createDefaultNote();
+		let noteBlock 	= Object.assign( this.defaultBlock );
+		let id 		  	= await this.generateKey(10);
+		
+		//first the transaction type must be create budget
+		noteBlock.transType 	= "CREATEBUDGET";
+		
+		//the transaction value would be 1;
+		noteBlock.transValue 	= 1;
+		
+		//the note value would be 1 too
+		noteBlock.noteValue 	= 1;
+		noteBlock.noteSign 		= note.noteSign;
+		
+		//add the block key
+		this.setPrivateKey( note.blockKey, id );
+		noteBlock.blockKey 		= await this.getPublicKey( id );
+		
+		//now lets sign the block
+		noteBlock.transTime 	= this.currentTime();
+		noteBlock.blockSign 	= await this.Sign( note.blockKey, noteBlock.transTime );
+		
+		//let's add the budgetID to the block
+		this.setPrivateKey( note.budgetID, id );
+		noteBlock.budgetID 		= await this.getPublicKey( id );
+		noteBlock.exchangeNote.budgetID = noteBlock.budgetID;
+		noteBlock.exchangeNote.noteValue = 1;
+		
+		//next up we calculate the hashes.
+		noteBlock.blockHash 	= this.hashed( JSON.stringify( noteBlock ) );
+		note.blockHash 			= noteBlock.blockHash.slice( 0, Math.round( noteBlock.blockHash.length / 2 ) );
+		noteBlock.totalHASH 	=  noteBlock.blockHash;
+		noteBlock.blockHash  	= noteBlock.blockHash.slice( Math.round( noteBlock.blockHash.length / 2 ), noteBlock.blockHash.length );
+		noteBlock.realHash 		= note.noteHash;
+		
+		//let's
+		noteBlock.noteHash 		= this.hashed( JSON.stringify( note ) );
+		note.noteHash 			= noteBlock.noteHash.slice( 0, Math.round( noteBlock.noteHash.length / 2 ) );
+		noteBlock.noteHash 		= noteBlock.notehash.slice( Math.round( noteBlock.noteHash.length / 2 ), noteBlock.noteHash.length );
+		
+		return await this.storeBlock( noteBlock, note ).then( saved =>{
+			return this.download_note( note );
+		}).then( downloaded =>{
+			return note;
+		});
+		
+		
+		
+		
+	}
+	
+	static async #createDefaultNote(){
+		let note = Object.assign(this.defaultScriptbill);
+		//since scriptbill is just a one currency system we use one for the note value
+		note.noteValue = 1;
+		//the note starts with the secret, so let's create it
+		note.noteSecret 	= await this.generateKey( 10, true );
+		let id 				= await this.generateKey(10);
+		
+		//now we can create the note address being the public key to the note secret.
+		this.setPrivateKey( note.noteSecret, id );
+		note.noteAddress 	= await this.getPublicKey( id );
+		
+		//now let's generate the wallet ID for the default note
+		note.walletID 		= this.hashed( this.currentTime());
+		
+		//the note needs a budget to be valid, so we create the budget ID for the note which should be the private key to the budget that would be created.
+		note.budgetID 		= await this.generateKey( 10, true );
+		
+		//the note ID for this note must allso be created,
+		note.noteID 		= await this.generatekey(4);
+		note.noteKey 		= await this.generateKey(10);
+		
+		//the scriptbill block key
+		note.blockKey 		= await this.generateKey(10, true, true);
+		
+		//the transaction value this will be 1 since that's the protocol
+		note.transValue 	= 1;
+		
+		//next we create the current block hash from the default block.
+		note.blockHash 		= this.hashed( JSON.stringify( this.defaultBlock) );
+		
+		//next the transHash, this will change when we create the budget block now.
+		note.transHash 		= note.blockHash.slice( 0, Math.round( note.blockHash.length / 2 ) );
+		
+		//add the note hash to the equation 
+		note.noteHash		= this.hashed( JSON.stringify( note ) );
+		note.noteSign 		= await this.Sign(note.blockKey, note.noteHash );
+		
+		this.#note 			= Object.assign(note);
+		//after creating the note, we download it first to the user using this function currently
+		return await this.download_note().then( download =>{
+			return note;
+		});	
 	}
 	
 	static async createScriptbillBudgetItem( budgetID ){
