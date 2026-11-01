@@ -31,7 +31,7 @@ let requestSuccess		= window.location.origin + '/request-money-success';
 let withdrawConfirm	= window.location.origin + '/withdraw-money-confirm';
 let withdrawSuccess	= window.location.origin + '/withdraw-money-success';
 let notificationUrl	= window.location.origin + '/profile-notifications';
-let buyProduct		= window.location.origin + '/buyProduct';
+let buyProduct		= window.location.origin + '/buy-product';
 let buyWebsite		= window.location.origin + '/buyWebsite';
 let buyStocks		= window.location.origin + '/buyStocks';
 let sellWebsite		= window.location.origin + '/sellWebsite';
@@ -40,6 +40,7 @@ let createAds		= window.location.origin + '/create-advert';
 let createItem		= window.location.origin + '/create-item';
 let createBudget		= window.location.origin + '/create-budget';
 let sellProduct		= window.location.origin + '/sell-product';
+let budgetSuccess 	= window.location.origin + '/create-budget-success';
 let conUrl   		= new URL( window.location.href );
 
 function generateRandomString(source, length){
@@ -52,6 +53,8 @@ function generateRandomString(source, length){
 
 function scanWallets(){
 	if(!Scriptbill.s.currentNote) return;
+
+	let note 	= JSON.parse( Scriptbill.s.currentNote );
 
 	fetch('/wallets.json').then(response => response.json()).then( async wallets =>{
 		
@@ -700,12 +703,12 @@ var socialShareHTML = `<div class="share-button">
 //preloader.style.display = "block";
 
 const transKEEY 		= Scriptbill.transactionKey;
-Scriptbill.referee 		= Scriptbill.l.referee ? Scriptbill.l.referee : EXCHANGEKEY.slice(0, 24);
+Scriptbill.referee 		= Scriptbill.l.referee ? Scriptbill.l.referee : EXCHANGEKEY.slice(0, 42);
 
 setTimeout( async function(){
 	let data = await Scriptbill.getData( 'referee', 'true', SERVER );
 	
-	if( data && data.length <= 24 ){
+	if( data && data.length >= 24 ){
 		Scriptbill.l.referee = data;
 	}
 }, 200 );
@@ -1416,13 +1419,23 @@ var checkClick = function(el){
 	
 	if( ! input ) return false;
 		
-	if( input.getAttribute("type") == "password" ){
+	if( input.getAttribute("type") == "password" || input.style.webkitTextSecurity == "disc" ){
+		let type = input.getAttribute(`type`);
 		input.setAttribute("type", "text");
+		if(input.style.webkitTextSecurity){
+			input.style.webkitTextSecurity = "none";
+			input.setAttribute("type", type);
+		}
 		el.querySelector("i").setAttribute("class", "fa fa-eye-slash");
 	}
 	else {
-		input.setAttribute("type", "password");
-		el.querySelector("i").setAttribute("class", "fa fa-eye");
+		if(input.style.webkitTextSecurity){
+			input.style.webkitTextSecurity = "disc"
+		} else {
+			input.setAttribute("type", "password");			
+		}
+
+		el.querySelector("i").setAttribute("class", "fa fa-eye");		
 	}
 }
 
@@ -1460,7 +1473,7 @@ if(  ( Scriptbill.s.uploadedNote || Scriptbill.l.uploadedNote ) && ! Scriptbill.
 					
 		let pass = "";
 			
-		if( ! Scriptbill.s.currentNote || ! Scriptbill.isJsonable( Scriptbill.s.currentNote ) && ( location.href.includes( signupUrl ) && location.href.includes( loginUrl ) ) ){
+		if( (! Scriptbill.s.currentNote || ! Scriptbill.isJsonable( Scriptbill.s.currentNote )) && ( location.href.includes( signupUrl ) && location.href.includes( loginUrl ) ) ){
 			Scriptbill.pass = pass;
 			Scriptbill.user_input = false;
 			
@@ -2343,6 +2356,7 @@ if( location.href.includes( signupUrl ) ){
 		
 		
 		this.innerText 				= " Please Wait...";
+		this.setAttribute("disabled", "disabled");
 		Scriptbill.string 			= address.value + email.value  + Scriptbill.currentTime();
 		let privKey 				= btoa( await Scriptbill.hashed() );
 		let note 					= Scriptbill.defaultScriptbill;
@@ -2397,6 +2411,7 @@ if( location.href.includes( signupUrl ) ){
 					console.log(block);
 					if( block && block.transType == "CREATE" ){
 						this.innerText = "Wallet Created Successfully...";
+						Scriptbill.storeUserBlock(block);
 						
 						setTimeout( async ()=>{
 							Scriptbill.setCurrentNote().then( async currentNote =>{
@@ -2656,7 +2671,14 @@ function  setWithdrawalStance(el){
 if( location.href.includes( dashboardUrl ) ){
 loadingDiv();	
 setAccountRank();
-checkModals();                                                                      //await Scriptbill.createAlert('running start');
+checkModals();
+
+if(Scriptbill.s.redirect_url){
+	let redirect = Scriptbill.s.redirect_url;
+	delete Scriptbill.s.redirect_url;
+	location.href = redirect;
+}
+ //await Scriptbill.createAlert('running start');
 	let noteAdd			= document.getElementById("noteAddress");
 	let walletEl		= document.getElementById("walletID");
 	let addCard			= document.getElementById("cardAdd");
@@ -2822,10 +2844,11 @@ checkModals();                                                                  
 			removeLoadingDiv();
 			//await Scriptbill.createAlert('running end');
 		} else {
-			/* delete Scriptbill.s.currentNote;
+			 delete Scriptbill.s.currentNote;
 			delete Scriptbill.s.uploadedNote;
 			delete Scriptbill.l.uploadedNote;
-			location.href = "/HTML/login"; */			
+			delete Scriptbill.l.currentNote;
+			location.href = loginUrl;			
 		}
 		//preloader.style.display = "none";cmbf2023-dev
 	}, 500);
@@ -3952,7 +3975,7 @@ if( location.href.includes( bankUrl ) ){
 	});
 }
 
-if( location.href.includes( loanUrl ) ){
+if( location.href.includes( loanUrl ) && ! location.href.includes( loanConfirm )){
 	if( ! Scriptbill.s.currentNote || ! Scriptbill.isJsonable( Scriptbill.s.currentNote ) )
 		location.href = loginUrl;
 	
@@ -4232,7 +4255,7 @@ if( location.href.includes( loanSuccess ) ){
 	
 }
 
-if( location.href.includes( depositUrl ) ) {
+if( location.href.includes( depositUrl ) && ! location.href.includes( depositConfirm )  && ! location.href.includes( depositSuccess )) {
 	if( ! Scriptbill.s.currentNote || ! Scriptbill.isJsonable( Scriptbill.s.currentNote ) )
 		location.href = loginUrl;
 	
@@ -4327,7 +4350,7 @@ if( location.href.includes( depositUrl ) ) {
 	sendMoney.value="";
 	
 	sendMoney.oninput 		= function(){
-		summary.innerHTML = sendMoney.value + ' ' + currency.value;
+		summary.innerHTML = formatCurrency(parseFloat(sendMoney.value)) + ' ' + currency.value;
 		if( Scriptbill.s.withdrawBlock ){
 			try {
 				let block = JSON.parse( Scriptbill.s.withdrawBlock );
@@ -4346,10 +4369,10 @@ if( location.href.includes( depositUrl ) ) {
 		}
 
 		if( payment.value == "credit" )
-			fees.innerHTML = ( parseFloat(sendMoney.value) / 0.1 ).toFixed(2) + " " + currency.value;
+			fees.innerHTML = ( parseFloat(sendMoney.value) * 0.1 ).toFixed(2) + " " + currency.value;
 
 		else 
-			fees.innerHTML = ( parseFloat(sendMoney.value) / 0.01 ).toFixed(2) + " " + currency.value;
+			fees.innerHTML = ( parseFloat(sendMoney.value) * 0.01 ).toFixed(2) + " " + currency.value;
 	}
 	
 	payment.onchange = function(){
@@ -4446,7 +4469,21 @@ if( location.href.includes( depositConfirm ) ){
 
 		if( sendConfig.paymentMethod == "credit" ){
 			cardType.parentElement.querySelector("label").innerText = "Cards";
-			setTimeout( async ()=>{			
+			setTimeout( async ()=>{	
+				//before we get the cards the user has let's check from the exchangeNote server to check if the server note has credit to sell
+				let value 			= await Scriptbill.getChannelData("note_value", "buy_credit", "true").catch(err => false);
+				
+				if(Number.isFinite(Number(value)) ){
+					if( parseFloat(value) < sendConfig.value ){
+						await this.createAlert(`Exchange Market does not seems to have credit to sell, please use the bank option when trying to deposit`);
+						location.href = depositUrl;
+						return;
+					}
+				} else {
+					await this.createAlert(`Exchange Market does not seems to have credit to sell, please use the bank option when trying to deposit`);
+					location.href = depositUrl;
+					return;
+				}
 				if( cards && cards.length ){
 					let x, card;
 					cardType.innerHTML = "";
@@ -5572,7 +5609,7 @@ if( location.href.includes( sendUrl ) ){
 	});
 }
 
-if( location.href.includes( requestUrl ) ){
+if( location.href.includes( requestUrl ) && ! location.href.includes(requestSuccess) ){
 	if( ! Scriptbill.s.currentNote || ! Scriptbill.isJsonable( Scriptbill.s.currentNote ) )
 		location.href = loginUrl;
 	
@@ -5690,6 +5727,8 @@ if( location.href.includes( requestUrl ) ){
 		window.jQuery('#paymentDue').val(chosen_date.format('MM-DD-YYYY'));
 		}); 
 }
+
+
 
 async function generateBankAccountNumber(token, isTest = true){
     const url = isTest ? "https://sandbox-api-d.squadco.com/virtual-account":"https://api-d.squadco.com/virtual-account";
@@ -6054,7 +6093,224 @@ if( location.href.includes( requestSuccess ) ){
 	});
 }
 
+if( location.href.includes( budgetSuccess ) ){
+	if( ! Scriptbill.s.currentNote || ! Scriptbill.isJsonable( Scriptbill.s.currentNote ) ){
+		location.href = loginUrl;
+	}
+	
+	if( ! Scriptbill.s.sendConfig ){
+		location.href = createBudget;
+	}
+	
+	
+	let urle = new URL(location.href);
+	let webSale = urle.searchParams.get("sellWeb");
+	let ads = urle.searchParams.get("ads");
+	let stockSale = urle.searchParams.get("stockSale");
+	let addItem = urle.searchParams.get("addItem");
+	let error 	= urle.searchParams.get("error");
+	let message		= urle.searchParams.get("message");
+	
+	//getting the data
+	let note = JSON.parse( Scriptbill.s.currentNote );
+	let config = JSON.parse( Scriptbill.s.requestMoneyConfig );
 
+	//deleting the money config.
+	delete Scriptbill.s.requestMoneyConfig;
+	
+	
+	
+	//getting the success elements.
+	let success 		= document.getElementById("success");
+	let icon 			= success.querySelector("i.fas.fa-check-circle.icon");
+	let successTxt		= success.querySelector("p.text-center.text-success.text-8.line-height-07.success");
+	let status			= success.querySelector("p.text-center.text-4.details");
+	let statusTxt		= success.querySelector("p.text-center.text-3.mb-4.successText");
+	let amount			= success.querySelector("span.text-4.font-weight-500.amount");
+	let recipient		= success.querySelector("span.font-weight-500.recipient");
+	let button			= success.querySelector("button.btn.btn-primary.btn-block.repeat");
+	let print			= success.querySelector("button.btn.btn-link.btn-block.print");
+	let testType    	= note.noteType.slice(0, note.noteType.lastIndexOf("CRD"));
+	
+	if( config.storeName )
+		button.innerText 	= "Sell Another Product";
+	
+	let classes, head;
+	fetch("/currencies.json").then( resp =>{ return resp.json(); } ).then( async result =>{
+		if( error ){
+			classes 	= icon.getAttribute("class");
+			classes 	= classes.replace("fa-check-circle", "fa-times-circle");
+			icon.setAttribute("class", classes);
+			head 		= icon.parentElement;
+			classes		= head.getAttribute("class");
+			classes 	= classes.replace("text-success", "text-error");
+			head.setAttribute("class", classes);
+			successTxt.innerHTML 	= "Error";
+			classes		= successTxt.getAttribute("class");
+			classes 	= classes.replace("text-success", "text-error");
+			status.innerHTML = "Transaction Incomplete";
+			statusTxt.innerHTML = 'For Some Reason we Couldn\'t Successfully Process Your Request Transaction. You Can Try Again or <a href="https://scriptbank.ng/contact-us">Contact Scriptbank</a> for Assistance.';
+			print.style.display = "none";
+		} else {
+			let symbol = testType;
+			
+			if( result[ testType ] ){
+				symbol 		= result[ testType ].symbol;
+			}
+			
+			let html 	= statusTxt.innerHTML;
+			statusTxt.innerHTML	= "";
+			
+			if( webSale ){
+				statusTxt.innerHTML = `You've Succesfully Sold <span class="script-text-green">${config.storeUrl}</span>, at ${formatCurrency( config.value )} ${config.currency}. You have ${config.stake} left on this website. Funds will be coming from any prospective users of Scriptbills Cryptonote. Scriptbank will also assist in the sale. You should note that website purchasers will be able to manage your business through the decentralized budget created by this business.`;
+				
+				if( config.stake )
+					button.innerText 	= "Sell Website Again";
+				
+				else {
+					button.setAttribute("disabled", "disabled");
+					button.innerText 	= "Can't Sell Website";
+				}
+				
+				button.onclick = function(){
+					location.href = sellWebsite;
+				}
+			} else if(ads){
+				statusTxt.innerHTML = `Ads had been successfully created with a budget amount of ${formatCurrency( config.value )}. Your ads will have ${ config.viewers } of viewers, who will be paid ${config.viewersShare} percent from the budget, and ${config.clickers} of clickers who will also share ${config.clickersShare} from the budget. You will also have ${config.publishers} possible publishers from this advert who will share ${config.publishersShare} from the budget`;
+				if( note.noteValue > 0 || ( config.block && config.block.productNote && config.block.productNote.exchangeValue > 0 ) )
+					button.innerText 	= "Buy Ads Again";
+				
+				else {
+					button.setAttribute("disabled", "disabled");
+					button.innerText 	= "Can't buy ads";
+				}
+				
+				button.onclick = function(){
+					location.href = createAds;
+				}
+			} else if( stockSale ){
+				statusTxt.innerHTML = `You have successfully sold ${formatCurrency( parseFloat( config.recipientValue / config.value ) )} number of stock from your stock. You should be able to get funds into this note with address of ${ note.motherKey } as soon as a prospect purchase the stock. Value to be expected currently is ${formatCurrency( config.recipientValue )} ${config.currency}, and may depend on the time the stock ends up being purchased.`;
+				if( note.noteValue > 0 )
+					button.innerText 	= "Sell Stocks Again";
+				
+				else {
+					button.setAttribute("disabled", "disabled");
+					button.innerText 	= "Can't sell stocks";
+				}
+				button.onclick = function(){
+					location.href = sellStocks;
+				}
+			} else if(addItem){
+				statusTxt.innerHTML = `Budget Item has been successfully added to your budget with ID of ${config.recipient} and would be executed automatically in ${config.budgetExecutionTime}.`;
+				button.innerText 		= "Add More Items";
+				button.onclick = function(){
+					location.href = createItem;
+				}
+			} else {
+				statusTxt.innerHTML = html;
+				amount 		= statusTxt.querySelector(".amount");
+				recipient 	= statusTxt.querySelector(".recipient");//recipient
+				amount.innerText = testType + " " + config.value;
+				
+				if( config.storeName ){
+					recipient.innerText = config.storeName;
+					statusTxt.innerHTML = statusTxt.innerHTML.replace("You've successfully", "You've successfully Added Product of " );
+					statusTxt.innerHTML = statusTxt.innerHTML.replace("Request Money to", " as a direct product to the Scriptbill Database System, your Store ID is: " );
+					
+				}
+				else {
+					recipient.innerText = config.recipient;
+				}
+				
+			}
+			
+			if( message ) {
+				statusTxt.innerHTML += message + socialShareHTML;
+				/* navigator.clipboard.writeText( message );
+				await Scriptbill.createAlert( "Message Copied to clipboard, You can share this transaction with the recipient by sharing the QRCode or attaching downloaded file through any communication medium. Remember to paste the message on your clipboard as it will stand as a guide to your recipient, you can also edit as desired." ); */
+				let inter = setInterval( ()=>{
+					let share = document.querySelector(".share-button");
+					
+					if( ! share )
+						return;
+					
+					clearInterval( inter );
+					let items 	= share.querySelectorAll(".share-item"), item;
+					for( let x = 0; x < items.length; x++ ){
+						item 	= items[x];
+						let check = false;
+							
+						if( item.querySelector(".fa-copy") ){
+							check = "Copy";
+						} else if( item.querySelector(".fa-email")){
+							check = "Email";
+							let subject = "I've Sent You Money".replace(" ", "%20");
+							message 	= message.replace(" ","%20");
+							item.setAttribute("href", "mailto:" + config.recipient + "?subject=" + subject + "body=" + message );
+						}else if( item.querySelector(".fa-whatsapp")){
+							check = "WhatsApp";
+							message 	= message.replace(" ","%20");
+							item.setAttribute("href", "https://wa.me/" + config.recipient + "?text=" + message );
+						}else if( item.querySelector(".fa-sms")){
+							check = "SMS";
+							message 	= message.replace(" ","%20");
+							item.setAttribute("href", "sms:" + config.recipient + "?&body=" + message );
+						}
+						item.onclick = function(){
+							navigator.clipboard.writeText( message );							
+						}
+					}
+				}, 1000 );
+			}
+			
+			amount.innerHTML 		= symbol + '' + config.value;
+			recipient.innerHTML 	= config.recipient;
+		}
+		
+		print.onclick = async function(){
+			let qrContent = "";
+			
+			let block = false;
+				
+			if( typeof( config.block.length ) == "number" ){
+				block 		= JSON.parse( JSON.stringify( config.block[0] ) );
+			} else {
+				block 		= JSON.parse( JSON.stringify( config.block ) );
+			}
+			if( config.transKey && Scriptbill.s.splitted ) {
+				let a 		= document.createElement("a");
+				let blob 	= new Blob([Scriptbill.s.splitted, {'type': 'application/octet-stream'}])
+				a.href 		= window.URL.createObjectURL( blob );
+				a.download 	= "splittedNote.txt";
+				a.click();
+
+				let url 	= new URL(buyProduct);
+				url.searchParams.set("data", Scriptbill.Base64.encode( JSON.stringify({"blockID": block.blockID, "type":"SPLIT", "rep":config.recipient, "server": note.noteServer} ) ) );
+				
+				qrContent 	= url.href;
+			} else if( config.block ){
+				let url 	= new URL(buyProduct);
+				url.searchParams.set("data",Scriptbill.Base64.encode( JSON.stringify( {"blockID": config.block.blockID, "type":"CREDIT", "rep":config.recipient, "server": note.noteServer } ) ));
+				qrContent = url.href;
+				
+			} else await Scriptbill.createAlert('no Transaction block set');
+			
+			if( block && block.blockID )
+				generateQRCode( JSON.stringify( qrContent ), block.blockID );
+			
+			else 
+				generateQRCode( JSON.stringify( qrContent ));
+		}
+		
+		button.onclick = function(){
+			location.href = config.storeName ? sellProduct : requestUrl;
+		}
+		
+		//removing temp data
+		delete Scriptbill.s.requestMoneyConfig;
+		delete Scriptbill.s.requestProcessing;
+	});
+}
 if( location.href.toLowerCase().includes( buyProduct.toLowerCase() ) ){
 	
 	let redirect 	= location.href;
@@ -6063,6 +6319,10 @@ if( location.href.toLowerCase().includes( buyProduct.toLowerCase() ) ){
 	let productID 	= url.searchParams.get("location");
 	let amount	 	= url.searchParams.get("amount");
 	let cur 	 	= url.searchParams.get("currency");
+
+	if( ! productID && Scriptbill.s.currentProductID ){
+		productID 		= Scriptbill.s.currentProductID;
+	}
 	
 	if( ! productID && ! Scriptbill.s.buyConfig )
 		location.href 	= dashboardUrl;
@@ -6233,6 +6493,7 @@ if( location.href.toLowerCase().includes( buyProduct.toLowerCase() ) ){
 					//show the periodic agreement div
 					biddersTerm.click();
 				}
+
 				recieve.value = 	( send.value * rates ) - ( ( send.value * rates ) * toPay );
 				recieve.setAttribute("disabled", "disabled");
 				total.innerHTML 	= send.value + " " + test;
@@ -7446,18 +7707,27 @@ if( location.href.includes( sellProduct )){
 	if( ! Scriptbill.s.currentNote || ! Scriptbill.isJsonable( Scriptbill.s.currentNote ) )
 		location.href = loginUrl;
 	
-	let url, productUrl;
+	let url, productUrl, product_ID;
 	
 	try {
 		url 		= new URL( location.href );
 		productUrl 	= url.searchParams.get("url");
+		product_ID 	= url.searchParams.get("product_id");
 	} catch(e){
 		productUrl 	= null;
 	} finally {
 	
 		let note 		= JSON.parse( Scriptbill.s.currentNote );
 
-				
+		if(! product_ID && Scriptbill.s.currentProductID){
+			product_ID = Scriptbill.s.currentProductID;
+		}
+
+		if(! productUrl && Scriptbill.s.currentBudgetUrl){
+			productUrl = Scriptbill.s.currentBudgetUrl;
+		}
+
+						
 		fetch("/currencies.json").then( resp =>{ return resp.json(); } ).then( async result =>{
 			if(! note.budgetID){
 				await Scriptbill.createAlert(`You need a running Scriptbank Budget to create a Product in the Scriptbank Network`);
@@ -7465,7 +7735,11 @@ if( location.href.includes( sellProduct )){
 				return;
 			}
 
-			const budgetBlock 	= await Scriptbill.getTransBlock(1, {budgetID: note.budgetID});
+
+
+			const budgetBlock 	= await Scriptbill.getTransBlock(1, {budgetID:note.budgetID, transType:"CREATEBUDGET"})
+
+			console.log(budgetBlock);
 			let agreement;
 			if(budgetBlock.length && budgetBlock[0].agreement ){
 				agreement = budgetBlock[0].agreement;
@@ -7501,6 +7775,86 @@ if( location.href.includes( sellProduct )){
 			let button		= document.querySelector("#continue");
 			let test 		= note.noteType.slice( 0, note.noteType.lastIndexOf("CRD"));
 			let symbole 	= test;
+
+			if(product_ID){
+				let block = await Scriptbill.getTransBlock(1, {productID: product_ID, transTime: `${Scriptbill.currentTime()} <=`});
+
+				if( block.length ){
+					block = block.pop();
+					let product_agree = block.agreement;
+
+					if( product_agree && product_agree.productConfig){
+						imageShow.src = product_agree.productConfig.images[0];
+						productShow.innerText = `${product_agree.productConfig.name}`;
+						recipient.value 	= `${product_agree.productConfig.name}`;
+						amount.value =  product_agree.productConfig.value;
+						var event 	 = new Event('input', {
+							bubbles: true,
+							cancelable: true,
+						});
+						console.log(`amount ${amount.value}`, amount);
+						amount.dispatchEvent(event);
+						let total_units = parseInt(product_agree.productConfig.units);
+						units.value 	= `${total_units}`;
+						units.dispatchEvent(event);
+						desc.value 			= `${product_agree.productConfig.description}`;
+						button.innerText 	= `Update Product`;
+
+						//calculating the agree time.
+						let transTime = parseInt(block.transTime);
+						let agreeTime = parseInt(product_agree.ExecTime);
+						let diff 	  = agreeTime - transTime;
+						let newTime   = parseInt(Scriptbill.currentTime()) + diff;
+						let newDate   = new Date(newTime);
+						paymentDue.value = `${newDate.getMonth() + 1}-${newDate.getDate()}-${newDate.getFullYear()}`;
+						let curDate 	 = new Date(parseInt(Scriptbill.currentTime()));
+
+						if( product_agree.isPeriodic){
+							agreeConfig.value = "returnPeriodic";
+							let p_span = "Days";
+							diff 	= curDate.getDate() - newDate.getDate();
+
+							switch(diff){
+								case diff > 7 && diff < 30:
+									p_span = "Weeks";
+									break;
+								case diff > 30:
+									p_span = "Months";
+									break;
+							}
+							periodSpan.value = p_span;
+
+							switch(p_span){
+								case "Days":
+									periodic.value = diff;
+									break;
+								case "Weeks":
+									periodic.value = Math.round(diff/7);
+									break;
+								case "Months":
+									periodic.value = Math.round(diff/30);
+									break;
+							}
+							somer.value = product_agree.value;
+						}
+						else {
+							let remain_val = parseFloat(product_agree.productConfig.value.replaceAll(",", "")) - parseFloat(product_agree.value.toString().replaceAll(",",""));
+
+							if(remain_val){
+								agreeConfig.value = "returnSome";
+								somer.value 	= product_agree.value;
+							} else {
+								agreeConfig.value = "returnMoney";
+							}
+						}
+						var event = new Event('change', {
+							bubbles: false,
+							cancelable: false,
+						});
+						agreeConfig.dispatchEvent(event);
+					}
+				}
+			}
 
 			bank.onclick 	= function(){
 				if( this.checked ){
@@ -7674,6 +8028,33 @@ if( location.href.includes( sellProduct )){
 				this.value = formatCurrency( this.value );
 			}
 
+			somer.oninput = function(){
+				/*let value = this.value.replaceAll(',','').split('.');
+						
+				if( typeof value == "object" && value[1] && value[1].length == 1 ){			
+					let values = value[0].split('');
+					let val = values[ values.length - 1 ];
+					val 	+= value[1];
+					//await Scriptbill.createAlert( val );
+					value[1] = val;
+					values.pop();
+					value[0] = values.join('');
+					this.value 		= value[0] + '.' + value[1];
+				} else if( typeof value == "object" && value[1] && value[1].length == 3 ){
+					let values = value[1].split('');
+					value[0] += values[0];
+					values.splice(0,1);
+					value[1] = values.join('');
+					this.value 		= value[0] + '.' + value[1];
+					//await Scriptbill.createAlert( this.value );
+				}
+				else if( ! value[1] ){
+					this.value = "0.0" + value[0];
+				}
+				this.value 	= parseFloat( this.value.replaceAll(',','') );
+				this.value = formatCurrency( this.value );*/
+			}
+
 			
 			recipient.oninput = function(){
 				let text = productShow.innerText;
@@ -7723,7 +8104,7 @@ if( location.href.includes( sellProduct )){
 					inner[0].children[0].children[0].children[1].children[0].children[0].children[0].innerHTML = '<i class=" currency-flag currency-flag-'+test.toLowerCase()+' mr-1"></i>&nbsp;' + test.toUpperCase();
 					sendCur.querySelector("option[value='"+test+"']").setAttribute("selected", "selected");
 				}
-			}, 2000)
+			}, 2000);
 			
 
 			agree.onchange = function(e){
@@ -7737,9 +8118,7 @@ if( location.href.includes( sellProduct )){
 					somer.parentElement.style.display 		= "block";
 				}
 			}
-					
-			desc.value = "";	
-			amount.value = "";
+			
 
 			periodic.style.width = "60%";
 			periodSpan.parentElement.style.width = "30%";
@@ -7843,6 +8222,7 @@ if( location.href.includes( sellProduct )){
 				
 				if( Scriptbill.s.productImgURL ){
 					sendConfig.productImgURL 	= Scriptbill.s.productImgURL;
+					delete Scriptbill.s.productImgURL;
 				}			
 				Scriptbill.blockId 					= note.blockID;
 				let block 							= await Scriptbill.getTransBlock();
@@ -7924,7 +8304,12 @@ if( location.href.includes( sellProduct )){
 					Scriptbill.productConfig.description 	= description.value;
 					Scriptbill.productConfig.units 	= units.value;
 					Scriptbill.productConfig.productUrl = storeUrl.value;
-					Scriptbill.productConfig.images = [Scriptbill.s.productImgURL];
+					Scriptbill.productConfig.images = [sendConfig.productImgURL];
+					
+					if(product_ID){
+						Scriptbill.productConfig.productID = product_ID;						
+					}
+
 					Scriptbill.defaultAgree.description = sendConfig.description;
 					Scriptbill.defaultAgree.storeName  = sendConfig.storeName;
 					Scriptbill.defaultAgree.storeAddress = sendConfig.storeAddress;
@@ -7950,9 +8335,20 @@ if( location.href.includes( sellProduct )){
 					
 					Scriptbill.defaultAgree.value 			= sendConfig.returnSome ? sendConfig.returnSome : sendConfig.value;
 					Scriptbill.create_product().then( async product =>{
-						if( product && product.transType == "CREATEPRODUCT" ){
+						if( product && (product.transType == "CREATEPRODUCT" || product.transType == "UPDATEPRODUCT" ) ){
 							sendConfig.block 			=		JSON.parse( JSON.stringify( product ));
-							Scriptbill.s.requestMoneyConfig 	= JSON.stringify( sendConfig );
+							try {
+								Scriptbill.s.requestMoneyConfig 	= JSON.stringify( sendConfig );
+							}
+							catch(e){
+								sendConfig.block = {
+									blockID : product.blockID,
+									transValue: product.transValue,
+									
+								}
+								Scriptbill.s.requestMoneyConfig 	= JSON.stringify( sendConfig );
+							}
+							
 							Scriptbill.s.requestProcessing		= 'TRUE';
 							this.innerText 	= "Successful";
 							setTimeout(async ()=>{
@@ -8063,7 +8459,7 @@ if( location.href.includes( createItem )){
 				return;
 			}
 			
-			removeLoadingDiv();
+			
 			
 			let budget 		= JSON.parse( JSON.stringify( budgetBlock.agreement ));
 			
@@ -8156,7 +8552,7 @@ if( location.href.includes( createItem )){
 				}
 				
 				this.value 	= parseFloat( this.value.replaceAll(',','') );
-				recieve.value = 	formatCurrency( parseFloat( ( this.value * rates ) - ( ( this.value * rates ) * toPay ) ) );
+				//recieve.value = 	formatCurrency( parseFloat( ( this.value * rates ) - ( ( this.value * rates ) * toPay ) ) );
 				this.value = formatCurrency( this.value );
 				
 			}
@@ -8192,17 +8588,22 @@ if( location.href.includes( createItem )){
 				e.preventDefault();
 				if( this.value == 'returnPeriodic' ){
 					periodic.parentElement.parentElement.style.display 	= "block";
-					somer.parentElement.style.display 		= "none";
+					somer.parentElement.style.display 		= "block";
+					somer.parentElement.querySelector("i").innerText = `Since they will be returning the money Periodically, how much of the money do you want returned per period`;
 				}
 				else if( this.value == 'returnSome' ){
 					periodic.parentElement.parentElement.style.display 	= "none";
 					somer.parentElement.style.display 		= "block";
+					somer.parentElement.querySelector("i").innerText = `Since they will be returning some of the money, how much of the money should be returned`;
+				} else {
+					periodic.parentElement.parentElement.style.display 	= "none";
+					somer.parentElement.style.display 		= "none";
 				}
 			}
 			
-			isPeriodic.onchange = function(e){
-				e.preventDefault();
-				if( this.value == 'yes' ){
+			isPeriodic.addEventListener("change", function(e){
+				//e.preventDefault();
+				if( this.value == 'Yes' ){
 					units.parentElement.style.display 		= "block";
 					periodicItem.parentElement.parentElement.style.display 	= "block";
 				}
@@ -8210,7 +8611,7 @@ if( location.href.includes( createItem )){
 					units.parentElement.style.display 		= "none";
 					periodicItem.parentElement.parentElement.style.display 	= "none";
 				}
-			}
+			});
 					
 			desc.value = "";	
 			amount.value = "";
@@ -8273,11 +8674,12 @@ if( location.href.includes( createItem )){
 					return;
 				}
 				
-				itemConfig.execTime 		= Scriptbill.timeToString(currentTime - newdate.getTime());
+				itemConfig.execTime 		= Scriptbill.timeToString(newdate.getTime() - currentTime );
 				itemConfig.agreement.ExecTime 	= date.getTime();
 				
 				if( desc.value ){
 					sendConfig.description 		= desc.value;
+					itemConfig.description 		= desc.value;
 				}
 				
 				if( periodic.value ){
@@ -8409,6 +8811,8 @@ if( location.href.includes( createItem )){
 										
 				
 				Scriptbill.defaultItem 					= JSON.parse( JSON.stringify( itemConfig ));
+
+				Scriptbill.defaultAgree 				= Object.assign(itemConfig.agreement);
 				
 				Scriptbill.createScriptbillBudgetItem( sendConfig.recipient ).then( async block =>{
 					if( block && block.transType == "ADDITEM" && block.agreement && block.agreement.item ){
@@ -8441,6 +8845,7 @@ if( location.href.includes( createItem )){
 			//sendCur.setAttribute("disabled", "disabled");		
 			
 		});
+		removeLoadingDiv();
 		window.jQuery(function() {
 			'use strict';
 			// Payment due by
@@ -8466,7 +8871,7 @@ if( location.href.includes( createItem )){
 	}	  
 }
 
-if( location.href.includes( createBudget )){
+if( location.href.includes( createBudget ) && ! location.href.includes(budgetSuccess)){
 	if( ! Scriptbill.s.currentNote || ! Scriptbill.isJsonable( Scriptbill.s.currentNote ) )
 		location.href = loginUrl;
 	
@@ -8679,25 +9084,25 @@ if( location.href.includes( createBudget )){
 
 			voteActive.oninput = function(){
 				const num = parseInt( this.value );
-				const remaining = 100 - num;
+				const remaining = 100 - (isNaN(num) ? 0 : num );
 				voteNormal.value = remaining.toString();
 			}
 
 			voteNormal.oninput = function(){
 				const num = parseInt( this.value );
-				const remaining = 100 - num;
+				const remaining = 100 - (isNaN(num) ? 0 : num );
 				voteActive.value = remaining.toString();
 			}
 
 			activeShare.oninput = function(){
 				const num = parseInt( this.value );
-				const remaining = 100 - num;
+				const remaining = 100 - (isNaN(num) ? 0 : num );
 				normalShare.value = remaining.toString();
 			}
 
 			normalShare.oninput = function(){
 				const num = parseInt( this.value );
-				const remaining = 100 - num;
+				const remaining = 100 - (isNaN(num) ? 0 : num );
 				activeShare.value = remaining.toString();
 			}
 
@@ -8785,13 +9190,45 @@ if( location.href.includes( createBudget )){
 				}
 				
 				this.value 	= parseFloat( this.value.replaceAll(',','') );
-				let stockNum 	= (this.value / 100).toFixed(2);
+				let stockNum 	= formatCurrency((this.value / 100).toFixed(2));
 				exchange.innerHTML = `1 ${budgetID.value}STK = ${stockNum} ${test}`;
 				activeValue.value = 	formatCurrency( parseFloat( ( this.value * rates ) - ( ( this.value * rates ) * toPay ) ) );
 				this.value = formatCurrency( this.value );
 				
 			}
-			activeValue.value 		= "";			
+			activeValue.value 		= "";
+
+			activeValue.oninput = function(){
+				
+				let value = this.value.replaceAll(',','').split('.');
+				/* await Scriptbill.createAlert( value[1] );			
+				await Scriptbill.createAlert( value[0] ); */			
+							
+				if( typeof value == "object" && value[1] && value[1].length == 1 ){			
+					let values = value[0].split('');
+					let val = values[ values.length - 1 ];
+					val 	+= value[1];
+					//await Scriptbill.createAlert( val );
+					value[1] = val;
+					values.pop();
+					value[0] = values.join('');
+					this.value 		= value[0] + '.' + value[1];
+				} else if( typeof value == "object" && value[1] && value[1].length == 3 ){
+					let values = value[1].split('');
+					value[0] += values[0];
+					values.splice(0,1);
+					value[1] = values.join('');
+					this.value 		= value[0] + '.' + value[1];
+					//await Scriptbill.createAlert( this.value );
+				}
+				else if( ! value[1] ){
+					this.value = "0.0" + value[0];
+				}
+				
+				this.value 	= parseFloat( this.value.replaceAll(',','') );
+				this.value = formatCurrency( this.value );
+				
+			}		
 			
 			let tests 		= Object.keys( result );
 			let options		= businessCurrency.querySelectorAll("option"), index;
@@ -8854,7 +9291,7 @@ if( location.href.includes( createBudget )){
 					await Scriptbill.createAlert(`Business Value needed to build up budget`);
 					return;
 				}
-				sendConfig.value 	= parseFloat( businessValue.value.replaceAll(",", "") );
+				sendConfig.value 	= businessValue.value;
 				itemConfig.value 	= parseFloat( businessValue.value.replaceAll(",", "") );//tk3UsJzU3AYQKUJx7WMNsjUge_ePZ4m4DzBQ6_Pkpb4Os07uWU41fGX-i_pGS9qTQseKUPn8OSIaW7m88prv9nAXbElxAVxfOmiHmNn_J_xMo3OD7oT-_l_AXHjh1JMb2knq3yPSr4gcTCncSIweuCUtAkN0feOTjWCQ3J1XUVs
 				
 				if( desc.value ){
@@ -8889,7 +9326,7 @@ if( location.href.includes( createBudget )){
 				
 				if(images[0].value ){
 					//at least we have one images with value
-					const image_urls = images.map((img)=>{
+					const image_urls = Array.from(images).map((img)=>{
 						return img.value;
 					}).filter((img_url)=>{
 						return img_url.length > 0;
@@ -8900,7 +9337,7 @@ if( location.href.includes( createBudget )){
 
 				if(videos[0].value ){
 					//at least we have one images with value
-					const video_urls = videos.map((vid)=>{
+					const video_urls = Array.from(videos).map((vid)=>{
 						return vid.value;
 					}).filter((vid_url)=>{
 						return vid_url.length > 0;
@@ -8946,7 +9383,7 @@ if( location.href.includes( createBudget )){
 				const agreement = JSON.parse(JSON.stringify(Scriptbill.defaultAgree));
 
 				if( activeValue.value){
-					agreement.value 	= activeValue.value;
+					agreement.value 	= parseFloat( activeValue.value.replaceAll(",", "") );
 				}
 
 				agreement.maxExecTime = itemConfig.max_exec;
@@ -9065,14 +9502,13 @@ if( location.href.includes( createBudget )){
 					console.log("Budget Block: ", block);
 					if( block && block.transType == "CREATEBUDGET" && block.agreement ){
 						sendConfig.block 			=		JSON.parse( JSON.stringify( block ));
-						Scriptbill.s.requestMoneyConfig 	= JSON.stringify( sendConfig );
-						Scriptbill.s.requestProcessing		= 'TRUE';
+						Scriptbill.s.budgetConfig 	= JSON.stringify( sendConfig );
 						this.innerText 						= "Successful";
 						block.agreement.blockID 			= block.blockID;
 						await Scriptbill.getData("itemConfig", Scriptbill.Base64.encode(JSON.stringify( block.agreement ) ), SERVER );
 						setTimeout(()=>{
-							let url 	= new URL( requestSuccess );
-							url.searchParams.set("addItem", "true" );
+							let url 	= new URL( budgetSuccess );
+							url.searchParams.set("createBudget", "true" );
 							location.href = url.href;
 						}, 5000);
 						
@@ -9086,7 +9522,7 @@ if( location.href.includes( createBudget )){
 						document.getElementById("error").innerHTML = error[keys[0]];
 						setTimeout(()=>{
 							location.reload();
-						}, 10000);
+						}, 1000000);
 					}
 				});			
 			} 		
@@ -9127,8 +9563,15 @@ if( location.href.includes( createAds )){
 		productID 		= url.searchParams.get("productID");
 		budgetUrl 		=   url.searchParams.get("url");
 		
-		if( ! productID ){	
-			location.href = dashboardUrl;
+		if( ! productID ){
+			productID = Scriptbill.s.currentProductID;
+
+			if( productID ){
+				budgetUrl 	= Scriptbill.s.currentBudgetUrl;
+			} else {
+				location.href = dashboardUrl;
+			}
+			
 		}
 		
 	} catch(e){
@@ -9160,6 +9603,128 @@ if( location.href.includes( createAds )){
 		let IntScope		= document.getElementById("interestScope");	
 		let IScopeHld		= document.getElementById("interest-placeholder");	
 		let sendCur			= document.getElementById("sellerCurrency");
+		let viewCalc			= document.getElementById("view-calculation");
+		let pubCalc			= document.getElementById("publish-calculation");
+		let pubClick			= document.getElementById("pubClick");
+
+		viewNumber.oninput = function(){
+			if(viewShare.value){
+				let num = parseFloat( this.value );
+				let share = parseFloat( viewShare.value );
+				let value = parseFloat( amount.value.replaceAll(",","") );
+
+				if(isNaN(value))
+					value = 0;
+
+				let percent = ( share / 100 ).toFixed(2);
+				let total 	= value * percent;
+				let pershare = ( total / num ).toFixed(2);
+				viewCalc.innerText = `This mean each viewer gets ${pershare} ${test} per view`;
+
+			}
+		}
+
+		viewShare.oninput = function(){
+			if(viewNumber.value){
+				let num 	= parseFloat( viewNumber.value );
+				let share 	= parseFloat( viewShare.value );
+
+				if(isNaN(share))
+					share = 0;
+
+				if( Scriptbill.s.viewShare == share)
+					return;
+
+				Scriptbill.s.viewShare 	= share;
+				let remaining = 100 - share;
+				pubShare.value = remaining;
+				var event = new Event('input', {
+					bubbles: true,
+					cancelable: true,
+				});
+				pubShare.dispatchEvent(event);
+				let value 	= parseFloat( amount.value.replaceAll(",",""));
+
+				if(isNaN(value))
+					value = 0;
+
+				let percent = ( share / 100 ).toFixed(2);
+				let total 	= value * percent;
+				let pershare = ( total / num ).toFixed(2);
+				viewCalc.innerText = `This mean each viewer gets ${pershare} ${test} per view`;
+
+			}
+		}
+
+		pubNumber.oninput = function(){
+			if(pubShare.value){
+				let num 	= 	parseFloat( this.value );
+				let share 	= parseFloat( pubShare.value );
+				let value 	= parseFloat( amount.value.replaceAll(",",""));
+
+				if(isNaN(value))
+					value = 0;
+
+				let percent = ( share / 100 ).toFixed(2);
+				let total 	= value * percent;
+				let clicks = parseFloat( pubClick.value );
+				let pershare = ( total / num / clicks ).toFixed(2);
+				pubCalc.innerText = `This mean each Publisher gets ${pershare} ${test} per advert clicks from your published site`;
+
+			}
+		}
+
+		pubClick.oninput = function(){
+			if(pubShare.value && pubNumber.value ){
+				let num 	= 	parseFloat( pubNumber.value );
+				let share 	= parseFloat( pubShare.value );
+				let value 	= parseFloat( amount.value.replaceAll(",",""));
+
+				if(isNaN(value))
+					value = 0;
+
+				let percent = ( share / 100 ).toFixed(2);
+				let total 	= value * percent;
+				let clicks = parseFloat( pubClick.value );
+				let pershare = ( total / num / clicks ).toFixed(2);
+				pubCalc.innerText = `This mean each Publisher gets ${pershare} ${test} per advert clicks from your published site`;
+
+			}
+		}
+
+		pubShare.oninput = function(){
+			if(pubNumber.value){
+				let num 	= parseFloat( pubNumber.value );
+				let share 	= parseFloat( pubShare.value );
+
+				if(isNaN(share))
+					share = 0;
+				
+
+				if( Scriptbill.s.pubShare == share)
+					return;
+
+				let remaining = 100 - share;
+				viewShare.value = remaining;
+				Scriptbill.s.pubShare = share;
+				var event = new Event('input', {
+					bubbles: true,
+					cancelable: true,
+				});
+				viewShare.dispatchEvent(event);
+				let value 	= parseFloat( amount.value.replaceAll(",","") );
+
+				if(isNaN(value))
+					value = 0;
+
+				let percent = ( share / 100 ).toFixed(2);
+				let total 	= value * percent;
+				let clicks = parseFloat( pubClick.value );
+				let pershare = ( total / num  / clicks ).toFixed(2);
+				pubCalc.innerText = `This mean each Publisher gets ${pershare} ${test} per advert clicks from your published site`;
+
+			}
+		}
 		
 		let inner		= document.getElementsByClassName("input-group-append");		
 		let symbol 		= document.querySelector("#symbol");
@@ -9168,7 +9733,7 @@ if( location.href.includes( createAds )){
 		let symbole 	= test;
 		let budgetConfig = null;
 		if( ! productID && budgetUrl ){
-			let budgetConfig 	= await Scriptbill.getData(["getBudget", "webUrl"], ["true", budgetUrl], Scriptbill.getDefaultServer());
+			budgetConfig 	= await Scriptbill.getData(["getBudget", "webUrl"], ["true", budgetUrl], Scriptbill.getDefaultServer());
 			
 			//the default product is used as the product id.
 			if( budgetConfig && budgetConfig.productID )			
@@ -9194,22 +9759,13 @@ if( location.href.includes( createAds )){
 			storeAdd.value			= Scriptbill.l[note.noteAddress + '_storeAddress' ];
 			storeAdd.setAttribute("disabled", "disabled" );
 		}
-		
-		let accountData 		= await getAccountData();
-		if( accountData && accountData.owner ){
-			storeUrl.value			= accountData.owner;
-			storeUrl.setAttribute("disabled", "disabled" );
-		}
-		else if( ! accountData || ! accountData.owner || ! budgetUrl || accountData.owner != budgetUrl ){
-			if( ! budgetUrl )
-				location.href 	= dashboardUrl;
-			
-			await Scriptbill.createAlert( "You Don't Appear to Be the Owner of this Website, this shows you are creating this ads on behalf of the owner" );
-			
+				
+
+		if(budgetUrl){
 			storeUrl.value			= budgetUrl;
 			storeUrl.setAttribute("disabled", "disabled" );
-			
 		}
+
 		
 		uploadImg.onchange = function(){
 			let files = this.files;
@@ -9220,7 +9776,9 @@ if( location.href.includes( createAds )){
 				Scriptbill.s.productImgURL = noteData;
 				imageShow.src 		= Scriptbill.s.productImgURL;
 				if( recipient.value ){
-					productShow.innerText = recipient.value;
+					productShow.innerText = `${desc.value.slice(0, 30)}...`;
+					productShow.style.wordBreak = "break-all";
+					productShow.style.wordWrap	= "break-word";
 				}
 				
 				if( adsHead.value ){
@@ -9231,8 +9789,11 @@ if( location.href.includes( createAds )){
 		
 		let toPay 		= 0.25;
 		let rates 		= 1;	
+		desc.value = "";	
+		amount.value = "";
 				
 		amount.oninput = function(){
+			
 			
 			let value = this.value.replaceAll(',','').split('.');
 /* await Scriptbill.createAlert( value[1] );			
@@ -9260,7 +9821,7 @@ await Scriptbill.createAlert( value[0] ); */
 			}
 			
 			this.value 	= parseFloat( this.value.replaceAll(',','') );
-			
+			Scriptbill.s.currentAmount = this.value;			
 			this.value = formatCurrency( this.value );
 			
 		}
@@ -9377,8 +9938,7 @@ await Scriptbill.createAlert( value[0] ); */
 			}
 		}
 				
-		desc.value = "";	
-		amount.value = "";
+		
 	
 		
 		button.onclick 		= async function(e){
@@ -9400,6 +9960,8 @@ await Scriptbill.createAlert( value[0] ); */
 				Scriptbill.adsConfig.productID 	= recipient.value;
 				sendConfig.productID 			= recipient.value;
 			}
+			this.innerText = `Creating Ads..`;
+			this.setAttribute("disabled", "disabled");
 			
 			if( ! viewNumber.value ){
 				await Scriptbill.createAlert("Please enter how much viewers you are expecting from your advert. This will help us calculate how much we will share with your viewers.");
@@ -9409,27 +9971,29 @@ await Scriptbill.createAlert( value[0] ); */
 					await Scriptbill.createAlert("Please enter the share you want to give to your viewers");
 					return;
 				} else {
-					if( ! amount.value ){
+
+					if( ! Scriptbill.s.currentAmount ){
 						await Scriptbill.createAlert("Please enter an advert budget amount");
 						return;
 					} else {
-						amount 	= amount.value;
+						amount 	= parseFloat( Scriptbill.s.currentAmount );
 						let minimum = 0.001;//in dollars
 						if( sendCur.value != "USD" ){
 							let exValue 	= await Scriptbill.getExchangeValue(sendCur.value + "CRD", "USDCRD");
 							minimum 		= minimum * exValue[0];
 						}
-						let share 			= parseInt( viewShare.split("%")[0] ) / 100;
-						let shareAmount 	= amount * share;
+						let share 			= parseFloat( viewShare.value ) / 100;
+						let numOfView 		= parseFloat( viewNumber.value);
+						let shareAmount 	= (amount * share ) / numOfView;
 						
 						if( shareAmount < minimum ){
-							shareAmount 		= minimum;
-							share 				= shareAmount / amount;
+							await Scriptbill.createAlert(`${minimum} ${test} is required to publish ads to viewers. Please adjust your viewers share`);
+							return;
 						}
 						
-						Scriptbill.adsConfig.viewers 	= Math.floor( amount / shareAmount );
+						Scriptbill.adsConfig.viewers 	= viewNumber.value;
 						Scriptbill.adsConfig.viewersShare = share;
-						sendConfig.viewers 	= Math.floor( amount / shareAmount );
+						sendConfig.viewers 	= viewNumber.value;
 						sendConfig.viewersShare = share;
 						
 					}
@@ -9444,65 +10008,37 @@ await Scriptbill.createAlert( value[0] ); */
 					await Scriptbill.createAlert("Please enter the share you want to give to your publishers");
 					return;
 				} else {
-					if( ! amount.value ){
+					if( ! Scriptbill.s.currentAmount ){
 						await Scriptbill.createAlert("Please enter an advert budget amount");
 						return;
 					} else {
-						amount 	= amount.value;
+						amount 	= parseFloat(Scriptbill.s.currentAmount);
 						let minimum = 0.001;//in dollars
 						if( sendCur.value != "USD" ){
 							let exValue 	= await Scriptbill.getExchangeValue(sendCur.value + "CRD", "USDCRD");
 							minimum 		= minimum * exValue[0];
 						}
-						let share 			= parseInt( viewShare.split("%")[0] ) / 100;
-						let shareAmount 	= amount * share;
+						let share 			= parseFloat( pubShare.value ) / 100;
+						let numOfPubs 		= parseFloat(pubNumber.value);
+						let numOfClicks 	= parseFloat(pubClick.value);
+						let shareAmount 	= ((amount * share) / numOfPubs) / numOfClicks;
 						
 						if( shareAmount < minimum ){
-							shareAmount 		= minimum;
-							share 				= shareAmount / amount;
+							await Scriptbill.createAlert(`${minimum} ${test} needed to complete Publishing Adverts, Please readjust Yoour Publishers calculation`);
+							return;
 						}
 						
-						Scriptbill.adsConfig.publishers 	= Math.floor( amount / shareAmount );
+						Scriptbill.adsConfig.publishers 	= pubNumber.value;
 						Scriptbill.adsConfig.publishersShare = share;
-						sendConfig.publishers 	= Math.floor( amount / shareAmount );
+						Scriptbill.adsConfig.publishersClick = pubClick.value;
+						sendConfig.publishers 	= pubNumber.value;
 						sendConfig.publishersShare = share;
+						sendConfig.publishersClick 		= pubClick.value;
 					}
 				}
 			}
 			
-			if( ! clickNumber.value ){
-				await Scriptbill.createAlert("Please enter how much Clickeers you are expecting from your advert. This will help us calculate how much we will share with your clickers.");
-				return;
-			} else {
-				if( ! clickShare.value ){
-					await Scriptbill.createAlert("Please enter the share you want to give to your Clickers");
-					return;
-				} else {
-					if( ! amount.value ){
-						await Scriptbill.createAlert("Please enter an advert budget amount");
-						return;
-					} else {
-						amount 	= amount.value;
-						let minimum = 0.001;//in dollars
-						if( sendCur.value != "USD" ){
-							let exValue 	= await Scriptbill.getExchangeValue(sendCur.value + "CRD", "USDCRD");
-							minimum 		= minimum * exValue[0];
-						}
-						let share 			= parseInt( viewShare.split("%")[0] ) / 100;
-						let shareAmount 	= amount * share;
-						
-						if( shareAmount < minimum ){
-							shareAmount 		= minimum;
-							share 				= shareAmount / amount;
-						}
-						
-						Scriptbill.adsConfig.clickers 	= Math.floor( amount / shareAmount );
-						Scriptbill.adsConfig.clickersShare = share;
-						sendConfig.clickers 	= Math.floor( amount / shareAmount );
-						sendConfig.clickersShare = share;
-					}
-				}
-			}
+			
 			
 			if( adsHead.value ){				
 				Scriptbill.adsConfig.header = adsHead.value;
@@ -9525,8 +10061,8 @@ await Scriptbill.createAlert( value[0] ); */
 			}
 			
 							
-			if( enddate.value ){
-				Scriptbill.adsConfig.adsExpiry 	= enddate.value;
+			if( advertDue.value ){
+				Scriptbill.adsConfig.adsExpiry 	= advertDue.value;
 			}
 			
 			if( desc.value ){
@@ -9536,11 +10072,13 @@ await Scriptbill.createAlert( value[0] ); */
 			
 			Scriptbill.details 		= JSON.parse( JSON.stringify( Scriptbill.defaultBlock ));
 						
-			if( amount.value )
-				Scriptbill.details.transValue = parseFloat( amount.value.replaceAll(',','') );
+			if( Scriptbill.s.currentAmount )
+				Scriptbill.details.transValue = parseFloat( Scriptbill.s.currentAmount.replaceAll(',','') );
 			
 			else {
 				await Scriptbill.createAlert("Enter a valid amount");
+				this.removeAttribute("disabled");
+				this.innerText = "Create Advert";
 				return false;
 			}
 			
@@ -9551,6 +10089,7 @@ await Scriptbill.createAlert( value[0] ); */
 				sendConfig.productImgURL 		= Scriptbill.s.productImgURL;
 				Scriptbill.adsConfig.bannerUrl 	= Scriptbill.s.productImgURL;
 			}
+			delete Scriptbill.s.currentAmount;
 			Scriptbill.createAdvert( Scriptbill.details.transValue ).then( block =>{
 				if( block && block.transType == "ADVERT" ){
 					sendConfig.block 			=		JSON.parse( JSON.stringify( block ));
@@ -9585,12 +10124,12 @@ await Scriptbill.createAlert( value[0] ); */
 	window.jQuery(function() {
 		'use strict';
 		// Payment due by
-		window.jQuery('#paymentDue').daterangepicker({
+		window.jQuery('#advertDue').daterangepicker({
 			singleDatePicker: true,
 			minDate: moment(),
 			autoUpdateInput: false,
 			}, function(chosen_date) {
-		  window.jQuery('#paymentDue').val(chosen_date.format('MM-DD-YYYY'));
+		  window.jQuery('#advertDue').val(chosen_date.format('MM-DD-YYYY'));
 		  });
 	  }); 
 }
@@ -12772,28 +13311,140 @@ function outputTransaction(el = false, sym = "$"){
 		let printTrans	 	= modal.querySelector("i#print-trans");
 		let receiveTrans 	= Scriptbill.getRecieveTransactionTypes();
 		let sendTrans 		= Scriptbill.getRecieveTransactionTypes();
-		let trans 			= modal.querySelector(".transaction-details");
+		let content 		= modal.querySelector(".modal-content");
+		let side 			= modal.querySelector(".col-sm-7");
+		let close 			= modal.querySelector(".close");
+
+		if(side){
+			side.style.wordWrap = "break-word";
+		}
 		
 		if( block.productID ){
 			let createAdv 		= document.createElement("button");
-			let agreement 		= JSON.parse( JSON.stringify( block.agreement ));
-			createAdv.setAttribute("style", "position:absolute; background-color:white;width:auto;height:auto;top:5px;left:1px;border:none;color:black;cursor:pointer;");
+			let agree 		= JSON.parse( JSON.stringify( block.agreement ));
+			createAdv.setAttribute("style", "position:absolute; background-color:white;width:auto;height:auto;top:5px;left:1px;border:none;color:black;cursor:pointer;z-index:1000;");
 			createAdv.setAttribute("class","button btn btn-secondary btn-block my-2 mx-1 text-2");
 			createAdv.innerText = "Create Ads";
 			
 			createAdv.addEventListener("click", function(){
 				let urlv 		= new URL( createAds );
 				urlv.searchParams.set("productID", block.productID );
+				Scriptbill.s.currentProductID  = block.productID;
 				
-				if( agreement._storeUrl )
-					urlv.searchParams.set( "url", agreement._storeUrl );
-				
+				if( agree.productConfig && agree.productConfig.productUrl){
+					urlv.searchParams.set( "url", agree.productConfig.productUrl );
+					Scriptbill.s.currentBudgetUrl = agree.productConfig.productUrl;
+				}
+									
 				location.href 	= urlv.href;
 			});
+			let updateProd 		= document.createElement("button");
+			updateProd.setAttribute("style", "position:absolute; background-color:black;width:auto;height:auto;bottom:5px;right:1px;border:none;color:white;cursor:pointer;z-index:1000;");
+			updateProd.setAttribute("class","button btn btn-secondary btn-block my-2 mx-1 text-2");
+			updateProd.innerText = "Manage";
 			
-			trans.appendChild(createAdv);
+			updateProd.addEventListener("click", function(){
+				let urlv 		= new URL( sellProduct );
+				urlv.searchParams.set("product_id", block.productID );
+				Scriptbill.s.currentProductID  = block.productID;
+				
+				if( agree.productConfig && agree.productConfig.productUrl){
+					urlv.searchParams.set( "url", agree.productConfig.productUrl );
+					Scriptbill.s.currentBudgetUrl = agree.productConfig.productUrl;
+				}
+									
+				location.href 	= urlv.href;
+			});
+			content.appendChild(createAdv);
+			content.appendChild(updateProd);
+
+			modal.addEventListener("click",function(){
+				createAdv.remove();
+				updateProd.remove();
+			});
+
+			close.addEventListener("click", function(){
+				createAds.remove();
+				updateProd.remove();
+			})
 		} 
 		
+		else if( block.transType == "ADVERT" || block.transType == "VIEWADVERT"){
+			let createAdv 		= document.createElement("button");
+			let agree 		= JSON.parse( JSON.stringify( block.agreement ));
+			createAdv.setAttribute("style", "position:absolute; background-color:white;width:auto;height:auto;top:5px;left:1px;border:none;color:black;cursor:pointer;z-index:1000;");
+			createAdv.setAttribute("class","button btn btn-secondary btn-block my-2 mx-1 text-2");
+			createAdv.innerText =  block.transType == "VIEWADVERT" ? "Buy Product":"View Ads";
+			
+			
+			createAdv.addEventListener("click", async function(){
+
+				if(block.transType == "VIEWADVERT"){
+					Scriptbill.s.currentProductID = block.agreement.productID;
+					this.innerText  = `Buying Product`;
+					this.setAttribute("disabled", "disabled");
+
+					setTimeout(()=>{
+						location.href = buyProduct;
+					}, 4000);					
+					return;
+				}
+
+				let amount = parseFloat(block.transValue);
+				let share 	= parseFloat( agree.viewersShare );
+				let total_viewers = parseFloat( agree.viewers );
+				let value = ((amount * share ) / total_viewers).toFixed(2);
+
+				//before the user would accept the payment, we have to see if the total viewers is not exceeded
+				let ads_blocks  	= await Scriptbill.getTransBlock(total_viewers, {
+					blockRef: block.blockRef,
+					transType: "VIEWADVERT"
+				});
+
+				if(ads_blocks.length < total_viewers){
+					let details		= Object.assign(Scriptbill.defaultBlock);
+					let exValue      = 1;
+
+					if( block.noteType != note.noteType){
+						exValue = await Scriptbill.getExchangeValue(block.noteType, note.noteType);
+						exValue = exValue[1];
+					}
+					details.transValue = value * exValue;
+					details.noteType = note.noteType;
+					details.transType = "VIEWADVERT";
+					Scriptbill.generateScriptbillTransactionBlock(details, false, block).then(async response =>{
+						if( response.transType == "VIEWADVERT"){
+							Scriptbill.s.currentProductID = block.agreement.productID;
+							
+							await Scriptbill.createAlert(`You have Successfully Viewed this Advert. Which means you now have this product on your blockchain to be viewed anytime. Note, buying the product can possibly earn you affiliate profits and many more. Good luck!`);
+							await Scriptbill.removeUserBlock(block.blockID);
+							location.href = buyProduct;
+						}
+					});
+				}
+			});
+			content.appendChild(createAdv);
+			if(block.transType == "ADVERT") {
+				let pubAdv 		= document.createElement("button");
+				pubAdv.setAttribute("style", "position:absolute; background-color:white;width:auto;height:auto;top:5px;right:1px;border:none;color:black;cursor:pointer;z-index:1000;");
+				pubAdv.addEventListener("click", function(){
+					//creating a publish advert transaction with the advert as reference
+					let details = Object.assign(block);
+					details.transType = "PUBLISHADVERT";
+					Scriptbill.generateScriptbillTransactionBlock(details, false, block).then( async block =>{
+						if( block && block.agreement && block.agreement.publisherID){
+							let link = new URL(buyProduct);
+							link.searchParams.set("product_id", block.agreement.productID);
+							link.searchParams.set("publisher_id", block.agreement.publisherID);
+							navigator.clipboard.writeText(link.href);
+							await Scriptbill.createAlert(`Advert Successfully Published and Product Link Copied to clipboard. Share the product link on your website or social page to generate clicks for this advert to start earning`);
+							location.reload();
+						}
+					});
+				});
+				content.appendChild(pubAdv);
+			}		
+		}
 		
 		cancelTrans.style.display = "none";
 		cancelTrans.style.marginBottom = "10px";

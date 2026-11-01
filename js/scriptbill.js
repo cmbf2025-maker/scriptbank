@@ -1,6 +1,28 @@
 		//=============================Scriptbill Class Main====================================
 	class Scriptbill {
 		
+	// ── Transaction splitter (incremental) ────────────────────────────────────
+	// Migrated transTypes. Grow this set as you migrate. Anything not here
+	// goes through the legacy body of generateScriptbillTransactionBlock.
+	static #txMigrated = new Set([
+		"CREATE",
+		"RECEIVE",
+		"PROFITRECIEVE",
+		"STOCKRECIEVE",
+		"BONDRECIEVE",
+		"INVESTRECIEVE",
+		"DEPOSIT",
+		"WITHDRAW",
+		"INVEST",
+		"LOAN"
+	]);
+	
+	static #quoteCurrentNote = null;
+
+	// Matcher registry — built once, on first dispatch. Each entry is
+	// {type, matches(ctx), handler(ctx)}. First match wins.
+	static #txRegistry = null;
+		
 	static funcUp = [];
 	//used to store current private key used.
 	static #privKey  = false;
@@ -425,7 +447,9 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 	//for the user.
 	static #runSplitNote = this.splitNote();
 
-	static #checkedRecipient = this.#checkRecipients();
+	static #checkedRecipient = this.checkRecipients();
+	
+	static #rtcHandles 		= new Map();
 
 	static #channeled = this.subscribeChannels();
 	
@@ -4402,7 +4426,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 	static #productNoteTrans = ["INVEST"/*This transaction indicate that an exchange note has invested credits to the product note concerned*/, "CREATEBUDGET"/*This transaction type indicate that a new product note is created, however the budget type must be business*/, "BUYSTOCK"/*This transaction type indicate that a product note has been credited with funds from a credit note, however it must be the note that created the budget before it can be directed to the product note else it will be directed to the note that sold the stock*/, "BUYPRODUCT"/*This indicate that a credit note has credited the product note from the product the note is selling*/, "PRODUCTSUB"/*This also indicate credit from a credit note to a product note for a product the note is subscribing to.*/];
 	
 	//send transaction types in array.
-	static #transSend = ['SEND'/*Normal Sending Money*/, 'INVEST'/*A Special Transaction Type That Describes an Investment, Different From Defined Stock or Bond Investment, used majorly by exchange market notes to invest in other exchange note. An INVEST transaction is a MINING transaction*/, 'STOCKPAY'/*Describes a Dividend Payment*/, 'BUYPRODUCT'/*Describes the Purchase of a Product*/, 'BUYSTOCK'/*Describes the Purchase of a Stock*/, 'BUYBOND'/*Describes the Purchase of a Bond*/, 'BONDPAY'/*Describes an Interest Payment*/, 'PROFITSHARING'/*Describes a Profit Sharing Transaction*/, 'PRODUCTSUB'/*Describes a Product Subscription Transaction*/, 'CANCELLED'/*Describes a Cancelled Transaction*/, 'INTERESTPAY'/*A transaction type to pay interest from a loan*/, "CONFIRM"/*A trnasaction block teling the network that a fiat credit deposit has been confirmed by the crediter and the depositor can recieve the credits involved in the transaction. a crediter may use CANCELLED transaction to stop his credit from going to the depositor. The depositor must honor this request with an AGREEMENTSIGN transaction to release the withdraw credit to be usable by the note holder.*/, "WITHDRAW"/*This transaction indicates to the network that a user with a fiat or Crypto credit Type for instance USD has indicated withdrawal. Indicating withdrawal for a Scriptbill credit type, because it'this.s possible will not work because no one will have the fiat credit type to supply.*/, 'ADVERT'/*This is a transaction type that creates awareness to a product in the network. The creator must invest some money into this transaction to be recieved by users who will engage on the transaction base on ad rules set by the creator, unlike other advert promotion which the users who engage in ads only reward the company and it's affiliates.*/, "EXECUTEBUDGET"/*This is a send transaction that indicate a budget item has been executed. The reason for customizing this send transaction for budgets is to help distinguish between a budget been executed and a normal send transaction from a credit note.*/, "EXCHANGE", /* A Transaction like the WITHDRAW transaction but to hold another credit type, instead of for physical values. */];
+	static #transSend = ['SEND'/*Normal Sending Money*/, "AGREESEND"/**Indicates that a transaction has been sent by an agreement */, 'INVEST'/*A Special Transaction Type That Describes an Investment, Different From Defined Stock or Bond Investment, used majorly by exchange market notes to invest in other exchange note. An INVEST transaction is a MINING transaction*/, 'STOCKPAY'/*Describes a Dividend Payment*/, 'BUYPRODUCT'/*Describes the Purchase of a Product*/, 'BUYSTOCK'/*Describes the Purchase of a Stock*/, 'BUYBOND'/*Describes the Purchase of a Bond*/, 'BONDPAY'/*Describes an Interest Payment*/, 'PROFITSHARING'/*Describes a Profit Sharing Transaction*/, 'PRODUCTSUB'/*Describes a Product Subscription Transaction*/, 'CANCELLED'/*Describes a Cancelled Transaction*/, 'INTERESTPAY'/*A transaction type to pay interest from a loan*/, "CONFIRM"/*A trnasaction block teling the network that a fiat credit deposit has been confirmed by the crediter and the depositor can recieve the credits involved in the transaction. a crediter may use CANCELLED transaction to stop his credit from going to the depositor. The depositor must honor this request with an AGREEMENTSIGN transaction to release the withdraw credit to be usable by the note holder.*/, "WITHDRAW"/*This transaction indicates to the network that a user with a fiat or Crypto credit Type for instance USD has indicated withdrawal. Indicating withdrawal for a Scriptbill credit type, because it'this.s possible will not work because no one will have the fiat credit type to supply.*/, 'ADVERT'/*This is a transaction type that creates awareness to a product in the network. The creator must invest some money into this transaction to be recieved by users who will engage on the transaction base on ad rules set by the creator, unlike other advert promotion which the users who engage in ads only reward the company and it's affiliates.*/, "EXECUTEBUDGET"/*This is a send transaction that indicate a budget item has been executed. The reason for customizing this send transaction for budgets is to help distinguish between a budget been executed and a normal send transaction from a credit note.*/, "EXCHANGE", /* A Transaction like the WITHDRAW transaction but to hold another credit type, instead of for physical values. */];
 	
 	static #version 	= "2.0.0";
 	
@@ -4750,7 +4774,31 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 	static budgetID;
 	
 
-	
+	// ──────────────────────────────────────────────────────────────────────────
+	// Public test hooks — needed because setup callbacks in the test blocks are
+	// defined OUTSIDE the class, so they cannot reference private fields directly.
+	// These are the ONLY way to touch private state from a test block.
+	// ──────────────────────────────────────────────────────────────────────────
+	static __testSetNote(note)                { this.#note = note ? JSON.parse(JSON.stringify(note)) : null; }
+	static __testGetNote()                    { return this.#note ? JSON.parse(JSON.stringify(this.#note)) : null; }
+	static __testSetCurrentNote(note)         { this.#currentNote = note ? JSON.parse(JSON.stringify(note)) : null; }
+	static __testGetCurrentNote()             { return this.#currentNote ? JSON.parse(JSON.stringify(this.#currentNote)) : null; }
+	static __testSetShareValue(v)             { this.#shareValue = v; }
+	static __testGetShareValue()              { return this.#shareValue; }
+	static __testSetBudgetSecret(s)           { this.#budgetSecret = s; }
+	static __testGetBudgetSecret()            { return this.#budgetSecret; }
+	static __testSetAgreeBlock(b)             { this.#agreeBlock = b ? JSON.parse(JSON.stringify(b)) : null; }
+	static __testSetProductBlock(b)           { this.#productBlock = b ? JSON.parse(JSON.stringify(b)) : null; }
+	static __testSetIsExchangeMining(b)       { this.#isExchangeMarketMining = b; }
+	static __testSetIsExchangeDeposit(b)      { this.#isExchangeDeposit = b; }
+	static __testSetSplitNote(n)              { this.#splitNote = n ? JSON.parse(JSON.stringify(n)) : null; }
+	static __testSetSetPass(p)                { this.#set_pass = p; }
+	static __testSetAccount(a)                { this.account = a; }
+	static __testSetCountError(n)             { this.countError = n; }
+	static __testSetSeed(s)                   { this.seed = s; }
+	static __testSetMigrated(type)            { this.#txMigrated.add(type); }
+	static __testClearMigrated(type)          { this.#txMigrated.delete(type); }
+	static __testHasMigrated(type)            { return this.#txMigrated.has(type); }
 	
 
 	constructor(walletID = '', noteAddress = '', password = '', note = ''){
@@ -4760,9 +4808,60 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 		this.init(walletID, noteAddress, password, note);		
 	}
 	
+	static async #encrypt( data, id = "" ){
+		//console.log("encrypt running " + this.funcUp[ this.funcUp.length]);
+		this.funcUp[ this.funcUp.length] = "encrypt";
+		let publicKey = await this.getPublicKey(id);
+		try {	
+			if( ! publicKey || ! CryptoJS ) return data;
+			
+			let encryptKey 		= await this.generateKey();
+			
+			let keyObj =	{
+				"alg": "RSA-OAEP-256",
+				"e": "AQAB",
+				"ext": true,
+				"key_ops": [
+					"encrypt"
+				],
+				"kty": "RSA",
+				"n": "vGRdPqhiG4-APxcMG8ItvT43FzRHsa1QqALROwknpODKC7HV9icoDZI27Z885VcUo6isu4vqtt5eLmKgBaKaFHNSxv-CSFHgTEPBmr6cWEdrs6MOxYWycJnU6o_4OmkWL3Snr_Hwvmputfomm2N0EBkPYpjc3Il5agO0RpmqFh8"
+			};
+			keyObj.n 			= publicKey;
+			
+			try {
+				publicKey 		= await crypto.subtle.importKey( 'jwk', keyObj, { name: "RSA-OAEP", hash: "SHA-256" }, keyObj.ext, keyObj.key_ops );
+				//console.log( "publicKey: " + publicKey );
+				let encoder 		= new TextEncoder();
+				let encoded 		= encoder.encode( encryptKey );
+				
+				let keyEnc 			= await crypto.subtle.encrypt({name:"RSA-OAEP"}, publicKey, encoded );			
+				this.encrypted		= keyEnc;
+				let keyString 		= this.ab2str( keyEnc );			
+				
+				if( typeof data == 'object' )
+					data = JSON.stringify( data );
+				
+				if( keyString && typeof data == 'string' ){			
+					return this.Base64.encode( JSON.stringify( {key: keyString, data: this.encrypt( data, encryptKey ) } ) );
+				}
+				else return data;
+			} catch (e){
+				//console.log( "encrypt error: " + e );
+				return data;
+			}
+		} catch(e){
+			console.error(e);
+			this.errorMessage(e.toString());
+			return data;
+		}
+	}	
+	
+	
+	
 	static async init(walletID = '', noteAddress = '', password = '', note = ''){
 		this.#noVerify			= false;
-		////alert( password );
+		//////alert( password );
 		if( window.location.protocol != 'https:' &&  ! window.location.href.includes("localhost") && ! window.location.href.includes("127.0.0.1") && window.location.protocol != "chrome-extension:" && this.alertDetails  ) {
 			await this.createAlert('Sorry! Scriptbill Won\'t run in a non https environment! You Can Contact The Site Admin For Assistance');
 			return;
@@ -5347,7 +5446,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 				return false;
 			}
 			
-			////alert("checks 2");
+			//////alert("checks 2");
 			
 			let persistentNote = await this.resolvePersistentData( "currentNote", "userNotes", false );
 			
@@ -5371,7 +5470,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 				this.#currentNote 		= await this.getCurrentExchangeNote( currentNote.noteType );			
 				
 				if( ! this.#currentNote ){
-					////alert("checks 2");
+					//////alert("checks 2");
 					let block 			= await this.getTransBlock(1, {blockID: currentNote.blockID});
 					
 					if( ! block.length ){
@@ -5921,9 +6020,9 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 	static async createAgreement(agreeID = "", newBlock = false, preSign = true ){
 		
 		try {
-			/* if( ( ! this.#note && this.s.currentNote ) || ( this.s.currentNote &&    ! this.s.currentNote.includes( this.#note.walletID ) && ! this.s.currentNote.includes( this.#note.noteAddress ) && ! this.#isExchangeMarketMining ) || ( ! this.#isExchangeMarketMining && ! this.#note && this.s.currentNote )) {
+			if( ( ! this.#note && this.s.currentNote ) || ( this.s.currentNote &&    ! this.s.currentNote.includes( this.#note.walletID ) && ! this.s.currentNote.includes( this.#note.noteAddress ) && ! this.#isExchangeMarketMining ) || ( ! this.#isExchangeMarketMining && ! this.#note && this.s.currentNote )) {
 				this.#note 			= await this.#getCurrentNote();
-			} */
+			} 
 			
 			let agreement = JSON.parse( JSON.stringify( this.defaultAgree ) );
 			let agreeKey 	= await this.generateKey(10, true );
@@ -5961,6 +6060,26 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 				agreement.senderKey 	= await this.getPublicKey( id, true );
 			}
 			agreement.timeStamp 	= this.currentTime();
+			/* 
+			if( newBlock && newBlock.blockID ){
+				agreement.blockID = this.calculateNextBlockID( this.#note, newBlock.blockID );
+				agreement.transFormular	= ``;
+				agreement.transSalt		= ``;
+				agreement.noteHash 		= newBlock.noteHash;
+				agreement.blockKey 		= await this.generateKey(1, true, true );
+				var id 				= await this.generateKey(10);
+				
+				if(! note.agreementKeys ){
+					note.agreementKeys 		= [];
+				}
+				
+				note.agreementKeys.push( agreement.blockKey );
+				await this.setPrivateKey( agreement.blockKey, id );
+				agreement.blockKey 			= await this.getPublicKey(id);
+				//sign the agreement
+				
+				
+			} */
 			this.#createdAgreement 	= JSON.parse( JSON.stringify( agreement ));
 			//every other value should be set directly to the defaultAgree handler 
 			//before or after running this function.
@@ -6487,7 +6606,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 			return false;
 		}
 		
-		////alert("checks 2");
+		//////alert("checks 2");
 		
 		let testType 		= noteType.slice( 0, noteType.lastIndexOf("CRD") );
 		
@@ -6792,7 +6911,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 				await this.savePersistently(currentNote, "userNotes", "currentNote");
 				this.s.currentNote = JSON.stringify( currentNote );
 				
-				if( chrome && chrome.storage ){
+				if( typeof chrome != "undefined" && chrome.storage ){
 					chrome.storage.session.set({currentNote: JSON.stringify( currentNote )});
 				}
 				
@@ -6807,7 +6926,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 				console.error(e);
 			}
 			
-			if( chrome && chrome.runtime && Object.hasOwn("onMessage")){
+			if( typeof chrome != "undefined" && chrome.runtime && Object.hasOwn("onMessage")){
 				chrome.runtime.sendMessage({setCurrentNote: currentNote});
 			}
 			//console.log( "CURRENT NOTE SET: " + JSON.stringify( currentNote ), "TYPEOF: " + typeof currentNote );
@@ -7003,108 +7122,271 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 		}
 	}
 	
-	static async recieveResponse(){
-		////console.log("recieveResponse running " + this.funcUp[ this.funcUp.length][ this.funcUp[ this.funcUp.length].length]);
-		this.funcUp[ this.funcUp.length] = "recieveResponse";
+	static async setOfferAnswer(block){
+		if (block && block.data && block.data.answer) {
+			const answer = block.data.answer;
+			const offerBlockID = block.data.referenceID;
+
+			if (!offerBlockID) {
+				this.errorMessage("ANSWER block has no data.referenceID — dropping");
+				return block;
+			}
+
+			const peer = this.rtcPendingFindByOfferID(offerBlockID);
+			if (!peer) {
+				// Someone is sending an answer to an offer we never made.
+				// This can be:
+				//   - A peer referencing a different note's offer (reject)
+				//   - A replayed old answer (reject)
+				//   - An attacker guessing block IDs (reject)
+				// In all cases: ignore, don't raise an error to the user.
+				console.warn(
+					"RTC: ignoring answer for unknown offer " + offerBlockID +
+					" from " + (answer.from || "unknown")
+				);
+				return block;
+			}
+
+			const rtc = this.#rtcHandles.get(peer);
+			if (!rtc) {
+				console.warn("RTC: no live handle for pending offer " + offerBlockID);
+				return block;
+			}
+
+			try {
+				await rtc.consumeAnswer(answer);
+				// Channel opens asynchronously; onOpen fires when ready.
+				rtcPendingRemove(peer);   // offer is now consumed
+			} catch (e) {
+				this.errorMessage("RTC: answer consumption failed: " + e.message);
+			}
+		}
+	}
+	
+	static async #profitSharing( shareBlock, note, BLOCK, response = null ){
+		//console.log("profitSharing running " + this.funcUp[ this.funcUp.length] );
+		this.funcUp[ this.funcUp.length] = "profitSharing";
+		//the block must be configured as an object for the function to work and not an array.
+		if( typeof BLOCK != 'object' || BLOCK.length ) return;
+		
+		//initializing storage.
+		
+		if( ! response && this.response )
+			response = JSON.parse( JSON.stringify( this.response ));
+		
+		try {
+			
+			
+			shareBlock.formerBlockID 	= this.hashed(shareBlock.blockID);
+			shareBlock.blockID 			= await this.calculateNextBlockID(note);
+			shareBlock.nextBlockID 		= this.hashed(await this.calculateNextBlockID(note,shareBlock.blockID));
+			
+			
+			shareBlock.transType 		= 'PROFITSHARING';
+			shareBlock.transValue 		= this.#shareValue;
+			//this.#shareValue 			= false;
+			block 						= await this.getTransBlock(1, {productBlockID: shareBlock.formerProductBlockID});
+			block 						= block[0];//PERERE
+			
+			let agreeTime			=	parseInt( this.calculateTime( shareBlock.agreement.payPeriod ) );
+			
+			if( isNaN( agreeTime ) )
+				agreeTime			=	parseInt( this.calculateTime( "2 weeks" ) );
+				
+			let curTime				= parseInt( this.currentTime() );
+			
+			if( ! block || block.blockID == '' || ! block.profitKey  || ( block.transTime + agreeTime ) < curTime ) {
+				//this shows there is no more blocks to recieve the profit.
+				//the last block takes the last profit shared.
+				response.productNote.exchangeValue 	= parseFloat( response.productNote.exchangeValue ) + this.#shareValue;
+				this.#noVerify		= false;
+				this.storeBlock( response, note );
+				return response;
+			} 
+			note.blockID 				= shareBlock.blockID;
+	
+			var string 				= JSON.stringify( note );
+			let noteHASH				= this.hashed( string );
+			shareBlock.noteHash			= noteHASH.slice( 0, noteHASH.length / 2 );
+			note.noteHash				= noteHASH.slice( noteHASH.length / 2, noteHASH.length );
+			var string 				= noteHASH;
+			note.noteSign 				= await this.Sign(note.blockKey, this.hashed( string ));
+			this.returnNote 			= JSON.parse( JSON.stringify( this.#note ));
+			note.blockID 				= shareBlock.blockID;				
+			//this.response 		= JSON.parse( JSON.stringify( block ));
+			//await this.generateScriptbillTransactionBlock(details, note);
+			var id 						= await this.generateKey(10);
+			await this.setPublicKey( block.profitKey, id);
+			let privKeyd 					= await this.generateKey(10, true );
+			shareBlock.agreement.privateKey 	= privKeyd;
+			shareBlock.recipient 				=	this.#encrypt( shareBlock.agreement, id );
+			await this.setPrivateKey( shareBlock.agreement.privateKey, id );
+			delete shareBlock.agreement.privateKey;
+			shareBlock.blockRef 				= await this.getPublicKey(id, true);
+			shareBlock.signRef 					= await this.generateKey(20);
+			shareBlock.nextRecipient			= block.formerProductBlockID;
+			
+			BLOCK.nextBlockID			= shareBlock.nextBlockID;
+			BLOCK.blockID				= shareBlock.blockID;
+			BLOCK.formerBlockID			= shareBlock.formerBlockID;
+			BLOCK.blockRef				= shareBlock.blockRef;
+			BLOCK.signRef				= shareBlock.signRef;
+			BLOCK.transValue			= shareBlock.transValue;
+			BLOCK.transType				= shareBlock.transType;
+			
+			var string 				= JSON.stringify( BLOCK );
+			let transHASH				= this.hashed( string );
+			shareBlock.transHash   		= transHASH.slice( 0, transHASH.length / 2 );
+			
+			note.transHash 				= transHASH.slice( transHASH.length / 2, transHASH.length );
+			
+			
+			var string 				= transHASH;
+			shareBlock.blockHash		= this.hashed( string );
+			
+			
+			shareBlock.blockSign			= await this.Sign(note.blockKey, shareBlock.blockHash);
+			
+			//this.shareData( false, shareBlock );				
+			this.storeBlock( shareBlock, note );
+			this.saveNote( note );
+			return shareBlock;
+		} catch(e) {
+			this.errorMessage(e.toString());
+			return false;
+		}
+	}
+
+	
+	static async runShareData(data){
+		//console.log("message response", data);
+		if( ! data ) return false;
+		
 		this.#noVerify	= false;
+		var id 				= await this.generateKey(10);
+		await this.setPrivateKey( this.#note.blockKey, id );
+		//console.log( data, typeof data );
+		
+		
+		data 			= data.responseKey ?? data;
 
-        const runShareData =  async (data) => {
-			//console.log("message response", data);
-			if( ! data || ! data.responseKey ) return false;
-			
-			this.#noVerify	= false;
-			var id 				= await this.generateKey(10);
-			await this.setPrivateKey( this.#note.blockKey, id );
-			//console.log( data, typeof data );
-			
-			data 			= data.responseKey;
+		if( typeof data == 'string' && data.includes('--'))
+			data 		= data.split("--");
 
-			if( typeof data == 'string' && data.includes('--'))
-				data 		= data.split("--");
-
-			if(typeof data == "object" && data.length ){
-				data.map( async (det)=>{
-					if( ! this.isJsonable( det ) ) {
-						let dat = this.decrypt( det, await this.getPublicKey( id, true ) );
-							
-						if( dat && dat != det && this.isJsonable( dat ) ) {
-							//parsing the data.
-							dat = JSON.parse( dat );
-														
-							if( dat.responseID && this.#note && dat.responseID == this.#note.blockID ){
-								//already recieved;
-								if( this.s[dat.responseID] ) return;
-									
-								//recieved;
-								this.s[dat.responseID] 	= dat.code;
-									
-								//alerting the user.
-								if( this.alertDetails )
-									await this.createAlert( dat.code + " Response ID: " + dat.responseID );
+		if(typeof data == "object" && data.length ){
+			data.map( async (det)=>{
+				if( ! this.isJsonable( det ) ) {
+					let dat = this.decrypt( det, await this.getPublicKey( id, true ) );
+						
+					if( dat && dat != det && this.isJsonable( dat ) ) {
+						//parsing the data.
+						dat = JSON.parse( dat );
+													
+						if( dat.responseID && this.#note && dat.responseID == this.#note.blockID ){
+							//already recieved;
+							if( this.s[dat.responseID] ) return;
 								
-								if( dat.code.includes( "Block ID Not Matched" ) ||  dat.code.includes("No Former Block Found For This Block" ) ){
-									let block 	= await this.getDataPersistently( dat.responseID );
+							//recieved;
+							this.s[dat.responseID] 	= dat.code;
+								
+							//alerting the user.
+							if( this.alertDetails )
+								await this.createAlert( dat.code + " Response ID: " + dat.responseID );
+							
+							if( dat.code.includes( "Block ID Not Matched" ) ||  dat.code.includes("No Former Block Found For This Block" ) ){
+								let block 	= await this.getDataPersistently( dat.responseID );
+								
+								if( block && block.blockID ){
+									//this.shareData( false, block );
+									block 		= await this.getDataPersistently( block.formerBlockID );
 									
-									if( block && block.blockID ){
-										//this.shareData( false, block );
-										block 		= await this.getDataPersistently( block.formerBlockID );
-										
-										if( block && block.blockID )
-											this.shareData( false, block );
-									}
+									if( block && block.blockID )
+										this.shareData( false, block );
 								}
-									
-							}else if( dat.blockID ){
-									
-								//already stored block no need to process.
-								if( this.l[ dat.blockID ] ) return;
-									
-								//new block and can be processed.
-								this.response = JSON.parse( JSON.stringify( dat ) );
-								this.checkReferers( this.response, this.#note );
-								await this.storeBlock( this.response, this.#note );					
-							} else if( dat.type && this.#note ){
-								if( Object.keys( dat ).includes( this.#note.walletID ) ){
-									if( this.sendChannel ){
-										let desc 			= new RTCSessionDescription( JSON.parse( dat[this.#note.walletID].answer ) );
-										this.localConnection.setRemoteDescription( desc );
-										if( this.l.DNS ){
-											let dns 		= JSON.parse( this.l.DNS );
-											
-											if( dns[ this.#note.walletID ] ){
-												this.localConnection.setLocalDescription( dns[ this.#note.walletID ] );
-											}
+							}
+								
+						}else if( dat.blockID ){
+								
+							//already stored block no need to process.
+							if( this.l[ dat.blockID ] ) return;
+								
+							//new block and can be processed.
+							let response = JSON.parse( JSON.stringify( dat ) );
+							this.setOfferAnswer(response);
+							this.checkReferers( response, this.#note ).then(() =>{
+								this.storeBlock( this.response, this.#note ).then(()=>{
+									this.shareData( false, response );
+								});
+							});
+												
+						} else if( dat.type && this.#note ){
+							if( Object.keys( dat ).includes( this.#note.walletID ) ){
+								if( this.sendChannel ){
+									let desc 			= new RTCSessionDescription( JSON.parse( dat[this.#note.walletID].answer ) );
+									this.localConnection.setRemoteDescription( desc );
+									if( this.l.DNS ){
+										let dns 		= JSON.parse( this.l.DNS );
+										
+										if( dns[ this.#note.walletID ] ){
+											this.localConnection.setLocalDescription( dns[ this.#note.walletID ] );
 										}
 									}
 								}
 							}
-							else {
-								//already stored;
-								if( dat.responseID && this.s[dat.responseID] ) return;
-								
-								//storing...
-								this.s[dat.responseID] = dat.code;
-									
-								//saving as error message.
-								this.errorMessage( dat.code );							
-							}
-											
-								
 						}
+						else {
+							//already stored;
+							if( dat.responseID && this.s[dat.responseID] ) return;
+							
+							//storing...
+							this.s[dat.responseID] = dat.code;
+								
+							//saving as error message.
+							this.errorMessage( dat.code );							
+						}
+										
+							
 					}
-					else{
-						let dat = JSON.parse( det );
-															
-						this.response = JSON.parse( JSON.stringify( dat ));
-						this.checkReferers( this.response, this.#note );
-						this.storeBlock( this.response, this.#note );
-						//this.monitorScriptbillExchanges();
-						this.profitSharing( this.response );
+					else if( det && det.blockID ){
+						let response = JSON.parse( JSON.stringify( det ));
+						
+						this.checkReferers( response, this.#note ).then( ()=>{
+							this.storeBlock( response, this.#note ).then(()=>{
+								//this.monitorScriptbillExchanges();							
+								this.#profitSharing( response ).then(()=>{
+									this.shareData(false, response );
+								});
+							});
+						});	
 					}
-				})
-			}
+				}
+				else{
+					let dat = JSON.parse( det );
+														
+					let response = JSON.parse( JSON.stringify( dat ));
+					
+					if( ! response.blockID ) return;
+					
+					this.checkReferers( response, this.#note ).then( ()=>{
+						this.storeBlock( response, this.#note ).then(()=>{
+							//this.monitorScriptbillExchanges();							
+							this.#profitSharing( response ).then(()=>{
+								this.shareData(false, response );
+							});
+						});
+					});				
+				}
+			})
 		}
-		//initalizing storage.
+	}
+		
+	
+	static async recieveResponse(){
+		////console.log("recieveResponse running " + this.funcUp[ this.funcUp.length][ this.funcUp[ this.funcUp.length].length]);
+		this.funcUp[ this.funcUp.length] = "recieveResponse";
+		this.#noVerify	= false;
+        
+				
 		try {
 			if( ( ! this.#note && this.s.currentNote ) || ( this.s.currentNote &&    ! this.s.currentNote.includes( this.#note.walletID ) && ! this.s.currentNote.includes( this.#note.noteAddress ) && ! this.#isExchangeMarketMining ) || ( ! this.#isExchangeMarketMining && ! this.#note && this.s.currentNote ))
 				this.#note = await this.#getCurrentNote();
@@ -7123,12 +7405,12 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 			
 			if( typeof chrome != "undefined" && chrome.runtime && Object.hasOwn("onMessage")){
 				chrome.runtime.sendMessage(obj);
-				chrome.runtime.onMessage.addListener(runShareData);
+				chrome.runtime.onMessage.addListener(this.runShareData);
 			} else {
 				const myWorker = new Worker("share.js");
 				myWorker.postMessage( obj );
-                myWorker.onmessage = function(event){
-                    runShareData(event.data);
+                myWorker.onmessage = (event)=>{
+                    this.runShareData(event.data);
                 }
 			}
 
@@ -7646,6 +7928,9 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 		}
 	}
 	
+	
+	
+	
 	/*  */
 	
 	//Scriptbill method stores and attempt to output error messages to the user when running Scriptbill class
@@ -7702,7 +7987,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 			let currentNote = this.s.currentNote;
 			let pass 		= this.s.user_pass;
 			let upload 		= this.s.uploaded;
-			////alert("checking session");
+			//////alert("checking session");
 			this.s.clear();
 			//this.errorMessage(e.toString());
 			console.error(e);
@@ -7766,9 +8051,9 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 			coverConfirm.appendChild( confirm );
 			alertInner.innerHTML 	= `<p>${message}</p>`;
 			alertInner.appendChild( alertLogo );
-                        alertInner.appendChild( coverConfirm );
-                        alert.appendChild( alertInner );
-                        document.body.appendChild( alert );
+            alertInner.appendChild( coverConfirm );
+            alert.appendChild( alertInner );
+			document.body.appendChild( alert );
                         
                         // Focus on the input field so user can type immediately
                         button.focus();
@@ -7842,54 +8127,6 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 		}
 	}
 	
-	static async #encrypt( data, id = "" ){
-		//console.log("encrypt running " + this.funcUp[ this.funcUp.length]);
-		this.funcUp[ this.funcUp.length] = "encrypt";
-		let publicKey = await this.getPublicKey(id);
-		try {	
-			if( ! publicKey || ! CryptoJS ) return data;
-			
-			let encryptKey 		= await this.generateKey();
-			
-			let keyObj =	{
-				"alg": "RSA-OAEP-256",
-				"e": "AQAB",
-				"ext": true,
-				"key_ops": [
-					"encrypt"
-				],
-				"kty": "RSA",
-				"n": "vGRdPqhiG4-APxcMG8ItvT43FzRHsa1QqALROwknpODKC7HV9icoDZI27Z885VcUo6isu4vqtt5eLmKgBaKaFHNSxv-CSFHgTEPBmr6cWEdrs6MOxYWycJnU6o_4OmkWL3Snr_Hwvmputfomm2N0EBkPYpjc3Il5agO0RpmqFh8"
-			};
-			keyObj.n 			= publicKey;
-			
-			try {
-				publicKey 		= await crypto.subtle.importKey( 'jwk', keyObj, { name: "RSA-OAEP", hash: "SHA-256" }, keyObj.ext, keyObj.key_ops );
-				//console.log( "publicKey: " + publicKey );
-				let encoder 		= new TextEncoder();
-				let encoded 		= encoder.encode( encryptKey );
-				
-				let keyEnc 			= await crypto.subtle.encrypt({name:"RSA-OAEP"}, publicKey, encoded );			
-				this.encrypted		= keyEnc;
-				let keyString 		= this.ab2str( keyEnc );			
-				
-				if( typeof data == 'object' )
-					data = JSON.stringify( data );
-				
-				if( keyString && typeof data == 'string' ){			
-					return this.Base64.encode( JSON.stringify( {key: keyString, data: this.encrypt( data, encryptKey ) } ) );
-				}
-				else return data;
-			} catch (e){
-				//console.log( "encrypt error: " + e );
-				return data;
-			}
-		} catch(e){
-			console.error(e);
-			this.errorMessage(e.toString());
-			return data;
-		}
-	}	
 	
 	static async splitNote(value = 0, password = ""){
 		try {
@@ -8659,12 +8896,26 @@ static Base64 = {
 	}
 
 	static async shareExchange(){
+		
+		const exchangeNote = await this.getCurrentExchangeNote();
+		
+		
 		const client = this.createClient();
 		const channel = client.channel("general");
 		channel.subscribe();
-		const exchangeNote = await this.getCurrentExchangeNote();
+		
 
-		if(exchangeNote){
+		if(exchangeNote && exchangeNote.exchangeID ){
+			const exNoteClient = this.createClient(false, exchangeNote.noteServer, exchangeNote.noteKey);
+			
+			if( exNoteClient ){
+				const exChannel 	= exNoteClient.channel('general');
+				exChannel.send({
+					type:"broadcast",
+					event:"exchange_broadcast",
+					payload:{text: JSON.stringify(exchangeNote)}
+				})
+			}
 			channel.send({
 				type:"broadcast",
 				event:"exchange_broadcast",
@@ -9179,7 +9430,7 @@ static Base64 = {
 	}
 	static async calculateLoanEligibility(){
 		this.funcUp[ this.funcUp.length ] = "calculateLoanEligibility";
-		////alert( "Yeah" );
+		//////alert( "Yeah" );
 		if( ! this.#note && this.s.currentNote )
 			this.#note = await this.#getCurrentNote();
 		
@@ -9212,6 +9463,31 @@ static Base64 = {
 		
 		if( isNaN( loanValue ) || ! demandValue )
 			loanValue = 0;
+		let Time 		= parseInt(this.currentTime()) - parseInt(this.calculateTime("30 Days"));
+		//get the total deposit value.
+		let deposits 		= await this.getTransBlock(500, {
+			transType 	: "DEPOSIT",
+			noteType 	: this.#note.noteType,
+			transTime 	: `${Time} >=`
+		});
+		
+		let withdrawals 	= await this.getTransBlock(500,{
+			transType 	: "WITHDRAW",
+			noteType 	: this.#note.noteType,
+			transTime 	: `${Time} >=`
+		});
+				
+		let totalDeposits 		= deposits.reduce(
+		  (sum, blk) => sum + (Number(blk.transValue) || 0),
+		  0
+		);
+		
+		let totalWithdrawals = withdrawals.reduce(
+		  (sum, blk) => sum + (Number(blk.transValue) || 0),
+		  0
+		);
+		
+		let totalDiff 		= totalDeposits - totalWithdrawals;
 		
 		//if there are previously unpaid loan in the network the loan value should be 
 		//influenced by this
@@ -9304,6 +9580,201 @@ static Base64 = {
 		return loanValue;
 	}
 	
+	// ──────────────────────────────────────────────────────────────────────────
+	// getTransBlock — unified filter query against persistent + socket backends.
+	//
+	// filters (config or this.*):
+	//   blockID, blockRef, noteType, transType, transValue, noteValue,
+	//   signRef, referenceID, referenceKey, splitID, nextSplitID, budgetID,
+	//   productID, transTime, agreeID, productBlockID, exBlockID, walletHASH
+	//
+	// join = "AND"  → intersection of results across keys
+	// join = "OR"   → union (default)
+	//
+	// Always returns an array of blocks (possibly empty, possibly one).
+	// ──────────────────────────────────────────────────────────────────────────
+	static async getTransBlockNew(limit = 500, config = {}, join = "AND") {
+		this.funcUp[this.funcUp.length] = "getTransBlock";
+
+		try {
+			// ── 0. Server sanitation (unchanged behavior).
+			if (this.server) {
+				try {
+					this.server = new URL(this.server);
+					const resp = await this.getData("scriptbillPing", "TRUE", this.server.origin);
+					if (resp && resp.isScriptbillServer === "TRUE") this.server = this.server.href;
+					else delete this.server;
+				} catch (e) {
+					delete this.server;
+				}
+			}
+
+			const url = this.server ? this.server : "";
+
+			// ── 1. Build the normalized filter list.
+			// Each entry: { key, value, command, directory, isArray? }
+			// The "isArray" flag tells us whether the value is an array or scalar.
+			const FILTERS = [
+				"blockID", "blockRef", "noteType", "transType", "transValue",
+				"noteValue", "signRef", "referenceID", "referenceKey", "splitID",
+				"nextSplitID", "budgetID", "productID", "transTime", "agreeID",
+				"productBlockID", "exBlockID", "walletHASH",
+			];
+
+			// Command parsing for the numeric/time keys.
+			const parseNumericFilter = (raw) => {
+				const str = String(raw).trim();
+				const m = str.match(/^(\S+)\s*(>=|<=|>|<|=)?$/);
+				if (!m) return { value: parseFloat(str), command: "equal" };
+				const value = parseFloat(m[1]);
+				const op = m[2] || "=";
+				const command =
+					op === ">"  ? "greater" :
+					op === ">=" ? "greater-equal" :
+					op === "<"  ? "lesser" :
+					op === "<=" ? "lesser-equal" :
+								  "equal";
+				return { value, command };
+			};
+
+			const filters = [];
+			for (const key of FILTERS) {
+				const hasConfig = Object.prototype.hasOwnProperty.call(config, key);
+				const hasThis   = Object.prototype.hasOwnProperty.call(this, key);
+				if (!hasConfig && !hasThis) continue;
+
+				let value = hasConfig ? config[key] : this[key];
+
+				// Array values on blockID or noteType produce a multi-fetch.
+				if (Array.isArray(value)) {
+					// Expand into one filter per element; the merge loop dedupes.
+					for (const v of value) {
+						filters.push({ key, value: v, command: "equal", isArray: true });
+					}
+					if (key === "blockID") delete this.blockID;
+					else                    delete this[key];
+					continue;
+				}
+
+				if (key === "transValue" || key === "noteValue" || key === "transTime") {
+					const { value: nv, command } = parseNumericFilter(value);
+					filters.push({ key, value: nv, command });
+				} else if (key === "noteType" && typeof value === "string" && value.endsWith("S")) {
+					// Some callers append "S" for "noteTypeS" semantics; drop it.
+					filters.push({ key, value: value.slice(0, -1), command: "equal" });
+				} else {
+					filters.push({ key, value, command: "equal" });
+				}
+
+				if (!hasConfig && key !== "blockID") delete this[key];
+				if (key === "blockID")                delete this.blockID;
+			}
+
+			// ── 2. Fast-path: single blockID, no other filter. Callers use this
+			//     most often and it should not go through the merge machinery.
+			if (filters.length === 1 && filters[0].key === "blockID") {
+				const id = filters[0].value;
+				const local  = await this.resolvePersistentData(id);
+				if (local) return [local];
+				const remote = await this.getData("blockID", id, url, "socket");
+				if (remote && remote.blockID) return [remote];
+				if (Array.isArray(remote) && remote.length) return remote;
+				return [];
+			}
+
+			// ── 3. Multi-filter loop.
+			//     - If join === "AND", each filter's result intersects trans_blocks.
+			//     - Otherwise, each filter's result unions into trans_blocks.
+			const seen   = new Set();
+			let   result = [];
+
+			const pushUnique = (blocks) => {
+				if (!blocks) return false;
+				const arr = Array.isArray(blocks) ? blocks : [blocks];
+				let added = false;
+				for (const b of arr) {
+					if (!b || !b.blockID || seen.has(b.blockID)) continue;
+					seen.add(b.blockID);
+					result.push(b);
+					added = true;
+					if (result.length >= limit) break;
+				}
+				return added;
+			};
+
+			// Run one filter through both backends.
+			const runFilter = async ({ key, value, command }) => {
+				const dir = key === "agreeID" ? "agreements" : "transactions";
+
+				// Persistent + socket in parallel.
+				const [persistentRaw, socketRaw] = await Promise.all([
+					this.getDataPersistently(key, value, dir, command).catch(() => null),
+					this.getData(
+						key === "transValue" || key === "noteValue" || key === "transTime"
+							? [key, "type"]
+							: key,
+						key === "transValue" || key === "noteValue" || key === "transTime"
+							? [value, command]
+							: value,
+						url,
+						"socket"
+					).catch(() => null),
+				]);
+
+				const merged = [];
+				if (persistentRaw) {
+					const arr = Array.isArray(persistentRaw) ? persistentRaw : [persistentRaw];
+					for (const b of arr) if (b && b.blockID) merged.push(b);
+				}
+				if (socketRaw) {
+					const arr = Array.isArray(socketRaw) ? socketRaw : [socketRaw];
+					for (const b of arr) if (b && b.blockID) merged.push(b);
+				}
+				return merged;
+			};
+
+			for (let i = 0; i < filters.length && result.length < limit; i++) {
+				const filterBlocks = await runFilter(filters[i]);
+
+				if (i === 0) {
+					pushUnique(filterBlocks);
+					continue;
+				}
+
+				if (join === "AND") {
+					// Intersection: keep only blocks already in `result` that
+					// also appear in `filterBlocks`.
+					const allowed = new Set(filterBlocks.map((b) => b.blockID));
+					result = result.filter((b) => allowed.has(b.blockID));
+					// Re-sync seen set.
+					seen.clear();
+					for (const b of result) seen.add(b.blockID);
+				} else {
+					pushUnique(filterBlocks);
+				}
+			}
+
+			// ── 4. Final limit trim (the loop may have overshot on AND mode).
+			if (result.length > limit) result = result.slice(0, limit);
+
+			// ── 5. Empty-result fallback: if we got nothing but the caller
+			//     has a note with a live block, hand that block back so downstream
+			//     code can find the chain root.
+			if (result.length === 0 && filters.length === 0 && this.#note && this.#note.blockID) {
+				const { local } = { local: await this.resolvePersistentData(this.#note.blockID) };
+				if (local) return [local];
+				const remote = await this.getData("blockID", this.#note.blockID, url, "socket");
+				if (remote && remote.blockID) return [remote];
+			}
+
+			return result;
+		} catch (e) {
+			this.errorMessage(e.toString());
+			console.error(e);
+			return [this.defaultBlock];
+		}
+	}
+	
 	static async getNoteTransactions(){
 		this.funcUp[ this.funcUp.length ] = "getNoteTransactions";
 		let storage = this.s;
@@ -9315,7 +9786,7 @@ static Base64 = {
 			//console.log("note: " + JSON.stringify( this.#note ));		
 			if( ! this.#note )
 				return [];
-			////alert("checks 2");
+			//////alert("checks 2");
 			//console.log("note: " + JSON.stringify( this.#note ));
 			//let local;
 			
@@ -10265,58 +10736,58 @@ static Base64 = {
       let { data, error } = await client
         .from('blocks')
         .update({
-          blockID: block.blockID,
-          formerBlockID: block.formerBlockID,
-          nextBlockID: block.nextBlockID,
-          noteHash: block.noteHash,
-          transHash: block.transHash,
-          realHash: block.realHash,
-          totalHASH: block.totalHASH,
-          blockHash: block.blockHash,
-          noteSign: block.noteSign,
-          noteServer: block.noteServer,
-          noteValue: block.noteValue,
-          noteType: block.noteType,
-          transValue: block.transValue,
-          rankPref: block.rankPref,
-          transType: block.transType,
-          creditType: block.creditType,
-          transTime: block.transTime,
+          blockid: block.blockID,
+          formerblockid: block.formerBlockID,
+          nextblockid: block.nextBlockID,
+          notehash: block.noteHash,
+          transhash: block.transHash,
+          realhash: block.realHash,
+          totalhash: block.totalHASH,
+          blockhash: block.blockHash,
+          notesign: block.noteSign,
+          noteserver: block.noteServer,
+          notevalue: block.noteValue,
+          notetype: block.noteType,
+          transvalue: block.transValue,
+          rankpref: block.rankPref,
+          transtype: block.transType,
+          credittype: block.creditType,
+          transtime: block.transTime,
           recipient: block.recipient,
-          referenceID: block.referenceID,
-          referenceKey: block.referenceKey,
-          splitID: block.splitID,
-          walletHASH: block.walletHASH,
-          formerWalletHASH: block.formerWalletHASH,
-          walletSign: block.walletSign,
-          blockKey: block.blockKey,
-          blockSign: block.blockSign,
-          blockRef: block.blockRef,
-          signRef: block.signRef,
+          referenceid: block.referenceID,
+          referencekey: block.referenceKey,
+          splitid: block.splitID,
+          wallethash: block.walletHASH,
+          formerwallethash: block.formerWalletHASH,
+          walletsign: block.walletSign,
+          blockkey: block.blockKey,
+          blocksign: block.blockSign,
+          blockref: block.blockRef,
+          signref: block.signRef,
           agreements: block.agreements,
-          lastAgreeHash: block.lastAgreeHash,
-          agreeHash: block.agreeHash,
-          noteID: block.noteID,
+          lastagreehash: block.lastAgreeHash,
+          agreehash: block.agreeHash,
+          noteid: block.noteID,
           expiry: block.expiry,
-          interestRate: block.interestRate,
-          interestType: block.interestType,
-          budgetRefs: block.budgetRefs,
-          budgetID: block.budgetID,
-          productID: block.productID,
+          interestrate: block.interestRate,
+          interesttype: block.interestType,
+          budgetrefs: block.budgetRefs,
+          budgetid: block.budgetID,
+          productid: block.productID,
           agreement: block.agreement,
-          exchangeNote: block.exchangeNote,
-          exBlockID: block.exBlockID,
-          exNextBlockID: block.exNextBlockID,
-          exFormerBlockID: block.exFormerBlockID,
-          productBlockID: block.productBlockID,
-          productNextBlockID: block.productNextBlockID,
-          productFormerBlockID: block.productFormerBlockID
+          exchangenote: block.exchangeNote,
+          exblockid: block.exBlockID,
+          exnextblockid: block.exNextBlockID,
+          exformerblockid: block.exFormerBlockID,
+          productblockid: block.productBlockID,
+          productnextblockid: block.productNextBlockID,
+          productformerblockid: block.productFormerBlockID
         })
         .select()
 		
 		if( error ){
 			this.errorMessage(`Couldn't insert into database because of ${error.message}. Error Details: ${error.details} and sugested fix: ${error.hint}; Code: ${error.code}`);
-			if(!this.regenerateBlockIds(response))
+			if(!this.regenerateBlockIds(block, client))
 				return false;
 		}
 
@@ -10332,15 +10803,15 @@ static Base64 = {
             name					: block.agreement.name, //unique name for the budget, can be a business or website name.
             value					: block.agreement.value, //the total value of a Scriptbill Budget. Always Used to Increase stock value manually
             max_exec				: block.agreement.max_exec, //maximum time the budget would execute.
-            budgetID				: block.agreement.budgetID,//the public Key of the Budget,the private ke would be set on the note with the block ID where the budget is kept.
-            sleepingPartner 		: block.agreement.sleepingPartner, //this is the description for a sleeping investor.
-            workingPartner		: block.agreement.workingPartner, //this is the description for a working investor.
-            sleepingPartnerShare	: block.agreement.sleepingPartnerShare, //this is the rate that describes the sleepig investor share.
-            workingPartnerShare	: block.agreement.workingPartnerShare, //this is the rate that describes the sleepig investor share.
-            budgetItems			: block.agreement.budgetItems,//items that are in the budget that constitute the budget
-            budgetSign			: block.agreement.budgetSign, //the signature on the budget
-            budgetRef				: block.agreement.budgetRef,//reference to the budget signature.
-            budgetType			: block.agreement.budgetType, // "personal" & "family" tells that this budget 
+            budgetid				: block.agreement.budgetID,//the public Key of the Budget,the private ke would be set on the note with the block ID where the budget is kept.
+            sleepingpartner 		: block.agreement.sleepingPartner, //this is the description for a sleeping investor.
+            workingpartner		: block.agreement.workingPartner, //this is the description for a working investor.
+            sleepingpartnershare	: block.agreement.sleepingPartnerShare, //this is the rate that describes the sleepig investor share.
+            workingpartnershare	: block.agreement.workingPartnerShare, //this is the rate that describes the sleepig investor share.
+            budgetitems			: block.agreement.budgetItems,//items that are in the budget that constitute the budget
+            budgetsign			: block.agreement.budgetSign, //the signature on the budget
+            budgetref				: block.agreement.budgetRef,//reference to the budget signature.
+            budgettype			: block.agreement.budgetType, // "personal" & "family" tells that this budget 
             //is not business related budget and won't accept investment. Any investment to this budget type will not 
             //issue any stocks. "governmental" budget will issue bonds not stocks to the investor and used by 
             //business managers and any persons or organization who support the economy, business budget will issue stocks to investor.
@@ -10348,14 +10819,14 @@ static Base64 = {
             //budget. If straight the budget block expires when the budget executes. but if recursive, the budget 
             //block will renew until the time for the recursion stops.
             recursion				: block.agreement.recursion,//used to describe how many times the budget will execute if the budget is a recursive budget
-            budgetSpread			: block.agreement.budgetSpread, //time required for the budget to spread after it has executed. Works for a recursive budgetType
-            budgetCredit			: block.agreement.budgetCredit, //the acceptable credit for investing and executing this budget. Budget credit should be set according to how the item in the budget is valued.
-            budgetDesc			  : block.agreement.budgetDesc, //the description of the budget. This will give investors view of what product or products that will be produced under this budget, and everything investors need to know about this budget.
-            budgetImages			: block.agreement.budgetImages,//array of image url that can describe the budget products and effects.
-            budgetVideos			  : block.agreement.budgetVideos, //array of videos that describe the budgets to investors.
-            companyRanks			  : block.agreement.companyRanks,//rank codes that will be occupied by users in the company. If you are employed in the company, a special rank code will be assigned you and the public key stored on the budget block
-            stockID				      : block.agreement.stockID,//default scriptbill stocks code.
-            investorsHub			  : block.agreement.investorsHub,//an array of hashes that can only be verified by people who hold stocks to this budget. This hash also test for the values on their stock note.
+            budgetspread			: block.agreement.budgetSpread, //time required for the budget to spread after it has executed. Works for a recursive budgetType
+            budgetcredit			: block.agreement.budgetCredit, //the acceptable credit for investing and executing this budget. Budget credit should be set according to how the item in the budget is valued.
+            budgetdesc			  : block.agreement.budgetDesc, //the description of the budget. This will give investors view of what product or products that will be produced under this budget, and everything investors need to know about this budget.
+            budgetimages			: block.agreement.budgetImages,//array of image url that can describe the budget products and effects.
+            budgetvideos			  : block.agreement.budgetVideos, //array of videos that describe the budgets to investors.
+            companyranks			  : block.agreement.companyRanks,//rank codes that will be occupied by users in the company. If you are employed in the company, a special rank code will be assigned you and the public key stored on the budget block
+            stockid				      : block.agreement.stockID,//default scriptbill stocks code.
+            investorshub			  : block.agreement.investorsHub,//an array of hashes that can only be verified by people who hold stocks to this budget. This hash also test for the values on their stock note.
             //if an investor sell his stock, the exchange market must test to see if the stock is 
             //true by testing the hashes, deduct the sold value from his account, issue out money 
             //to the seller and updating the hub hashes if only the investor hash stocks with the company who owns this budget. InvestorHub works majorly for business and 
@@ -10376,19 +10847,19 @@ static Base64 = {
 			let {error: error3} = await supabase
           .from('products')
           .update( {
-              blockID		: block.blockID,
+              blockid		: block.blockID,
               value			: block.agreement.productConfig.value,//the original value of the product.
               units			: block.agreement.productConfig.units,//the units of products available in the System
-			  productID 	: block.productID,
-              totalUnits	: block.agreement.productConfig.totalUnits,//total units of product included to the scriptbill systems
+			  productid 	: block.productID,
+              totalunits	: block.agreement.productConfig.totalUnits,//total units of product included to the scriptbill systems
               name			: block.agreement.productConfig.name, // the name of the product.
               description	: block.agreement.productConfig.description,//description of product, HTML allowed
               images		: block.agreement.productConfig.images,//urls to images that describe the product
               videos		: block.agreement.productConfig.videos, //urls to videos that describe the product
-              creditType	: block.agreement.productConfig.creditType, //the type of credit which the product is being valued.
-              sharingRate	: block.agreement.productConfig.sharingRate,//the profit sharing rate on the product
-              blockExpiry	: block.agreement.productConfig.blockExpiry, //tells time the transaction block of the buyer will expire.
-              budgetID		: block.agreement.productConfig.budgetID,//the ID of the budget the product belongs to. Budget IDs in the Scriptbill Network is an ID of a Company in the Network that manages the STOCK note credit the budget produces. business and governmental budget are budget that produces exchangeable credits in the network.
+              credittype	: block.agreement.productConfig.creditType, //the type of credit which the product is being valued.
+              sharingrate	: block.agreement.productConfig.sharingRate,//the profit sharing rate on the product
+              blockexpiry	: block.agreement.productConfig.blockExpiry, //tells time the transaction block of the buyer will expire.
+              budgetid		: block.agreement.productConfig.budgetID,//the ID of the budget the product belongs to. Budget IDs in the Scriptbill Network is an ID of a Company in the Network that manages the STOCK note credit the budget produces. business and governmental budget are budget that produces exchangeable credits in the network.
               
             }).select()
           agreement = block.agreement;
@@ -10404,13 +10875,13 @@ static Base64 = {
 		  let {error: error4} = await supabase
           .from('adverts')
           .update( {
-            blockID:block.blockID,
-            advertID : block.agreement.advertID,//this carries the id of the advert to be created
-            productID : block.agreement.productID,//this carries the product that the advert is promoting
+            blockid		:block.blockID,
+            advertid 	: block.agreement.advertID,//this carries the id of the advert to be created
+            productid 	: block.agreement.productID,//this carries the product that the advert is promoting
             viewers		: block.agreement.viewers, //number of viewers you are planning to send this advert to.
-            viewersShare : block.agreement.viewersShare,//this is the rate of the transvalue going to viewers.
+            viewersshare : block.agreement.viewersShare,//this is the rate of the transvalue going to viewers.
             publishers 	: block.agreement.publishers, //number of publishers you want to show this advert to.
-            publishShare 	: block.agreement.publishShare,//rate of advert funds going to publishers.
+            publishshare 	: block.agreement.publishShare,//rate of advert funds going to publishers.
             scope 		: block.agreement.scope, //this is the name of the area the advert will be shown to, people not living in this area won't participate in the view or view share of the advert.
             banner 		: block.agreement.banner,//this is the url of the banner that this advert represent.
             video 		: block.agreement.video,//this is the url of the video that will show this ads.
@@ -10431,32 +10902,32 @@ static Base64 = {
 			let {error: error5} = await supabase
 			.from('agreements')
 			.update({
-			  blockID: block.blockID,          
-			  agreeID			: agreement.agreeID, //this is the unique identifier of the agreement.
-			  agreeSign		: agreement.agreeSign, //this is the unique signature of the agreement, to be signed by the initiator of the agreement
-			  agreeKey		: agreement.agreeKey, //this is the public key to the agreement, used to verify the agreement signature and to verify the beneficiary account.
-			  senderSign		: agreement.senderSign, //this is the unique signature of the sender,
-			  senderID		: agreement.senderID, //this is the block ID of the sender, used as a signature text for the signature.
-			  senderKey		: agreement.senderKey, //key used by sender to sign this agreement
-			  recieverID		: agreement.recieverID, //this is the identifier of the block of the reciever, this is useful when other nodes want to accept the new agreement as valid.
-			  recieverKey		: agreement.recieverKey, //key used by reciever to sign this agreement
-			  maxExecTime		: agreement.maxExecTime, //this is the maximum time allowed for the agreement to last on the block chain. If this time elapses, the agreement would be executed by force,  forcing the note of the creator to reduce even to a negative value.
-			  agreeType		: agreement.agreeType,//this describes the type of agreement we are handling. values are "normal", which denotes that the agreement should be handled normally, that is if terms are not met agreement should be reverted to the sender. The "sendTo" type ensures that the funds are sent to a particular or an array of note addresses, specifying the values to be sent per address when the execution time reach or when the agreement terms are not met. "Loan" type specifies that the money was borrowed to the recipient and must be returned at the specified time. The "loan" type works with interest rates. "contract" agreement type works like budget for the recipient, because it tells how the recipient should use the money, base on an initial quote sent by the recipient in a QUOTE transaction
-			  ExecTime		: agreement.ExecTime, //this is the execution time for the agreement, this will only successfully run the agreement if and only if the note that holds the agreement has enough funds to sponsor the agreement, else agreement would not run but would wait until their is a RECIEVE transaction that would update the note'this.s value.
+			  blockid		: block.blockID,          
+			  agreeid			: agreement.agreeID, //this is the unique identifier of the agreement.
+			  agreesign		: agreement.agreeSign, //this is the unique signature of the agreement, to be signed by the initiator of the agreement
+			  agreekey		: agreement.agreeKey, //this is the public key to the agreement, used to verify the agreement signature and to verify the beneficiary account.
+			  sendersign		: agreement.senderSign, //this is the unique signature of the sender,
+			  senderid		: agreement.senderID, //this is the block ID of the sender, used as a signature text for the signature.
+			  senderkey		: agreement.senderKey, //key used by sender to sign this agreement
+			  recieverid		: agreement.recieverID, //this is the identifier of the block of the reciever, this is useful when other nodes want to accept the new agreement as valid.
+			  recieverkey		: agreement.recieverKey, //key used by reciever to sign this agreement
+			  maxexectime		: agreement.maxExecTime, //this is the maximum time allowed for the agreement to last on the block chain. If this time elapses, the agreement would be executed by force,  forcing the note of the creator to reduce even to a negative value.
+			  agreetype		: agreement.agreeType,//this describes the type of agreement we are handling. values are "normal", which denotes that the agreement should be handled normally, that is if terms are not met agreement should be reverted to the sender. The "sendTo" type ensures that the funds are sent to a particular or an array of note addresses, specifying the values to be sent per address when the execution time reach or when the agreement terms are not met. "Loan" type specifies that the money was borrowed to the recipient and must be returned at the specified time. The "loan" type works with interest rates. "contract" agreement type works like budget for the recipient, because it tells how the recipient should use the money, base on an initial quote sent by the recipient in a QUOTE transaction
+			  exectime		: agreement.ExecTime, //this is the execution time for the agreement, this will only successfully run the agreement if and only if the note that holds the agreement has enough funds to sponsor the agreement, else agreement would not run but would wait until their is a RECIEVE transaction that would update the note'this.s value.
 			  value			: agreement.value, //this is the total value of the agreement, the transaction value of a transaction is mostly used here. For security reasons, this value cannot be larger than the value of the transaction.
-			  isPeriodic		: agreement.isPeriodic, //a boolean value that tells whether this should run periodically, if it will run periodically, the periodic value will be calculated
+			  isperiodic		: agreement.isPeriodic, //a boolean value that tells whether this should run periodically, if it will run periodically, the periodic value will be calculated
 			  times			: agreement.times, //works with the isPeriodic, if set to true, the value of this variable will be used against the value variable to determine how much the account will spend
-			  payTime			: agreement.payTime, //this is the time for the next payment, works when isPeriodic is set to true, else the execTime determines the payment
-			  payPeriod		: agreement.payPeriod, //this is the spread of payment that controls how scripts should set the payTime. If 1 week, when the payment has been executed, the pay period is used to calculate the next payTime.
-			  delayInterest	: agreement.delayInterest, //this determine the amount of interest that would be charged if the execTime is exceeded before the contract ends.
-			  interestType	: agreement.interestType, //This is the type of interest that would be charged; accepts SIMPLE & COMPOUND.
-			  interestSpread	: agreement.interestRate, //this determine the spread at which the interest will be calculated.
-			  interestRate    : agreement.interestRate,
-			  timeStamp		: agreement.timeStamp, //this is the signature of the timestamp of the agreement. This is designed to avoid duplicate agreement issues.
-			  realNonce		: agreement.realNonce,//hashed of the current note ID.
-			  recieverSign 	: agreement.recieverSign,//this is the signature on the agreement which is signed by the sender with the senders key to verify that the agreement has been met by the reciever. The sender will have to create an AGREEMENTSIGN transaction, referencing the blockID to the AGREEMENTREQUEST transaction sent by the reciever to obey this.
+			  paytime			: agreement.payTime, //this is the time for the next payment, works when isPeriodic is set to true, else the execTime determines the payment
+			  payperiod		: agreement.payPeriod, //this is the spread of payment that controls how scripts should set the payTime. If 1 week, when the payment has been executed, the pay period is used to calculate the next payTime.
+			  delayinterest	: agreement.delayInterest, //this determine the amount of interest that would be charged if the execTime is exceeded before the contract ends.
+			  interesttype	: agreement.interestType, //This is the type of interest that would be charged; accepts SIMPLE & COMPOUND.
+			  interestspread	: agreement.interestRate, //this determine the spread at which the interest will be calculated.
+			  interestrate    : agreement.interestRate,
+			  timestamp		: agreement.timeStamp, //this is the signature of the timestamp of the agreement. This is designed to avoid duplicate agreement issues.
+			  realnonce		: agreement.realNonce,//hashed of the current note ID.
+			  recieversign 	: agreement.recieverSign,//this is the signature on the agreement which is signed by the sender with the senders key to verify that the agreement has been met by the reciever. The sender will have to create an AGREEMENTSIGN transaction, referencing the blockID to the AGREEMENTREQUEST transaction sent by the reciever to obey this.
 			  quoteID			: agreement.quoteID,//this is the block ID to the reference block that has the quote to the agreement in a contract based agreement.
-			  sendAddress		: agreement.sendAddress,//this is the address or group of addresses to send the agreement value to, this correspond to a sendTo agreement type. if it is a group, then values to be sent to each address should be specified. If the execution time for each address is different, then this should be specified, else the general execution time will be followed for all address. 
+			  sendaddress		: agreement.sendAddress,//this is the address or group of addresses to send the agreement value to, this correspond to a sendTo agreement type. if it is a group, then values to be sent to each address should be specified. If the execution time for each address is different, then this should be specified, else the general execution time will be followed for all address. 
 			
 		
 			})
@@ -10485,58 +10956,58 @@ static Base64 = {
       let { data, error } = await client
         .from('blocks')
         .insert({
-          blockID: block.blockID,
-          formerBlockID: block.formerBlockID,
-          nextBlockID: block.nextBlockID,
-          noteHash: block.noteHash,
-          transHash: block.transHash,
-          realHash: block.realHash,
-          totalHASH: block.totalHASH,
-          blockHash: block.blockHash,
-          noteSign: block.noteSign,
-          noteServer: block.noteServer,
-          noteValue: block.noteValue,
-          noteType: block.noteType,
-          transValue: block.transValue,
-          rankPref: block.rankPref,
-          transType: block.transType,
-          creditType: block.creditType,
-          transTime: block.transTime,
+          blockid: block.blockID,
+          formerblockid: block.formerBlockID,
+          nextblockid: block.nextBlockID,
+          notehash: block.noteHash,
+          transhash: block.transHash,
+          realhash: block.realHash,
+          totalhash: block.totalHASH,
+          blockhash: block.blockHash,
+          notesign: block.noteSign,
+          noteserver: block.noteServer,
+          notevalue: block.noteValue,
+          notetype: block.noteType,
+          transvalue: block.transValue,
+          rankpref: block.rankPref,
+          transtype: block.transType,
+          credittype: block.creditType,
+          transtime: block.transTime,
           recipient: block.recipient,
-          referenceID: block.referenceID,
-          referenceKey: block.referenceKey,
-          splitID: block.splitID,
-          walletHASH: block.walletHASH,
-          formerWalletHASH: block.formerWalletHASH,
-          walletSign: block.walletSign,
-          blockKey: block.blockKey,
-          blockSign: block.blockSign,
-          blockRef: block.blockRef,
-          signRef: block.signRef,
+          referenceid: block.referenceID,
+          referencekey: block.referenceKey,
+          splitid: block.splitID,
+          wallethash: block.walletHASH,
+          formerwallethash: block.formerWalletHASH,
+          walletsign: block.walletSign,
+          blockkey: block.blockKey,
+          blocksign: block.blockSign,
+          blockref: block.blockRef,
+          signref: block.signRef,
           agreements: block.agreements,
-          lastAgreeHash: block.lastAgreeHash,
-          agreeHash: block.agreeHash,
-          noteID: block.noteID,
+          lastagreehash: block.lastAgreeHash,
+          agreehash: block.agreeHash,
+          noteid: block.noteID,
           expiry: block.expiry,
-          interestRate: block.interestRate,
-          interestType: block.interestType,
-          budgetRefs: block.budgetRefs,
-          budgetID: block.budgetID,
-          productID: block.productID,
+          interestrate: block.interestRate,
+          interesttype: block.interestType,
+          budgetrefs: block.budgetRefs,
+          budgetid: block.budgetID,
+          productid: block.productID,
           agreement: block.agreement,
-          exchangeNote: block.exchangeNote,
-          exBlockID: block.exBlockID,
-          exNextBlockID: block.exNextBlockID,
-          exFormerBlockID: block.exFormerBlockID,
-          productBlockID: block.productBlockID,
-          productNextBlockID: block.productNextBlockID,
-          productFormerBlockID: block.productFormerBlockID
+          exchangenote: block.exchangeNote,
+          exblockid: block.exBlockID,
+          exnextblockid: block.exNextBlockID,
+          exformerblockid: block.exFormerBlockID,
+          productblockid: block.productBlockID,
+          productnextblockid: block.productNextBlockID,
+          productformerblockid: block.productFormerBlockID
         })
         .select()
 		
 		if( error ){
 			this.errorMessage(`Couldn't insert into database because of ${error.message}. Error Details: ${error.details} and sugested fix: ${error.hint}; Code: ${error.code}`);
-			if(!this.regenerateBlockIds(response))
+			if(!this.regenerateBlockIds(block, client))
 				return false;
 		}
 
@@ -10552,15 +11023,15 @@ static Base64 = {
             name					: block.agreement.name, //unique name for the budget, can be a business or website name.
             value					: block.agreement.value, //the total value of a Scriptbill Budget. Always Used to Increase stock value manually
             max_exec				: block.agreement.max_exec, //maximum time the budget would execute.
-            budgetID				: block.agreement.budgetID,//the public Key of the Budget,the private ke would be set on the note with the block ID where the budget is kept.
-            sleepingPartner 		: block.agreement.sleepingPartner, //this is the description for a sleeping investor.
-            workingPartner		: block.agreement.workingPartner, //this is the description for a working investor.
-            sleepingPartnerShare	: block.agreement.sleepingPartnerShare, //this is the rate that describes the sleepig investor share.
-            workingPartnerShare	: block.agreement.workingPartnerShare, //this is the rate that describes the sleepig investor share.
-            budgetItems			: block.agreement.budgetItems,//items that are in the budget that constitute the budget
-            budgetSign			: block.agreement.budgetSign, //the signature on the budget
-            budgetRef				: block.agreement.budgetRef,//reference to the budget signature.
-            budgetType			: block.agreement.budgetType, // "personal" & "family" tells that this budget 
+            budgetid				: block.agreement.budgetID,//the public Key of the Budget,the private ke would be set on the note with the block ID where the budget is kept.
+            sleepingpartner 		: block.agreement.sleepingPartner, //this is the description for a sleeping investor.
+            workingpartner		: block.agreement.workingPartner, //this is the description for a working investor.
+            sleepingpartnershare	: block.agreement.sleepingPartnerShare, //this is the rate that describes the sleepig investor share.
+            workingpartnershare	: block.agreement.workingPartnerShare, //this is the rate that describes the sleepig investor share.
+            budgetitems			: block.agreement.budgetItems,//items that are in the budget that constitute the budget
+            budgetsign			: block.agreement.budgetSign, //the signature on the budget
+            budgetref				: block.agreement.budgetRef,//reference to the budget signature.
+            budgettype			: block.agreement.budgetType, // "personal" & "family" tells that this budget 
             //is not business related budget and won't accept investment. Any investment to this budget type will not 
             //issue any stocks. "governmental" budget will issue bonds not stocks to the investor and used by 
             //business managers and any persons or organization who support the economy, business budget will issue stocks to investor.
@@ -10568,14 +11039,14 @@ static Base64 = {
             //budget. If straight the budget block expires when the budget executes. but if recursive, the budget 
             //block will renew until the time for the recursion stops.
             recursion				: block.agreement.recursion,//used to describe how many times the budget will execute if the budget is a recursive budget
-            budgetSpread			: block.agreement.budgetSpread, //time required for the budget to spread after it has executed. Works for a recursive budgetType
-            budgetCredit			: block.agreement.budgetCredit, //the acceptable credit for investing and executing this budget. Budget credit should be set according to how the item in the budget is valued.
-            budgetDesc			  : block.agreement.budgetDesc, //the description of the budget. This will give investors view of what product or products that will be produced under this budget, and everything investors need to know about this budget.
-            budgetImages			: block.agreement.budgetImages,//array of image url that can describe the budget products and effects.
-            budgetVideos			  : block.agreement.budgetVideos, //array of videos that describe the budgets to investors.
-            companyRanks			  : block.agreement.companyRanks,//rank codes that will be occupied by users in the company. If you are employed in the company, a special rank code will be assigned you and the public key stored on the budget block
-            stockID				      : block.agreement.stockID,//default scriptbill stocks code.
-            investorsHub			  : block.agreement.investorsHub,//an array of hashes that can only be verified by people who hold stocks to this budget. This hash also test for the values on their stock note.
+            budgetspread			: block.agreement.budgetSpread, //time required for the budget to spread after it has executed. Works for a recursive budgetType
+            budgetcredit			: block.agreement.budgetCredit, //the acceptable credit for investing and executing this budget. Budget credit should be set according to how the item in the budget is valued.
+            budgetdesc			  : block.agreement.budgetDesc, //the description of the budget. This will give investors view of what product or products that will be produced under this budget, and everything investors need to know about this budget.
+            budgetimages			: block.agreement.budgetImages,//array of image url that can describe the budget products and effects.
+            budgetvideos			  : block.agreement.budgetVideos, //array of videos that describe the budgets to investors.
+            companyranks			  : block.agreement.companyRanks,//rank codes that will be occupied by users in the company. If you are employed in the company, a special rank code will be assigned you and the public key stored on the budget block
+            stockid				      : block.agreement.stockID,//default scriptbill stocks code.
+            investorshub			  : block.agreement.investorsHub,//an array of hashes that can only be verified by people who hold stocks to this budget. This hash also test for the values on their stock note.
             //if an investor sell his stock, the exchange market must test to see if the stock is 
             //true by testing the hashes, deduct the sold value from his account, issue out money 
             //to the seller and updating the hub hashes if only the investor hash stocks with the company who owns this budget. InvestorHub works majorly for business and 
@@ -10596,19 +11067,19 @@ static Base64 = {
 			let {error: error3} = await supabase
           .from('products')
           .insert( {
-              blockID		: block.blockID,
+              blockid		: block.blockID,
               value			: block.agreement.productConfig.value,//the original value of the product.
               units			: block.agreement.productConfig.units,//the units of products available in the System
-			  productID 	: block.productID,
-              totalUnits	: block.agreement.productConfig.totalUnits,//total units of product included to the scriptbill systems
+			  productid 	: block.productID,
+              totalunits	: block.agreement.productConfig.totalUnits,//total units of product included to the scriptbill systems
               name			: block.agreement.productConfig.name, // the name of the product.
               description	: block.agreement.productConfig.description,//description of product, HTML allowed
               images		: block.agreement.productConfig.images,//urls to images that describe the product
               videos		: block.agreement.productConfig.videos, //urls to videos that describe the product
-              creditType	: block.agreement.productConfig.creditType, //the type of credit which the product is being valued.
-              sharingRate	: block.agreement.productConfig.sharingRate,//the profit sharing rate on the product
-              blockExpiry	: block.agreement.productConfig.blockExpiry, //tells time the transaction block of the buyer will expire.
-              budgetID		: block.agreement.productConfig.budgetID,//the ID of the budget the product belongs to. Budget IDs in the Scriptbill Network is an ID of a Company in the Network that manages the STOCK note credit the budget produces. business and governmental budget are budget that produces exchangeable credits in the network.
+              credittype	: block.agreement.productConfig.creditType, //the type of credit which the product is being valued.
+              sharingrate	: block.agreement.productConfig.sharingRate,//the profit sharing rate on the product
+              blockexpiry	: block.agreement.productConfig.blockExpiry, //tells time the transaction block of the buyer will expire.
+              budgetid		: block.agreement.productConfig.budgetID,//the ID of the budget the product belongs to. Budget IDs in the Scriptbill Network is an ID of a Company in the Network that manages the STOCK note credit the budget produces. business and governmental budget are budget that produces exchangeable credits in the network.
               
             }).select()
           agreement = block.agreement;
@@ -10624,13 +11095,13 @@ static Base64 = {
 		  let {error: error4} = await supabase
           .from('adverts')
           .insert( {
-            blockID:block.blockID,
-            advertID : block.agreement.advertID,//this carries the id of the advert to be created
-            productID : block.agreement.productID,//this carries the product that the advert is promoting
+            blockid		:block.blockID,
+            advertid 	: block.agreement.advertID,//this carries the id of the advert to be created
+            productid : block.agreement.productID,//this carries the product that the advert is promoting
             viewers		: block.agreement.viewers, //number of viewers you are planning to send this advert to.
-            viewersShare : block.agreement.viewersShare,//this is the rate of the transvalue going to viewers.
+            viewersshare : block.agreement.viewersShare,//this is the rate of the transvalue going to viewers.
             publishers 	: block.agreement.publishers, //number of publishers you want to show this advert to.
-            publishShare 	: block.agreement.publishShare,//rate of advert funds going to publishers.
+            publishshare 	: block.agreement.publishShare,//rate of advert funds going to publishers.
             scope 		: block.agreement.scope, //this is the name of the area the advert will be shown to, people not living in this area won't participate in the view or view share of the advert.
             banner 		: block.agreement.banner,//this is the url of the banner that this advert represent.
             video 		: block.agreement.video,//this is the url of the video that will show this ads.
@@ -10651,32 +11122,32 @@ static Base64 = {
 			let {error: error5} = await supabase
 			.from('agreements')
 			.insert({
-			  blockID: block.blockID,          
-			  agreeID			: agreement.agreeID, //this is the unique identifier of the agreement.
-			  agreeSign		: agreement.agreeSign, //this is the unique signature of the agreement, to be signed by the initiator of the agreement
-			  agreeKey		: agreement.agreeKey, //this is the public key to the agreement, used to verify the agreement signature and to verify the beneficiary account.
-			  senderSign		: agreement.senderSign, //this is the unique signature of the sender,
-			  senderID		: agreement.senderID, //this is the block ID of the sender, used as a signature text for the signature.
-			  senderKey		: agreement.senderKey, //key used by sender to sign this agreement
-			  recieverID		: agreement.recieverID, //this is the identifier of the block of the reciever, this is useful when other nodes want to accept the new agreement as valid.
-			  recieverKey		: agreement.recieverKey, //key used by reciever to sign this agreement
-			  maxExecTime		: agreement.maxExecTime, //this is the maximum time allowed for the agreement to last on the block chain. If this time elapses, the agreement would be executed by force,  forcing the note of the creator to reduce even to a negative value.
-			  agreeType		: agreement.agreeType,//this describes the type of agreement we are handling. values are "normal", which denotes that the agreement should be handled normally, that is if terms are not met agreement should be reverted to the sender. The "sendTo" type ensures that the funds are sent to a particular or an array of note addresses, specifying the values to be sent per address when the execution time reach or when the agreement terms are not met. "Loan" type specifies that the money was borrowed to the recipient and must be returned at the specified time. The "loan" type works with interest rates. "contract" agreement type works like budget for the recipient, because it tells how the recipient should use the money, base on an initial quote sent by the recipient in a QUOTE transaction
-			  ExecTime		: agreement.ExecTime, //this is the execution time for the agreement, this will only successfully run the agreement if and only if the note that holds the agreement has enough funds to sponsor the agreement, else agreement would not run but would wait until their is a RECIEVE transaction that would update the note'this.s value.
+			  blockid: block.blockID,          
+			  agreeid			: agreement.agreeID, //this is the unique identifier of the agreement.
+			  agreesign		: agreement.agreeSign, //this is the unique signature of the agreement, to be signed by the initiator of the agreement
+			  agreekey		: agreement.agreeKey, //this is the public key to the agreement, used to verify the agreement signature and to verify the beneficiary account.
+			  sendersign		: agreement.senderSign, //this is the unique signature of the sender,
+			  senderid		: agreement.senderID, //this is the block ID of the sender, used as a signature text for the signature.
+			  senderkey		: agreement.senderKey, //key used by sender to sign this agreement
+			  recieverid		: agreement.recieverID, //this is the identifier of the block of the reciever, this is useful when other nodes want to accept the new agreement as valid.
+			  recieverkey		: agreement.recieverKey, //key used by reciever to sign this agreement
+			  maxexectime		: agreement.maxExecTime, //this is the maximum time allowed for the agreement to last on the block chain. If this time elapses, the agreement would be executed by force,  forcing the note of the creator to reduce even to a negative value.
+			  agreetype		: agreement.agreeType,//this describes the type of agreement we are handling. values are "normal", which denotes that the agreement should be handled normally, that is if terms are not met agreement should be reverted to the sender. The "sendTo" type ensures that the funds are sent to a particular or an array of note addresses, specifying the values to be sent per address when the execution time reach or when the agreement terms are not met. "Loan" type specifies that the money was borrowed to the recipient and must be returned at the specified time. The "loan" type works with interest rates. "contract" agreement type works like budget for the recipient, because it tells how the recipient should use the money, base on an initial quote sent by the recipient in a QUOTE transaction
+			  exectime		: agreement.ExecTime, //this is the execution time for the agreement, this will only successfully run the agreement if and only if the note that holds the agreement has enough funds to sponsor the agreement, else agreement would not run but would wait until their is a RECIEVE transaction that would update the note'this.s value.
 			  value			: agreement.value, //this is the total value of the agreement, the transaction value of a transaction is mostly used here. For security reasons, this value cannot be larger than the value of the transaction.
-			  isPeriodic		: agreement.isPeriodic, //a boolean value that tells whether this should run periodically, if it will run periodically, the periodic value will be calculated
+			  isperiodic		: agreement.isPeriodic, //a boolean value that tells whether this should run periodically, if it will run periodically, the periodic value will be calculated
 			  times			: agreement.times, //works with the isPeriodic, if set to true, the value of this variable will be used against the value variable to determine how much the account will spend
-			  payTime			: agreement.payTime, //this is the time for the next payment, works when isPeriodic is set to true, else the execTime determines the payment
-			  payPeriod		: agreement.payPeriod, //this is the spread of payment that controls how scripts should set the payTime. If 1 week, when the payment has been executed, the pay period is used to calculate the next payTime.
-			  delayInterest	: agreement.delayInterest, //this determine the amount of interest that would be charged if the execTime is exceeded before the contract ends.
-			  interestType	: agreement.interestType, //This is the type of interest that would be charged; accepts SIMPLE & COMPOUND.
-			  interestSpread	: agreement.interestRate, //this determine the spread at which the interest will be calculated.
-			  interestRate    : agreement.interestRate,
-			  timeStamp		: agreement.timeStamp, //this is the signature of the timestamp of the agreement. This is designed to avoid duplicate agreement issues.
-			  realNonce		: agreement.realNonce,//hashed of the current note ID.
-			  recieverSign 	: agreement.recieverSign,//this is the signature on the agreement which is signed by the sender with the senders key to verify that the agreement has been met by the reciever. The sender will have to create an AGREEMENTSIGN transaction, referencing the blockID to the AGREEMENTREQUEST transaction sent by the reciever to obey this.
-			  quoteID			: agreement.quoteID,//this is the block ID to the reference block that has the quote to the agreement in a contract based agreement.
-			  sendAddress		: agreement.sendAddress,//this is the address or group of addresses to send the agreement value to, this correspond to a sendTo agreement type. if it is a group, then values to be sent to each address should be specified. If the execution time for each address is different, then this should be specified, else the general execution time will be followed for all address. 
+			  paytime			: agreement.payTime, //this is the time for the next payment, works when isPeriodic is set to true, else the execTime determines the payment
+			  payperiod		: agreement.payPeriod, //this is the spread of payment that controls how scripts should set the payTime. If 1 week, when the payment has been executed, the pay period is used to calculate the next payTime.
+			  delayinterest	: agreement.delayInterest, //this determine the amount of interest that would be charged if the execTime is exceeded before the contract ends.
+			  interesttype	: agreement.interestType, //This is the type of interest that would be charged; accepts SIMPLE & COMPOUND.
+			  interestspread	: agreement.interestRate, //this determine the spread at which the interest will be calculated.
+			  interestrate    : agreement.interestRate,
+			  timestamp		: agreement.timeStamp, //this is the signature of the timestamp of the agreement. This is designed to avoid duplicate agreement issues.
+			  realnonce		: agreement.realNonce,//hashed of the current note ID.
+			  recieversign 	: agreement.recieverSign,//this is the signature on the agreement which is signed by the sender with the senders key to verify that the agreement has been met by the reciever. The sender will have to create an AGREEMENTSIGN transaction, referencing the blockID to the AGREEMENTREQUEST transaction sent by the reciever to obey this.
+			  quoteid			: agreement.quoteID,//this is the block ID to the reference block that has the quote to the agreement in a contract based agreement.
+			  sendaddress		: agreement.sendAddress,//this is the address or group of addresses to send the agreement value to, this correspond to a sendTo agreement type. if it is a group, then values to be sent to each address should be specified. If the execution time for each address is different, then this should be specified, else the general execution time will be followed for all address. 
 			
 		
 			})
@@ -10758,39 +11229,39 @@ static Base64 = {
 					if(block.agreement && budgets.includes(block.transType) && block.agreement.budgetID){
 						const budget = Object.assign(block.agreeement);
 						budget["blockID"] = block.blockID;
-					await client
-					.from('budgets')
-					.insert(budget).select()
-					agreement = Object.assign( block.agreement.agreement );
+						await client
+						.from('budgets')
+						.insert(budget).select()
+						agreement = Object.assign( block.agreement.agreement );
 					} 
 					else if(block.agreement && products.includes(block.transType) && block.agreement.productConfig){
 						const product = Object.assign(block.agreement.productConfig)
 						product["blockID"]	= block.blockID;
 						product["agreeID"]	= block.agreement.agreeID;
-					await client
-					.from('products')
-					.insert( product).select()
-					agreement = Object.assign( block.agreement );
+						await client
+						.from('products')
+						.insert( product).select()
+						agreement = Object.assign( block.agreement );
 					} 
 
 					
 					else if(block.agreement && adverts.includes(block.transType) && block.agreement.advertID){
 						const advert = Object.assign(block.agreement);
 						advert["blockID"]	= block.blockID;
-					await client
-					.from('adverts')
-					.insert( advert ).select()
+						await client
+						.from('adverts')
+						.insert( advert ).select()
 					} 
 					else if(block.agreement && block.agreement.agreeID){
-					agreement = Object.assign(block.agreement);
+						agreement = Object.assign(block.agreement);
 					}
 					
 					if( agreement && agreement.agreeID ){
 						agreement["blockID"] = block.blockID;
-					await client
-					.from('agreements')
-					.insert(agreement)
-					.select()
+						await client
+						.from('agreements')
+						.insert(agreement)
+						.select()
 					}
 
 					if( ! this.#productTrans.includes(block.transType)){
@@ -10807,11 +11278,11 @@ static Base64 = {
 					throw error
 				}
 
-				//console.log('[v0] Block saved successfully:', data)
-				return data
+					//console.log('[v0] Block saved successfully:', data)
+					return data
 				} catch (err) {
-				console.error('[v0] Failed to save block:', err)
-				throw err
+					console.error('[v0] Failed to save block:', err)
+					throw err
 				}
 			}
 
@@ -10828,21 +11299,18 @@ static Base64 = {
 				})
 				//console.log("block: ", block.blockID , " Broadcasted successfully")
 				// Save to database (this will trigger the database subscription)
-				await saveBlock(block)
+				await saveBlock(block);
 				
 				
 				//console.log('[v0] Block processed successfully')
 				} catch (error) {
-				console.error('[v0] Error processing block:', error)
-				
+					console.error('[v0] Error processing block:', error);				
 				}
 			}
 			// Call the function with your block
-			await processBlock(block)
+			await processBlock(block);
 			channel.unsubscribe();
-		})
-		
-
+		});
 	}
 	
 	static async recieveNewBlock( response = false ){
@@ -10850,10 +11318,26 @@ static Base64 = {
 		this.funcUp[ this.funcUp.length] = "recieveNewBlock";
 		try {
 			
+			if( response && response.blockID ) {
+			
+			
 			if( (this.response && this.response.blockID) && ( ! response || ! response.blockID ) )
 				response 	= JSON.parse( JSON.stringify( this.response ));
 			
-			if( response && response.blockID ) {
+				if( response.transType == "ADVERT" ){
+					let agreement = response.agreement;
+					let accountData = await this.getAccountData();
+					let scope 		= typeof agreement.scope == "string" ? agreement.scope.split(",") : agreement.scope;
+					let interest 	= typeof agreement.interest == "string" ? agreement.interest.split(",") : agreement.interest;
+					
+					if(scope.includes("World") || scope.includes(accountData.country) || interest.includes( accountData.interest ) ){
+						this.storeUserBlock( response );//this makes the advert shows in the user database but not part of the user's blockchain, so can be deleted.
+					}				
+					
+					return;
+				}
+			
+			
 				//if it is a send transaction and it is a verifiable data, we attempt recieving
 				//the data.
 				this.#noVerify	 = false;
@@ -11050,75 +11534,117 @@ static Base64 = {
 		return false;
 	}
 	
-	static async verifyDeposit(){
+	static async #verifyBlockChain(response, blockID, depth = 10){
+		if( ! response || !response.blockID ) return false;
+		
+		const lastBlock = await this.getTransBlock( 1, {nextBlockID: this.hashed( response.blockID,  response.lastSalt, response.lastFormular ) } );
+		
+		if( ! lastBlock.length ) return false;
+		
+		if( lastBlock.blockID == blockID ) return true;
+		
+		if( ! depth ) return false;
+		
+		depth--;
+		
+		return this.#verifyBlockChain( lastBlock, blockID, depth );
+	}
+	
+	static async #verifyDeposit(response){
 		
 		try {
-			if( ! this.response || ! this.response.blockID || Object.keys( this.response.agreements ).length < 1 || ! this.#transSend.includes( this.response.transType ) ) return false;
+			if( ! response || ! response.blockID || ! this.#transSend.includes( response.transType ) ) return false;
+			
+			//the sender doesn't have any lingering agreements, the agreement must have been fulfilled during AGREEMENTREQUEST and AGREEMENTSIGN transactions
+			if( Object.keys( response.agreements ).length < 1 ) return true;
 			
 			
 			//add support to check sending of money if the deposit is not yet confirmed here.
-			let agrees = this.response.agreements;
-			let agrID, agr;
-			let noteValue 	= parseFloat( this.response.noteValue );
+			let agrees = response.agreements;
+			let agrID, block, agr, blocks, request, sign, withdraw;
+			let noteValue 	= parseFloat( response.noteValue );
 					
 			for( agrID in agrees ){
-				agr 	= agrees[agrID];
-				if( agr.agreeType != "DEPOSIT" ) continue;
-						
-				if( ! agr.recieverSign ){
-					noteValue -= parseFloat( agr.value );
+				block 	= await this.getTransBlock(1, {blockID:agrees[agrID]});
+				block 	= block.pop();
+				
+				//agreements made by another block not deposit
+				if( block.transType != "DEPOSIT" ) continue;
+				
+				agr 	= block.agreement;
+				
+				blocks 		= await this.getTransBlock(100, {blockRef: block.blockRef});
+				
+				if( blocks.length <= 1 ){
+					//this means the deposit is not yet fulfilled so we deduct the note value.
+					noteValue -= parseFloat(block.transValue);
 				}
 				else {
+					//now we check the blocks to see if there was an agreementrequest and agreementsign by both parties.
+					
+					withdraw = blocks.find((b) => b.transType === "WITHDRAW");
+					
+					if( ! withdraw ){
+						noteValue -= parseFloat(block.transValue);
+					}
+					
+					else {
+						request  = blocks.find((b) => b.transType === "AGREEMENTREQUEST" && b.referenceID == block.blockID);
 						
-					if( ! await this.Verify(agr.recieverSign, agr.recieverKey, agr.recieverID) ){
-						noteValue 	-= parseFloat( agr.value );
-					} else {
-						this.blockID 		= agr.recieverID;
-						withBlk 			= await this.getTransBlock();
-						withBlk 			= withBlk[0];
-								
-						if( ! withBlk || withBlk.blockID != agr.recieverID || withBlk.transType != "AGREEMENTSIGN" ){
-							noteValue 	-= parseFloat( agr.value );
-						}
-						else {
-							if( ! agr.senderID ){
-								noteValue -= parseFloat( agr.value );
+						if( ! request ){
+							noteValue -= parseFloat(block.transValue);
+						} else {
+							
+							sign     = blocks.find((b) => b.transType === "AGREEMENTSIGN" && b.referenceID == request.blockID);
+							
+							//if no AGREEMENTREQUEST or AGREEMENTSIGN transaction the deposit is not yet confirmed. and at least 
+							if(  ! sign  ){
+								noteValue -= parseFloat(block.transValue);
 							}
+							
+							//also if no withdraw block we deduct the note value
+							
+							else if( withdraw.transValue >= block.transValue || withdraw.noteType !== block.noteType ){
+								//withdraw block is invalid becausee it doesn;t hhave the same transaction value or note type.
+								noteValue -= parseFloat(block.transValue );
+							}
+							
+							//since either block chains can do the request or sign, we verify the block chain first
 							else {
-									
-								if( ! await this.Verify(agr.senderSign, agr.senderKey, agr.senderID) ){
-									noteValue 	-= parseFloat( agr.value );
+								//verify the deposit chain first, normally the depositor would make the AGREEMENTREQUEST first.
+								verify = await this.#verifyBlockChain( request, block.blockID, 100);
+								
+								if( ! verify ){
+									//try the sign 
+									verify 		= await this.#verifyBlockChain( sign, block.blockID, 100 );		
 								}
+								
+								if( ! verify ){
+									//the depositor never made the agreementrequest or agreementsign.
+									noteValue 		-= parseFloat( block.transValue );
+								}
+								
 								else {
-									this.blockID 			= agr.senderID;
-									depBlk					= await this.getTransBlock();
-									depBlk 					= depBlk[0];
-											
-									if( ! depBlk || depBlk.blockID != agr.senderID || depBlk.transType != "AGREEMENTREQUEST" ){
-										noteValue 	-= parseFloat( agr.value );
-									} else {
-										//block ref verification.
-										if( withBlk.blockRef != depBlk.blockRef ){
-											noteValue 	-= parseFloat( agr.value );
-										} else {
-											//Since the block refs are equal, let verify the 
-											//references.
-													
-											if( ! await this.Verify(withBlk.signRef, withBlk.blockRef, depBlk.signRef ) ){
-												noteValue 	-= parseFloat( agr.value );
-											}
-													
-										}
+									//let's verify the withdrawer's request.
+									verify 		= await this.#verifyBlockChain( sign, withdraw.blockID, 100 );
+									
+									if( ! verify ){
+										verify 		= await this.#verifyBlockChain( request, withdraw.blockID, 100 );
+									}
+									
+									if( ! verify ){
+										//the withdrawer never made the agreementrequest or agreementsign.
+										noteValue 		-= parseFloat( block.transValue );
 									}
 								}
 							}
 						}
-					}
+					}					
 				}
 			}
 			/* await this.createAlert( "noteValue: " + noteValue );
 			await this.createAlert( "transValue: " + this.response.transValue ); */
-			if( noteValue < this.response.transValue  ){
+			if( noteValue < response.transValue  ){
 				//await this.createAlert("Deposit Unverified");
 				return false;
 			}
@@ -11131,6 +11657,101 @@ static Base64 = {
 		}
 	}
 	
+	static async #verifyAgreementRecieve(response) {
+		// ── 1. Shape ──
+		if (!response ||
+			response.transType !== "AGREEMENTRECIEVE" ||
+			!response.blockRef ||
+			!response.referenceID ||
+			!response.agreement) {
+			return false;
+		}
+
+		// ── 2. The referenced request/sign must be real ──
+		let request = (await this.getTransBlock(1, { blockID: response.referenceID })).pop();
+		if (!request ||
+			(request.transType !== "AGREEMENTREQUEST" &&
+			 request.transType !== "AGREEMENTSIGN")) {
+			return false;
+		}
+
+		// ── 3. The target block must carry this agreement ──
+		//     For REQUEST, referenceID → target block.
+		//     For SIGN,    referenceID → the REQUEST, whose
+		//                  referenceID → target block.
+		let targetBlockID = request.referenceID;
+		if (request.transType === "AGREEMENTSIGN") {
+			const req = (await this.getTransBlock(1, { blockID: request.referenceID })).pop();
+			if (!req || req.transType !== "AGREEMENTREQUEST") {
+				return false;
+			}
+			targetBlockID = req.referenceID;
+		}
+
+		const target = (await this.getTransBlock(1, { blockID: targetBlockID })).pop();
+		if (!target || !target.agreement ||
+			target.agreement.agreeID !== response.agreement.agreeID) {
+			return false;
+		}
+
+		// ── 4. Both sides must have acted on this blockRef ──
+		const siblings = await this.getTransBlock(100, { blockRef: response.blockRef });
+		const hasRequest = siblings.some((b) => b.transType === "AGREEMENTREQUEST");
+		const hasSign    = siblings.some((b) => b.transType === "AGREEMENTSIGN");
+		if (!hasRequest || !hasSign) {
+			// Deposit not fully confirmed — don't allow removal.
+			return false;
+		}
+
+		// ── 5. The target's blockRef must match ──
+		if (target.blockRef !== response.blockRef) {
+			return false;
+		}
+
+		// ── 6. The block before `response` must have had the agreement ──
+		const before = (await this.getTransBlock(1, {
+			nextBlockID: this.hashed(
+				response.blockID,
+				response.lastSalt,
+				response.lastFormular,
+			),
+		})).pop();
+
+		if (!before || !before.agreements ||
+			!Object.keys(before.agreements).length) {
+			return false;
+		}
+
+		const beforeKeys = Object.keys(before.agreements);
+		if (!beforeKeys.includes(response.agreement.agreeID)) {
+			return false;
+		}
+
+		// ── 7. `response` removed exactly that one agreement ──
+		const afterKeys = Object.keys(response.agreements || {});
+		if (beforeKeys.length - 1 !== afterKeys.length) {
+			return false;
+		}
+		if (afterKeys.includes(response.agreement.agreeID)) {
+			return false;
+		}
+
+		// ── 8. `agreeHash` and `lastAgreeHash` chain-check ──
+		//     (can be offloaded to a periodic verification, but the
+		//     cheapest here is to recompute agreeHash and compare.)
+		/*const expectedAgreeHash = this.hashed(JSON.stringify(response.agreements || {}));
+		if (response.agreeHash !== expectedAgreeHash) {
+			return false;
+		}
+
+		// ── 9. `lastAgreeHash` must match the previous block's agreeHash. ──
+		if (before.agreeHash &&
+			!response.lastAgreeHash.includes(before.agreeHash.slice(0, 6))) {
+			return false;
+		}*/
+
+		return true;
+	}
 	static async checkExchangeBlock( response, formerBlock = null, nextBlock = null ){
 		if( response && response.exFormerBlockID ){
 			let block 			= await this.getTransBlock(1, {exBlockID: response.exFormerBlockID});
@@ -11460,7 +12081,7 @@ static Base64 = {
 			
 			
 			sortedTimes.forEach( (time, index)=>{
-				block			= blocks[ transTimes.indexOf( time ) ];		
+				let block			= blocks[ transTimes.indexOf( time ) ];		
 				
 				response.productNextBlockID = block.productBlockID;
 				
@@ -11765,6 +12386,138 @@ static Base64 = {
 		}
 
 		return response;
+	}
+	
+	
+	static async #rejectResponse( resp, response = null ){
+		//console.log("#rejectResponse running " + this.funcUp[ this.funcUp.length]);
+		this.funcUp[ this.funcUp.length] = "#rejectResponse";
+		
+		if( ! this.response && ! response ) return;
+		
+		//await this.createAlert("rejecting response " + resp );
+		
+		try {
+			
+			if( ! response || ! response.blockID )
+				response = JSON.parse( JSON.stringify( this.response ) );
+			
+			
+			if( this.#note && response.blockID == this.#note.blockID  ){
+				let alerted = localStorage.alerted;
+				let local   = ( ( Scriptbill.s.currentNote && this.isJsonable( Scriptbill.s.currentNote ) ) ? JSON.parse( Scriptbill.s.currentNote ) : {} );
+				
+				if( ! alerted )
+					alerted = [];
+				
+				else 
+					alerted = JSON.parse( alerted );
+				
+				if( ! alerted.includes( resp ) ) {
+					localStorage.alerted 		= JSON.stringify( alerted );
+				
+					if( this.alertDetails )
+						await this.createAlert("Transaction Incomplete!!! Reason: " + resp );
+					
+					else{
+						this.errorMessage("Transaction Incomplete!!! Reason: " + resp);
+						//await this.createAlert("check Response" );
+					}
+				}
+				//deleting the data
+				 
+				try { 
+					let dir 				= await window.navigator.storage.getDirectory("scriptStorage", {create:true}).catch(error =>{this.errorMessage( error.toString() );  return false;});
+					
+					if( ! dir ){
+						this.errorMessage("Couldn't Initialize Local Storage. You May Want to Change Browser Where Your Scriptbill is Installed");
+						return false;
+					}
+					
+					let userDirectory 		= await dir.getDirectoryHandle(this.#note.noteAddress, {create: true}).catch(error =>{this.errorMessage( error.toString() );  return false;});
+							
+					let file 				= await userDirectory.getFileHandle( response.blockID.replaceAll(/[^a-zA-Z0-9]/g, "_"), {create: true}).catch(error =>{this.errorMessage( error.toString() );  return false;});
+					
+					let doNotDelete = false;
+					
+					if( resp.includes("No Former Block Found For This Block") ){
+						let formerBlock = await userDirectory.getFileHandle( response.formerBlockID.replaceAll(/[^a-zA-Z0-9]/g, "_"), {create: false}).catch(error =>{this.errorMessage( error.toString() );  return false;});
+						
+						if( formerBlock ){
+							let block = await formerBlock.getFile();
+							block 		= await block.text();
+							block 		= this.isJsonable( block ) ? JSON.parse( block ): false;
+							
+							if( block && block.blockID )
+								doNotDelete = true;
+						}
+					}
+					let scriptNote			= await userDirectory.getFileHandle( response.formerBlockID.replaceAll(/[^a-zA-Z0-9]/g, "_") + "_note", {create: false}).catch(error =>{this.errorMessage( error.toString() );  return false;});
+					
+					if( scriptNote ){
+						let noteFile = await scriptNote.getFile();
+						let text 	= await noteFile.text();
+						
+						if( text && this.isJsonable( text ) ){
+							this.s.currentNote = text;
+						}
+					}
+					
+					if( doNotDelete ) return;
+					
+					//console.log("deleting...");
+					userDirectory.removeEntry( response.blockID.replaceAll(/[^a-zA-Z0-9]/g, "_") );
+					userDirectory.removeEntry(  response.blockID.replaceAll(/[^a-zA-Z0-9]/g, "_") + "_note" );
+									
+					
+					let currentBlock 		= JSON.parse( this.l[this.#note.noteAddress + "_current_block"] );
+					
+					if( currentBlock.blockID == response.blockID ){
+						file 				= await userDirectory.getFileHandle( response.formerBlockID, {create: false}).catch(error =>{this.errorMessage( error.toString() );  return false;});
+						
+						if( ! file ){
+							//.replaceAll(/[^a-zA-Z0-9]/g, "_")
+							file 				= await userDirectory.getFileHandle( response.formerBlockID.replaceAll(/[^a-zA-Z0-9]/g, "_"), {create: false}).catch(error =>{this.errorMessage( error.toString() );  return false;});
+						}
+						
+						if( file ){
+							let block 	= await file.getFile();
+							block 		= await block.text();
+							this.l[this.#note.noteAddress + "_current_block"] = block;
+						}
+					}
+					/* details 		= JSON.parse( JSON.stringify( response ));
+					details.transType = "UPDATE";
+					details.transValue = 0;
+					this.#note.blockID 		= response.formerBlockID;
+					await this.generateScriptbillTransactionBlock(); */
+				} catch(e){
+					console.error(e);
+					this.errorMessage( e.toString());
+				}
+			} else {
+				//console.log("Random Transaction Incomplete!!! Reason: " + resp + ". TransID: " + response.blockID );
+			}
+			var id 				= await this.generateKey(10);
+			await this.setPublicKey( response.blockKey, id );
+			let blockID 		= response.blockID;
+			let url 			= response.noteServer;
+			
+			if( this.l[blockID] ) {
+				delete this.l[blockID];
+			}
+			
+			await this.deletePersistentData( blockID );
+			
+			response = this.encrypt( JSON.stringify({responseID: blockID, code: resp}), this.publicKey[id] );			
+			url = this.#default_scriptbill_server;
+			//console.log("Sending the response to the server....");
+			await this.getData(['data', 'reject'], [response, blockID], url);
+		} catch(e){
+			console.error(e);
+			this.errorMessage(e.toString());
+			return false;
+		}
 	}
 
 	static async verifyData( response = false ){
@@ -12333,14 +13086,14 @@ static Base64 = {
 						return false;
 					}
 					this.transValue 	= transValue;
-					let verifyDep 		= await this.verifyDeposit();
+					let verifyDep 		= await this.#verifyDeposit(response);
 					delete this.transValue; 
 				
-					/* if( ! verifyDep ){
+					if( ! verifyDep ){
 						this.response     = JSON.parse( JSON.stringify( response ) );
 						this.#rejectResponse("Sorry, your note does not have enough credit to fulfil this request. This may be as a result of unconfirmed Credit Deposit Transactions on your note!!!");
 						return false;
-					} */
+					}
 					
 				}
 				else if( this.#transRecieve.includes( response.transType ) ) {
@@ -12648,136 +13401,6 @@ static Base64 = {
 		}
 	}
 	
-	static async #rejectResponse( resp, response = null ){
-		//console.log("#rejectResponse running " + this.funcUp[ this.funcUp.length]);
-		this.funcUp[ this.funcUp.length] = "#rejectResponse";
-		
-		if( ! this.response && ! response ) return;
-		
-		//await this.createAlert("rejecting response " + resp );
-		
-		try {
-			
-			if( ! response || ! response.blockID )
-				response = JSON.parse( JSON.stringify( this.response ) );
-			
-			
-			if( this.#note && response.blockID == this.#note.blockID  ){
-				let alerted = localStorage.alerted;
-				let local   = ( ( Scriptbill.s.currentNote && this.isJsonable( Scriptbill.s.currentNote ) ) ? JSON.parse( Scriptbill.s.currentNote ) : {} );
-				
-				if( ! alerted )
-					alerted = [];
-				
-				else 
-					alerted = JSON.parse( alerted );
-				
-				if( ! alerted.includes( resp ) ) {
-					localStorage.alerted 		= JSON.stringify( alerted );
-				
-					if( this.alertDetails )
-						await this.createAlert("Transaction Incomplete!!! Reason: " + resp );
-					
-					else{
-						this.errorMessage("Transaction Incomplete!!! Reason: " + resp);
-						//await this.createAlert("check Response" );
-					}
-				}
-				//deleting the data
-				 
-				try { 
-					let dir 				= await window.navigator.storage.getDirectory("scriptStorage", {create:true}).catch(error =>{this.errorMessage( error.toString() );  return false;});
-					
-					if( ! dir ){
-						this.errorMessage("Couldn't Initialize Local Storage. You May Want to Change Browser Where Your Scriptbill is Installed");
-						return false;
-					}
-					
-					let userDirectory 		= await dir.getDirectoryHandle(this.#note.noteAddress, {create: true}).catch(error =>{this.errorMessage( error.toString() );  return false;});
-							
-					let file 				= await userDirectory.getFileHandle( response.blockID.replaceAll(/[^a-zA-Z0-9]/g, "_"), {create: true}).catch(error =>{this.errorMessage( error.toString() );  return false;});
-					
-					let doNotDelete = false;
-					
-					if( resp.includes("No Former Block Found For This Block") ){
-						let formerBlock = await userDirectory.getFileHandle( response.formerBlockID.replaceAll(/[^a-zA-Z0-9]/g, "_"), {create: false}).catch(error =>{this.errorMessage( error.toString() );  return false;});
-						
-						if( formerBlock ){
-							let block = await formerBlock.getFile();
-							block 		= await block.text();
-							block 		= this.isJsonable( block ) ? JSON.parse( block ): false;
-							
-							if( block && block.blockID )
-								doNotDelete = true;
-						}
-					}
-					let scriptNote			= await userDirectory.getFileHandle( response.formerBlockID.replaceAll(/[^a-zA-Z0-9]/g, "_") + "_note", {create: false}).catch(error =>{this.errorMessage( error.toString() );  return false;});
-					
-					if( scriptNote ){
-						let noteFile = await scriptNote.getFile();
-						let text 	= await noteFile.text();
-						
-						if( text && this.isJsonable( text ) ){
-							this.s.currentNote = text;
-						}
-					}
-					
-					if( doNotDelete ) return;
-					
-					//console.log("deleting...");
-					file.remove();
-					scriptNote			= await userDirectory.getFileHandle( response.blockID.replaceAll(/[^a-zA-Z0-9]/g, "_") + "_note", {create: true}).catch(error =>{this.errorMessage( error.toString() );  return false;});
-					scriptNote.remove();
-					
-					let currentBlock 		= JSON.parse( this.l[this.#note.noteAddress + "_current_block"] );
-					
-					if( currentBlock.blockID == response.blockID ){
-						file 				= await userDirectory.getFileHandle( response.formerBlockID, {create: false}).catch(error =>{this.errorMessage( error.toString() );  return false;});
-						
-						if( ! file ){
-							//.replaceAll(/[^a-zA-Z0-9]/g, "_")
-							file 				= await userDirectory.getFileHandle( response.formerBlockID.replaceAll(/[^a-zA-Z0-9]/g, "_"), {create: false}).catch(error =>{this.errorMessage( error.toString() );  return false;});
-						}
-						
-						if( file ){
-							let block 	= await file.getFile();
-							block 		= await block.text();
-							this.l[this.#note.noteAddress + "_current_block"] = block;
-						}
-					}
-					/* details 		= JSON.parse( JSON.stringify( response ));
-					details.transType = "UPDATE";
-					details.transValue = 0;
-					this.#note.blockID 		= response.formerBlockID;
-					await this.generateScriptbillTransactionBlock(); */
-				} catch(e){
-					console.error(e);
-					this.errorMessage( e.toString());
-				}
-			} else {
-				//console.log("Random Transaction Incomplete!!! Reason: " + resp + ". TransID: " + response.blockID );
-			}
-			var id 				= await this.generateKey(10);
-			await this.setPublicKey( response.blockKey, id );
-			let blockID 		= response.blockID;
-			let url 			= response.noteServer;
-			
-			if( this.l[blockID] ) {
-				delete this.l[blockID];
-			}
-			
-			await this.deletePersistentData( blockID );
-			
-			response = this.encrypt( JSON.stringify({responseID: blockID, code: resp}), this.publicKey[id] );			
-			url = this.#default_scriptbill_server;
-			//console.log("Sending the response to the server....");
-			await this.getData(['data', 'reject'], [response, blockID], url);
-		} catch(e){
-			console.error(e);
-			this.errorMessage(e.toString());
-			return false;
-		}
-	}
 	
 	//Scriptbill function will help the user send money to a number of recipient;
 	//configured using the sendConfig object.
@@ -12942,6 +13565,50 @@ static Base64 = {
 		this.#note 				= note;
 		await this.saveNote( note );
 	}
+	
+	// Shape: { [peerNoteAddress]: { offerBlockID, createdAt, rtcHandle } }
+	static rtcPendingMap() {
+		const raw = this.s.rtcPending;
+		if (!raw) return {};
+		try { return JSON.parse(raw); } catch (_) { return {}; }
+	}
+
+	static rtcPendingSave(map) {
+		this.s.rtcPending = JSON.stringify(map);
+	}
+
+	static rtcPendingAdd(peer, offerBlockID, rtcHandle) {
+		const map = this.rtcPendingMap();
+		map[peer] = {
+			offerBlockID,
+			createdAt: Date.now(),
+			// Don't serialize the rtcHandle — sessionStorage can't hold
+			// RTCPeerConnection objects. Keep it in a live Map on the class.
+		};
+		this.rtcPendingSave(map);
+		this.#rtcHandles.set(peer, rtcHandle);
+	}
+
+	static rtcPendingGet(peer) {
+		const map = this.rtcPendingMap();
+		return map[peer] || null;
+	}
+
+	static rtcPendingRemove(peer) {
+		const map = this.rtcPendingMap();
+		delete map[peer];
+		this.rtcPendingSave(map);
+		this.#rtcHandles.delete(peer);
+	}
+
+	// Reverse lookup by offer block ID — this is what answer-detection uses.
+	static rtcPendingFindByOfferID(offerBlockID) {
+		const map = rtcPendingMap();
+		for (const peer in map) {
+			if (map[peer].offerBlockID === offerBlockID) return peer;
+		}
+		return null;
+	}
 		
 	static async #createDeposit( amount, creditType ){
 		this.successMessage("Depositing to " + this.withdrawAccount + " amount:" + amount );
@@ -12965,7 +13632,10 @@ static Base64 = {
 				return false;
 			}		
 			
-			if( this.realB )
+			if( this.realB && this.realB.agreement && this.realB.agreement.agreeKey )
+				this.details.recipient 	= this.realB.agreement.agreeKey;
+			
+			else if( this.realB && this.realB.blockKey )
 				this.details.recipient 	= this.realB.blockKey;
 
 			else if( this.#currentNote && this.#isExchangeMarketMining )
@@ -12999,26 +13669,25 @@ static Base64 = {
 					this.defaultScriptbill.creditType = "fiat";
 				
 				await this.createNewScriptbillWallet();
+				this.#note 			= await this.#getCurrentNote();
 			}
 			
 			//before running the transaction, we create an agreement to allow the 
 			//recipient send the credit to the depositor, else the agreement will
 			//help the sender send the money automatically when it expires.
-			if( ! this.details.agreement || typeof this.details.agreement != "object" || this.details.agreement.length )				
-				this.details.agreement 	= await this.createAgreement();		
+			if( (! this.details.agreement || typeof this.details.agreement != "object" || this.details.agreement.length ) || ! this.realB.agreement )				
+				this.details.agreement 	= await this.createAgreement();	
+
+			
+			else if( this.realB.agreement ){
+				this.details.agreement 	= Object.assign( this.realB.agreement );
+			}
 			
 			
 			this.details.agreement.ExecTime = parseInt( this.currentTime() ) + parseInt( this.calculateTime("3 Days") );
 			this.details.agreement.withdrawAccount = typeof this.withdrawAccount == 'object' ? this.withdrawAccount.accountDetails : this.withdrawAccount;
 			this.details.agreement.maxExecTime = parseInt(this.currentTime() ) + parseInt( this.calculateTime("7 Days"));
 			
-			if( this.#createdAgreement && this.details.agreement.agreeType == "ADVERT" && this.s.advertAgreeID ){
-				this.details.agreement.agreeID 		= this.s.advertAgreeID;
-			}
-			
-			if( this.details.agreement.agreeType == "ADVERT" ){
-				this.details.transNote 			= "Earning money on your browsing activities";
-			}
 			
 			this.details.agreement.value 		= parseFloat( amount );
 			
@@ -13029,7 +13698,7 @@ static Base64 = {
 			}
 
 			if(! this.#currentNote ){
-				////alert("no current note");
+				//////alert("no current note");
 				this.#currentNote 		= JSON.parse( JSON.stringify( this.realB.exchangeNote ) );
 				this.#currentNote.noteAddress = this.realB.exchangeNote.exchangeID;
 				this.#currentNote.noteSecret = this.realB.exchangeNote.exchangeKey;
@@ -13073,11 +13742,11 @@ static Base64 = {
 			if( ( ! this.withdrawBlock || ! this.withdrawBlock.withdrawAccount ) && ! this.isExchangeDeposit ) {
 				//we try to get the exchange block to see who have our sell Credit to buy,
 				//maximum blocks to return, should not be more than 500 if limit not set.
-				let exBlock 	= await this.getTransBlock(100, {transType:"WITHDRAW", noteType:creditType, transValue: amount + " >="});
+				let exBlock 	= await this.getTransBlock(500, {transType:"WITHDRAW", noteType:creditType, transValue: amount + " >=", transTime: this.currentTime() + "  <="});
 				let testType 	= creditType.slice( 0, creditType.lastIndexOf("CRD") );
 				let x, y;
 								
-				this.details 	= JSON.parse( JSON.stringify( this.defaultBlock ) );
+				let details 	= JSON.parse( JSON.stringify( this.defaultBlock ) );
 				
 				if( ! this.realB )
 					this.realB 		= false;
@@ -13095,7 +13764,7 @@ static Base64 = {
 					if( ! this.realB || ! this.realB.blockRef || this.realB.isExchangeMarketMining || typeof this.realB.agreement != "object" ) continue;
 					
 					rems 			= parseFloat( this.realB.transValue );
-					realB 			= await this.getTransBlock(1, {blockRef: this.realB.blockRef });
+					realB 			= await this.getTransBlock(100, {blockRef: this.realB.blockRef });
 					//await this.createAlert("Getting Trans");
 							
 					//this shows that the block must not have a deposit transaction already set
@@ -13841,7 +14510,7 @@ static Base64 = {
 						exRates 	= JSON.parse( this.l[ "USDEX" ] );	
 					} else {
 						let urle;
-						if( chrome && chrome.runtime && Object.hasOwn( chrome.runtime, "getURL" ) ){
+						if( typeof chrome !== "undefined" && chrome.runtime && Object.hasOwn( chrome.runtime, "getURL" ) ){
 							urle = chrome.runtime.getURL("exRate.json");
 						} else {
 							urle = "/exRate.json";
@@ -14595,7 +15264,7 @@ static Base64 = {
 						this.l.toSendRecipients = JSON.stringify(recipients);
 					}
 				}
-			})
+			});
 			
 			await channel.send({
 				type: "broadcast",
@@ -14607,7 +15276,7 @@ static Base64 = {
 		}
 	}
 
-	static async #checkRecipients(){
+	static async checkRecipients(){
 		const recipients = JSON.parse(this.l.toSendRecipients ?? "{}");
 
 		for(const recipient in recipients ){
@@ -14619,7 +15288,7 @@ static Base64 = {
 			}
 		}
 
-		setTimeout(()=> this.#checkRecipients(), 6000000);//run again in ten minutes
+		setTimeout(()=> this.checkRecipients(), 6000000);//run again in ten minutes
 	}
 
 	static async storeBlock( response = false, note = false ){
@@ -14862,6 +15531,36 @@ static Base64 = {
 			
 		}
 	
+	}
+	
+	static async removeUserBlock(blockID){
+		if( ! this.#note )
+			this.#note 	= await this.#getCurrentNote();
+		
+		if( ! this.#note ) return false;
+		
+		let dir 				= await window.navigator.storage.getDirectory("scriptStorage", {create:false}).catch(error =>{this.errorMessage( error.toString() );  return false;});
+				
+		if( ! dir ){
+			this.errorMessage("Couldn't Initialize Local Storage. You May Want to Change Browser Where Your Scriptbill is Installed");
+			return false;
+		}
+		
+		let userDirectory 		= await dir.getDirectoryHandle(this.#note.noteAddress, {create: false}).catch(error =>{this.errorMessage( error.toString() );  return false;});
+		
+		if( ! userDirectory ){
+			this.errorMessage("Couldn't Initialize User Storage. This may be because user is picking a directory from a new browser.");
+			return false;
+		}
+		
+		let file 				= await userDirectory.getFileHandle( blockID.replaceAll(/[^a-zA-Z0-9]/g, "_"), {create: false}).catch(error =>{this.errorMessage( error.toString() );  return false;});
+		
+		if( ! file ){
+			this.errorMessage("Requested block ID was not found on this user storage, please try again.");
+			return false;
+		}
+		
+		return await file.remove();
 	}
 	
 	static async storeUserBlock( response ){
@@ -15930,8 +16629,7 @@ static Base64 = {
 					await write.close();
 				}
 			}
-			
-			await data.remove();
+			access.removeEntry(`${dataID.replaceAll( /[^a-zA-Z0-9]/g, "_" )}.txt`);
 			//await main.close();
 			return data;
 			
@@ -16186,14 +16884,13 @@ static Base64 = {
 										//console.log(e);
 									}
 								});
-
+							let mass = [];
 							if( ! mop.length ){
-								//alert("entering");
+								////alert("entering");
 								let blockIds = mappings.blockID, retData;
-								console.log("blockIDS gotten: ", blockIds );
 								for( let x = 0; x < blockIds.length; x++ ){
 									blockID = blockIds[x];
-									console.log("block ID working with: ", blockID, "number: ", x );
+									
 									blockData 	= await access.getFileHandle( blockID.replaceAll( /[^a-zA-Z0-9]/g, "_" ) + ".txt", {create:false} ).catch( error =>{ this.errorMessage( error.toString()); return false; });
 									if( blockData ){
 										//console.log( 'block data found ' + blockID);
@@ -16210,9 +16907,11 @@ static Base64 = {
 									}
 									
 									if( retData[dataID] == value ){
-										mop.push(retData);
+										mass.push(retData);
 									}
 								}
+								
+								mop  = mass;
 							}
 							
 							return mop;
@@ -17022,23 +17721,9 @@ static Base64 = {
 		//agreement ID.
 		try {
 			if( ! realBlock || ! realBlock.blockID || ! realBlock.agreements || Object.keys( realBlock.agreements ).length <= 0 || ! realBlock.noteType.lastIndexOf("CRD") == 3 || realBlock.referenceID ) return;
-			
-			let block 			= await this.getTransBlock(1, {blockID: realBlock.nextBlockID});
-			
-			//this function only runs with the latest block in a particular BLOCK
-			//chain.
-			if( block.length && block[0].blockID && block[0].blockID == realBlock.nextBlockID ){
-				realBlock 		= JSON.parse( JSON.stringify( block ));
-				return await this.handleAgreement( realBlock );
-			}
-			
-			this.referenceID 			= realBlock.nextBlockID;
-			block 						= await this.getTransBlock(10, {referenceID: realBlock.nextBlockID});
-			
-			if( ! realBlock.agreements || ! this.isJsonable( realBlock.agreements ) ) return;
-			
+						
 			let agreement, agreements = JSON.parse( JSON.stringify( realBlock.agreements)), time, currentBlock, lastTime;
-			let noteValue, agreeValue, value, recVerify, sendVerify, spread, interest, x;
+			let noteValue, agreeValue, value, recVerify, sendVerify, spread, interest, x, block;
 			let db, store, trans, check, index;
 			//the agreement must be an array.
 			
@@ -17101,7 +17786,8 @@ static Base64 = {
 				}
 					
 				//before doing anything, check if the agreement is signed by both the sender and the reciever.
-				if( ! agreement.senderSign || ! agreement.recieverSign )
+				//this shows it must come from a transaction block that  connects both the sender and the reciever
+				if( ! agreement.senderSign && ! agreement.recieverSign )
 					continue;
 				
 				//next we have to verify the signatures of the reciever and the sender.
@@ -17121,10 +17807,10 @@ static Base64 = {
 				if( time <= agreement.ExecTime )
 					continue;
 
-				block 			= await this.getTransBlock(100, {referenceID: realBlock.nextBlockID, referenceKey: agreement.agreeID});
+				block 			= await this.getTransBlock(100, {referenceID: realBlock.blockID, referenceKey: agreement.agreeID});
 				
 				//this shows we have found an already executed agreement transaction
-				if( block.length || block[0].blockID || block[0].referenceID == realBlock.nextBlockID )
+				if( block.length || block[0].blockID || block[0].referenceID == realBlock.blockID )
 					continue;
 				
 				//next let'this.s check the value of the holder of Scriptbill agreement, whether or not the note can fulfil the agreement set.
@@ -17204,7 +17890,7 @@ static Base64 = {
 							blocks = agreement.sendAddress.map( async (address)=>{
 								details.recipient 		= address.address;
 								details.transValue 	= address.value;
-								
+							
 								if( ! details.recipient || ! details.value ) return;
 								
 								let curTime 		= this.currentTime();
@@ -17323,7 +18009,7 @@ static Base64 = {
 					if( time < agreement.payTime )
 						continue;			
 					
-					value 	= agreement.value / agreement.times;							
+					value 	= parseFloat( agreement.value ) / parseInt( agreement.times );							
 				} else {
 					value 	= agreement.value;
 				}		
@@ -17344,8 +18030,9 @@ static Base64 = {
 				}
 				let details 	= JSON.parse( JSON.stringify( this.defaultBlock ) );
 				details.agreement = JSON.parse( JSON.stringify( agreement ));
-				details.transType = "AUTOEXECUTE";
+				details.transType = "AGREESEND";
 				details.transValue = value;
+				this.#agreeBlock 	= Object.assign(blk);
 				await this.generateScriptbillTransactionBlock(details);			
 			}
 		} catch(e){
@@ -17505,7 +18192,7 @@ static Base64 = {
 					let motherKeys 		= await this.#generateMotherKeys();
 					//console.log( motherKeys );
 					var id 				= await this.generateKey(10);
-					await this.setPrivateKey( motherKeys[ note.noteType ], id );
+					await this.setPrivateKey( motherKeys.noteAddresses[ note.noteType ], id );
 					this.#currentNote.motherKey 		= await this.getPublicKey(id);
 					this.#currentNote.creditType 		= "fiat";
 					const servers 						= await this.getNoteServers(note.noteType);
@@ -17979,14 +18666,14 @@ static Base64 = {
 			if( ! this.#note && this.s.currentNote ){
 				this.#note 		= await this.#getCurrentNote();		
 			}
-			let transTime 		= this.currentTime + " >=";
+			let transTime 		= `${this.currentTime} <=`;
 			if( this.#note && this.#note.transTime ){
-				transTime 	= this.#note.transTime + " >=";
+				transTime 	= `${this.#note.transTime} <=`;
 			}
 			
 			let productBlocks = await this.getTransBlock(100, { productID, transTime });
 			
-			if( productBlocks.length < 0 ){
+			if( ! productBlocks.length ){
 				return productBlock;
 			}
 			
@@ -17999,6 +18686,7 @@ static Base64 = {
 				if( ! productBlock || productBlock.transTime < block.transTime )
 					productBlock = JSON.parse( JSON.stringify( block ) );
 			}
+			
 			
 			return productBlock;
 		}
@@ -18142,7 +18830,8 @@ static Base64 = {
 			details.transType 	= 'UPDATE';
 			details.transValue = 0;
 			details.noteType 	= this.#note.noteType;
-			return await this.generateScriptbillTransactionBlock(details);
+			//alert(`Running update`);
+			return await this.generateScriptbillTransactionBlock(details, this.#note);
 		} catch(e){
 			this.errorMessage(e.toString());
 			console.error(e);
@@ -18226,8 +18915,14 @@ static Base64 = {
 		if( ! budgetBlock.length ){
 			return false;
 		}
-		if( ! all )
-			budgetBlock 		= await this.getCurrentBlock( budgetBlock );
+		if( ! all ){
+			budgetBlock = budgetBlock.filter((block)=>{
+				return ! this.#productTrans.includes( block.transType );
+			});
+			
+			budgetBlock 	= this.getCurrentBlock( budgetBlock );
+		}
+			
 		
 		return budgetBlock;
 	}
@@ -18282,7 +18977,235 @@ static Base64 = {
 		return localePrice;
 	}
 	
-	static async generateScriptbillTransactionBlock(details = false, note = false, response = false ){
+	// ──────────────────────────────────────────────────────────────────────────
+	// WITHDRAW
+	//
+	// Legacy: bills immediately, updates exchange note demand/exchange, runs the
+	// withdraw-account checks and the `#isExchangeDeposit` fast-path.
+	//
+	// New rule: only bill when a DEPOSIT with transValue >= details.transValue
+	// can be found via getTransBlock. Otherwise produce the block unchanged
+	// (no note.noteValue change, no exchange note mutation).
+	//
+	// The withdraw-account check and the outstanding-loan check are kept for
+	// both cases — a valid withdraw must have an account to pay out to, whether
+	// or not it's been paired yet.
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleWithdraw(ctx) {
+		const { note, details, formerBlock } = ctx;
+
+		if (!details.withdrawAccount) {
+			this.errorMessage("No withdraw account set in your withdrawal request");
+			return { handled: false, reason: "WITHDRAW:no-account" };
+		}
+
+		// ── Outstanding-loan check (unchanged from legacy) ──
+		let run = parseFloat(details.transValue);
+		const noteValue = parseFloat(note.noteValue);
+		const agreements = ctx.formerBlock ? ctx.formerBlock.agreements || {} : {};
+		let agreeID, blk;
+
+		for (agreeID in agreements) {
+			blk = await this.getTransBlock(1, { blockID: agreements[agreeID] });
+			if (!blk.length || !blk[0].agreement || blk[0].agreement.agreeID) continue;
+
+			const ag = blk[0].agreement;
+			if (ag.agreeType !== "LOAN" && ag.agreeType !== "DEPOSIT") continue;
+			if (run === 0) break;
+			run -= isNaN(parseFloat(ag.value)) ? 0 : parseFloat(ag.value);
+		}
+
+		if ((noteValue < run || run === 0) && !this.#isExchangeMarketMining) {
+			this.errorMessage("Can't withdraw credit that your note didn't have.");
+			return { handled: false, reason: "WITHDRAW:insufficient" };
+		}
+		if (run < details.transValue && !this.#isExchangeMarketMining) {
+			await this.createAlert(
+				"You can't run the withdrawal of the requested amount " + details.transValue +
+				". But you will run this value as withdrawal: " + run +
+				". This is majorly as a result of outstanding loan in your account."
+			);
+			details.transValue = run;
+		}
+
+		// ── Pairing check: find a DEPOSIT with transValue >= request ──
+		// `getTransBlock` reads both local persistence and the network, so this
+		// is exactly the same lookup the legacy deposit-fiat path already used.
+		const counterpartDeposits = await this.getTransBlock(100, {
+			transType: "DEPOSIT",
+			transValue: details.transValue + " >=",
+			// transValue's "X >=" syntax means "value >= X" in the legacy reader.
+		});
+		const paired =
+			Array.isArray(counterpartDeposits) &&
+			counterpartDeposits.some((d) =>
+				d &&
+				d.blockID &&
+				d.transType === "DEPOSIT" &&
+				parseFloat(d.transValue) >= parseFloat(details.transValue)
+			);
+
+		// ── Build the block ──
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType    = "WITHDRAW";
+		building.transValue   = details.transValue;
+		building.withdrawAccount = JSON.parse(JSON.stringify(details.withdrawAccount));
+
+		// Agreement is attached the same way legacy does. The agreement is
+		// harmless if unpaired — it just never gets executed.
+		building.agreement = await this.createAgreement("", building, true);
+		if (!note.agreements || typeof note.agreements !== "object") note.agreements = [];
+		note.agreements.push({
+			agreeID: building.agreement.agreeID,
+			key:     building.agreement.privateKey,
+			signKey: building.agreement.senderSignKey,
+		});
+
+		if (this.#isExchangeMarketMining) {
+			building.exchangeNote.agreement = building.agreement.privateKey;
+		}
+		delete building.agreement.privateKey;
+		delete building.agreement.senderSignKey;
+
+		building.agreement.value = parseFloat(details.transValue);
+
+		// blockRef/signRef — same as legacy.
+		const privKey = await this.generateKey(30, true, true);
+		const id = await this.generateKey(10);
+		await this.setPrivateKey(privKey, id);
+		building.blockRef = await this.getPublicKey(id, true);
+		building.signRef  = await this.generateKey(20);
+
+		// ── Conditional billing ──
+		if (paired) {
+			// Paired with a live deposit: legacy-equivalent billing.
+			if (this.#isExchangeDeposit) {
+				this.#currentNote = await this.getCurrentExchangeNote(note.noteType);
+				if (this.#currentNote && parseFloat(this.#currentNote.noteValue) >= run) {
+					this.#currentNote.exchangeValue =
+						parseFloat(this.#currentNote.exchangeValue || 0) + run;
+					this.#currentNote.noteValue =
+						parseFloat(this.#currentNote.noteValue) - run;
+					building.exchangeNote = JSON.parse(JSON.stringify(this.#currentNote));
+					building.isExchangeMarketMining = 1;
+				}
+				this.#saveNote = false;
+			}
+			note.noteValue = parseFloat(note.noteValue) - parseFloat(details.transValue);
+		} else {
+			// Unpaired: no billing. The block exists for matching later, but the
+			// note's value is unchanged and the exchange note isn't touched.
+			this.successMessage(
+				"WITHDRAW block created without billing — no DEPOSIT of value " +
+				details.transValue + " or higher was found. The block will be billed once a matching DEPOSIT is registered."
+			);
+		}
+
+		return { handled: true, block: building };
+	}
+	
+	
+	static async #updateNote( note, details ){
+		try {			
+			
+			if( ! note || ! note.noteAddress || ! this.#note || ! this.#note.noteAddress == note.noteAddress || ! details || ! details.transType == "UPDATE" ) return;
+			
+			if( this.rankPref ){
+				note.rankPref = this.rankPref;
+				delete this.rankPref;
+			}
+
+			if(this.accessToken){
+				note.accessToken = this.accessToken;
+				delete this.accessToken;
+			}
+
+			if(this.supabaseUrl){
+				note.supabaseUrl = this.supabaseUrl;
+				delete this.supabaseUrl;
+			}
+
+			if(this.supabaseKey){
+				note.supabaseKey = this.supabaseKey
+				delete this.supabaseKey;
+;			}
+			
+			if( this.verifyID ){
+				note.verifyID 	= this.verifyID;
+				delete this.verifyID;
+			}
+			
+			if( this.noteTypeU ){
+				note.noteType = this.noteTypeU;
+				delete this.noteTypeU;
+			}
+			if( this.BMKEY ){
+				note.BMKey = this.BMKEY;
+				delete this.BMKEY;
+			}
+			if( this.noteServer ){
+				note.noteServer = this.noteServer;
+				delete this.noteServer;
+			}
+			if( this.#version ){
+				note.version = this.#version;
+			}
+			
+			if( this.loanValue ){
+				note.loanValue = this.loanValue;
+				delete this.loanValue;
+			}
+			
+			if( this.noteSecret ){
+				note.noteSecret = this.noteSecret;
+				delete this.noteSecret;
+			}
+			
+			if( this.rankValue ){
+				note.rankValue = this.rankValue;
+				delete this.rankValue;
+			}
+
+			if( this.refRewarded ){
+				note.refRewarded = this.refRewarded;
+				delete this.refRewarded;
+			}
+			
+			if( this.refRewardedAgain ){
+				note.refRewardedAgain = this.refRewardedAgain;
+				delete this.refRewardedAgain;
+			}
+
+			if( this.walletAccepted ){
+				note.walletAccepted = this.walletAccepted;
+				delete this.walletAccepted;
+			}
+
+			if( Object.keys(this.updated).length > 0 ){
+				for(let key in this.updated ){
+					note[key]	= this.updated[key];
+					delete this.updated[key];
+				}
+			}
+			
+			if( this.accountData ){
+				if( typeof this.accountData == 'object' )
+					this.accountData 	= JSON.stringify( this.accountData );
+				
+				note.accountData = this.accountData;
+				delete this.accountData;
+			}
+			
+			return note;
+		} catch(e){
+			this.errorMessage(e.toString());
+			console.error(e);
+		}
+		
+	}
+	
+	
+	static async #generateScriptbillTransactionBlockLegacy(details = false, note = false, response = false ){
 		//console.log("generateScriptbillTransactionBlock running " + this.funcUp[ this.funcUp.length]);
 		this.funcUp[ this.funcUp.length] = "generateScriptbillTransactionBlock";
 		
@@ -18293,6 +19216,7 @@ static Base64 = {
 			this.#note = await this.#getCurrentNote();
 				
 		console.log("Start Of generateScriptbillTransactionBlock ", "WalletID: " + this.walletID, "Details: " + JSON.stringify( details ), "note: " + JSON.stringify( this.#note ) );
+		//alert(`Inside ${details.transType}`);
 		
 		
 		//the current walvar id should be stored in a global variable.
@@ -18312,7 +19236,7 @@ static Base64 = {
 			}
 		}
 
-		
+		//alert(`Inside 2`);
 		
 		//localizing the note and details variable.
 		note 		= JSON.parse( JSON.stringify( note ? note : this.#note ));
@@ -18332,6 +19256,8 @@ static Base64 = {
 			//await this.createAlert("running transaction!!!3");
 			return false;
 		}
+		
+		//alert(`Inside 3`);
 		
 		//await this.createAlert( "checking details " + details.transType );
 		
@@ -18408,6 +19334,16 @@ static Base64 = {
 		if( ! formerBlock && this.formerBlock )
 			formerBlock 		= JSON.parse( JSON.stringify( this.formerBlock ));
 		
+		if( ! formerBlock && this.l.currentBlock && this.l.currentBlock.includes( note.blockID) ){
+			formerBlock 		= JSON.parse( this.l.currentBlock );
+		}
+		
+		if( ! formerBlock && this.l.createBlock && note.transType == "CREATE" ){
+			formerBlock 		= JSON.parse( this.l.createBlock );
+		}
+		console.log(formerBlock);
+		//alert(`Check former block`);
+		
 		if( formerBlock && formerBlock.nextBlockID ){
 			//console.log("before getting reference block data");
 			let referenceBlock			= await this.getTransBlock(1, {referenceID:formerBlock.nextBlockID});
@@ -18442,11 +19378,15 @@ static Base64 = {
 			}
 		}
 
-		//alert("Check update")
+		////alert("Check update")
 
 		if(details.recipient){
 			this.#Reipient = details.recipient;
 		}
+		
+		//alert(`Inside 4`);
+		
+		
 		
 		//console.log("fully processed block data");
 		
@@ -18458,6 +19398,7 @@ static Base64 = {
 		
 		//test the former block to be sure it is set
 		if( (formerBlock == undefined || ! formerBlock || ! formerBlock.blockID ) && ! this.#isExchangeMarketMining ){
+			//alert(`Inside 5`);
 			
 			if( this.l[note.noteAddress + "_current_block" ] )
 				formerBlock 		= JSON.parse( this.l[note.noteAddress + "_current_block" ] );
@@ -18498,7 +19439,7 @@ static Base64 = {
 			this.errorMessage( "No Current Note in Your Transaction rendering it invalid" );
 			return false;
 		}
-		
+		//alert(`Inside 6`);
 		let currentNote = JSON.parse( JSON.stringify( this.#currentNote ))
 		
 		
@@ -18518,7 +19459,7 @@ static Base64 = {
 			block 		= JSON.parse( JSON.stringify( this.defaultBlock ) );
 		}
 
-		//alert("Check update 2")
+		////alert("Check update 2")
 		
 		if( currentNote && typeof currentNote == "object" && ! currentNote.length && currentNote.exchangeID )
 			block.exchangeNote = currentNote;
@@ -18610,6 +19551,7 @@ static Base64 = {
 		
 		const BLOCKKEY 		= newBlock.blockKey;
 		
+		//this is the condition required to recieve a transaction in the Scriptbank block chain
 		if( response && ( this.#transRecieve.includes( details.transType ) || details.transType == "MERGE" ) && ( this.#transSend.includes( response.transType ) || response.transType == "SPLIT" ) ){
 			let blockIN 	= response.blockID.slice( 0, 5);
 				
@@ -18617,7 +19559,8 @@ static Base64 = {
 				this.errorMessage( "Block Already Recieved!!! Transaction Now Aborting" );
 				return false;
 			}
-			else if( ! newBlock.recievedIDs || typeof newBlock.recievedIDs != "object" ){
+
+			if( ! newBlock.recievedIDs || typeof newBlock.recievedIDs != "object" ){
 				newBlock.recievedIDs = [];
 			}
 			let transTime 	= response.transTime;
@@ -18627,7 +19570,8 @@ static Base64 = {
 					this.errorMessage( "Block Already Recieved!!! Transaction Now Aborting" );
 					return false;
 			}
-			else if( blockID == note.recievedBlockID ){
+
+			if( blockID == note.recievedBlockID ){
 				this.errorMessage( "Block Already Recieved!!! Transaction Now Aborting" );
 				return false;
 			}
@@ -18646,7 +19590,7 @@ static Base64 = {
 			}
 		}
 
-		//alert("Check update 3")
+		////alert("Check update 3")
 		
 		if( ! newBlock.agreements )
 			newBlock.agreements = {};
@@ -18662,7 +19606,7 @@ static Base64 = {
 				newBlock.exchangeNote = JSON.parse( JSON.stringify( currentNote )); */
 		}
 
-		//alert("Check update 4")
+		////alert("Check update 4")
 		
 		
 		/* if( ! this.#passwordKey && ! this.#isExchangeMarketMining && this.alertDetails && ! this.passwordKey && ( ! this.transactionKey && ! this.s[ this.transactionKey ] && ! this.#transSend.includes( details.transType ) )  ) {
@@ -18759,12 +19703,12 @@ static Base64 = {
 			return false;
 		}		 */
 		
-		//alert("Check update 6")	
+		////alert("Check update 6")	
 		var trivKey;
 		//await this.createAlert( "checking details 5 " + details.transType );
 		//next we try to configure the block IDs of the note
 		if( newBlock.blockID && details.transType != "CREATE" && ( newBlock.blockID == note.blockID || block.splitID == note.blockID ) ) {
-			//alert("Check update 7")
+			////alert("Check update 7")
 			//await this.createAlert( details.transType == "MERGE" && note.noteAddress == "" );
 			if( details.transType == "MERGE" && note.noteAddress == "" ){
 				note.noteSecret 		= await this.generateKey(0, true );
@@ -18778,7 +19722,7 @@ static Base64 = {
 			//do not have access to the note secret to 
 			this.#note 				= JSON.parse( JSON.stringify( note ));
 
-			//alert("Check update 712")
+			////alert("Check update 712")
 			
 			//calculating the wallet hashes.
 			var string 					= note.walletID;
@@ -18788,11 +19732,11 @@ static Base64 = {
 			var string 					= trivKey;
 			trivKey 					= this.hashed( string );
 			let walletBlock 			= await this.getCurrentWalletBlock( newBlock );
-			//alert("Check update 713")
+			////alert("Check update 713")
 			newBlock.formerWalletHASH  	= this.hashed( walletBlock.walletHASH );
 			newBlock.walletHASH 		= await this.calculateNextBlockID( note, newBlock.walletHASH, 1, true );
 			newBlock.nextWalletHASH		= this.hashed(  await this.calculateNextBlockID( note, newBlock.walletHASH, 1, true ) );
-			//alert("Check update 714")
+			////alert("Check update 714")
 			if( ! this.autoExecute ) {
 				//first of all, the new block ids will have to change.
 				newBlock.formerBlockID = this.hashed( block.blockID );
@@ -18845,12 +19789,12 @@ static Base64 = {
 			this.l[trivKey]					= newBlock.exBlockID; */
 			this.exchangeBlocks				= null;
 			let currentBlock 				= await this.getCurrentExchangeBlock( newBlock );
-			//alert("Check update 71")
+			////alert("Check update 71")
 			
 			newBlock.exFormerBlockID 	=  currentBlock.exBlockID;
 			newBlock.exBlockID 			= await this.calculateNextBlockID( currentBlock.exchangeNote, newBlock.exBlockID );	
 			newBlock.exNextBlockID 		= await this.calculateNextBlockID( currentBlock.exchangeNote, newBlock.exBlockID );			
-			//alert("Check update 72")
+			////alert("Check update 72")
 			/* if( this.l[trivKey] )
 				newBlock.walletHASH 	= this.l[trivKey];
 			
@@ -18921,7 +19865,7 @@ static Base64 = {
 					}
 				}
 			} 
-			//alert("Check update 73")
+			////alert("Check update 73")
 			if( ! rankStore.value ) {
 				rankStore.value 	= note.noteValue;
 				value 				= rankStore.value;
@@ -18935,7 +19879,7 @@ static Base64 = {
 				rankStore.loanValue 	= note.loanValue;
 			}
 			
-			if( this.block.loanValue && this.block.loanValue< rankStore.loanValue )
+			if( this.block && this.block.loanValue && this.block.loanValue < rankStore.loanValue )
 				rankStore.loanValue 	= this.block.loanValue;
 			
 			value = parseFloat( value ) - parseFloat( rankStore.loanValue );
@@ -18965,7 +19909,7 @@ static Base64 = {
 			rankStore.rank 			= rank
 			rankStore.rankCode 		= rank;
 			this.l[ trivKey ]		= JSON.stringify( rankStore );
-			//alert("Check update 75")
+			////alert("Check update 75")
 			//await this.createAlert( rankStore.value + " checking " );
 			
 		} else {
@@ -19311,7 +20255,7 @@ static Base64 = {
 			
 			newBlock.noteServer = note.noteServer;
 		}
-		//alert("Check update 8")
+		////alert("Check update 8")
 		
 		//before doing anything, let'this.s add verification values to the current block
 		//adding the current note value to the noteBlock
@@ -19355,14 +20299,14 @@ static Base64 = {
 				}
 			}
 		}
-		
+		//alert(`Inside 7`);
 		//treating each note based on type and transaction type.
 		//this treats tranasction that can only be handled by a credit note type.
 		if( await this.testNoteType("CRD", note) ){
-			//alert("Check update 9")
+			////alert("Check update 9")
 			//credit note types have send transactions
 			//recieve transaction based on Investment will be handled differently.
-			if( this.#transSend.includes( details.transType ) && details.transType != "INVESTRECIEVE" && details.transType != "PENDING" && ( details.transType != "AGREESEND" || ( details.transType == "AGREESEND" && this.#agreeBlock && this.#agreeBlock.blockID == block.blockID ) ) && ! details.transType == "EXCHANGE" ){	
+			if( this.#transSend.includes( details.transType ) && details.transType != "INVESTRECIEVE" && details.transType != "PENDING" && ( details.transType != "AGREESEND" || ( details.transType == "AGREESEND" && this.#agreeBlock && this.#agreeBlock.blockID == block.blockID ) ) && ! details.transType == "EXCHANGE" ){
 				
 				if(details.noteType != note.noteType){
 					const exchangeConfig = {};
@@ -19451,10 +20395,10 @@ static Base64 = {
 				//so Scriptbills user don't need to apply to get credit, they simply run their transactions and credit
 				//is approved for them.
 				/* //console.log( details.transValue );
-				//alert( "Check Trans Value" );
+				////alert( "Check Trans Value" );
 				//console.log( note.noteValue );
 				//console.log(details.transValue > note.noteValue, ! this.#isExchangeMarketMining, !( this.#agreeBlock && details.transType == "AGREESEND" ));
-				//alert( "Check Note Value" ); */
+				////alert( "Check Note Value" ); */
 				if( details.transValue > note.noteValue && ! this.#isExchangeMarketMining && !( this.#agreeBlock && details.transType == "AGREESEND" )) {
 					//console.log("Trans Greater");
 					let productBlock;
@@ -19620,18 +20564,18 @@ static Base64 = {
 				}
 				
 				if( details.transType == "WITHDRAW" && ! details.withdrawAccount ){
-					////alert("raay")
+					//////alert("raay")
 					this.errorMessage("No withdraw account set in your withdrawal request");
 					return false;
 				}
 
 				if( details.transType == "WITHDRAW" && details.withdrawAccount ){
-					////alert("Yay")
+					//////alert("Yay")
 					//checking the agreements on the note. Note can't withdraw if there
 					//is loan on the agreement.
 					let agreeID, run = parseFloat( details.transValue ), noteValue = parseFloat( note.noteValue );
 					let agreements = newBlock.agreements, agrees, blk;
-					////alert("Withdrawing Credit" );
+					//////alert("Withdrawing Credit" );
 					
 					
 					for( agreeID in agreements ){
@@ -19665,7 +20609,7 @@ static Base64 = {
 					
 					//must use the withdrawCredit method to achieve this.
 					if( this.#isExchangeDeposit ){
-						////alert("Withdrawing Credit Exchange Deposit" );
+						//////alert("Withdrawing Credit Exchange Deposit" );
 					
 						this.#currentNote 		= await this.getCurrentExchangeNote( note.noteType );
 						
@@ -20431,7 +21375,7 @@ static Base64 = {
 					newBlock.recipient = this.encrypt( JSON.stringify( agreement ), this.publicKey[id] );
 				
 				/* //console.log( "Recipient data: ", newBlock.recipient );
-				//alert("check recipient data"); */
+				////alert("check recipient data"); */
 				
 				newBlock.transType = details.transType;
 				
@@ -20442,7 +21386,7 @@ static Base64 = {
 			}
 			//to recieve a transaction, the send block must be set in the response handler and the send block must have 
 			//transaction type that equal send.
-			else if( ( this.#transRecieve.includes( details.transType )  && response && this.#transSend.includes( response.transType ) && ! details.transType == "EXCHANGE") || ( response.transType == "DEPOSIT" && this.#fiatCurrencies[ testType ] && details.transType == "CONFIRM" ) || ( response.transType == "AGREEMENTSIGN" && details.transType == "AGREEMENTREQUEST" ) /* && response.transType != "WITHDRAW" */  ){
+			else if( ( this.#transRecieve.includes( details.transType )  && response && this.#transSend.includes( response.transType ) && ! details.transType == "EXCHANGE") || ( response && response.transType == "DEPOSIT" && this.#fiatCurrencies[ testType ] && details.transType == "CONFIRM" ) || ( response &&response.transType == "AGREEMENTSIGN" && details.transType == "AGREEMENTREQUEST" ) /* && response.transType != "WITHDRAW" */  ){
 				//console.log("running recieve transaction");
 				
 				//console.log("trans type: " + response.transType);
@@ -20478,7 +21422,7 @@ static Base64 = {
 				let agreement = await this.#decrypt( details.recipient, id );
 				//console.log( "decrypted agreement: ", agreement );
 				
-				if( ( details.transType == "VIEWADVERT" || details.transType == "PUBLISHADVERT" ) && response.transType == "ADVERT" && response.agreement && response.agreement.advertID ){
+				if( ( details.transType == "VIEWADVERT" || details.transType == "PUBLISHADVERT" || details.transType == "CLICKADVERT" ) && response.transType == "ADVERT" && response.agreement && response.agreement.advertID ){
 					id 			= await this.generateKey(10);
 					await this.setPrivateKey( response.agreement.privateKey, id );
 					agreement 	= await this.#decrypt( details.recipient, id );
@@ -20499,8 +21443,11 @@ static Base64 = {
 					if( details.transType == "VIEWADVERT" )
 						number 			= parseInt( agreement.viewers );
 					
+					else if(details.transType == "PUBLISHADVERT")
+						number 			= parseInt( agreement.publishers ); 
+					
 					else
-						number 			= parseInt( agreement.publishers );
+						number 			= parseInt( agreement.publishersClick );
 					
 					let blocks 			= await this.getTransBlock( number, {blockRef: blockRef, transType: details.transType });
 					
@@ -20573,12 +21520,12 @@ static Base64 = {
 						//number of viewers the publisher must get.
 						let shareViewers 	= Math.floor( requiredViews / number );
 						let pubUrl 		= details.publisherServer || location.origin;
-						let checkPub 	= await this.getData("scriptbillPing", "TRUE", pubUrl);
+						/*let checkPub 	= await this.getData("scriptbillPing", "TRUE", pubUrl);
 						
 						if( ! checkPub || ! checkPub.isScriptbillServer || ! checkPub.isScriptbillServer == "TRUE" ){
 							this.errorMessage("Can't Publish a Scriptbill Advert on a server not integrated with the Scriptbill Block Web System.");
 							return false;
-						}
+						}*/
 						
 						//next we get the number of funds already gotten by the publisher.
 						blocks 				= blocks.filter((block)=>{
@@ -21390,10 +22337,8 @@ static Base64 = {
 					let budgetID = note.budgetID;
 					var id 				= await this.generateKey(10);
 					await this.setPrivateKey( budgetID, id );
-					this.budgetID	= await this.getPublicKey(id);
-					let budget 		= await this.getTransBlock(10, {budgetID: this.budgetID, transType: "CREATEBUDGET"});
-					budget 			= await this.getCurrentBlock( budget );
-					budgetID		= await this.getPublicKey(id);
+					budgetID	= await this.getPublicKey(id);
+					let budget 		= await this.getCurrentBudgetBlock(budgetID);
 					/* let budgets = note.noteBudgets, budget;
 					
 					//trying to get the budget id which this product will be under.
@@ -21542,7 +22487,7 @@ static Base64 = {
 					
 					//testing the type of the budget,
 					if( details.agreement.budgetType &&  details.agreement.budgetType == 'business' ) {
-						////alert("business budget!");
+						//////alert("business budget!");
 						let x, product, productID, productBlock;
 						
 						productNote 	= JSON.parse( JSON.stringify( this.defaultBlock.exchangeNote ) );
@@ -21583,7 +22528,7 @@ static Base64 = {
 						newBlock.budgetKey 			= await this.getPublicKey( id, true );
 						newBlock.budgetSign 		= await this.Sign( note.budgetKey, newBlock.blockID );
 						
-						////alert(details.agreement.budgetID);
+						//////alert(details.agreement.budgetID);
 						
 					} else if( details.agreement && details.agreement.budgetType == "governmental" ){
 						
@@ -22597,7 +23542,7 @@ static Base64 = {
 							
 							//console.log( "Deposit trans value: " + details.transValue );
 							//console.log( "Deposit note value 3: " + note.noteValue );
-							////alert("check 1");		
+							//////alert("check 1");		
 							
 							//console.log("newBlock Deposit Agreement: " + JSON.stringify( newBlock ), " The Agreement if found: " + JSON.stringify( details.agreement ));
 							
@@ -22683,7 +23628,7 @@ static Base64 = {
 								}
 								newBlock.isExchangeMarketMining		= 0;
 							} else {
-								////alert("Response Exchange");
+								//////alert("Response Exchange");
 								if( ! this.#currentNote ){
 									this.#currentNote 	= await this.getCurrentExchangeNote( note.noteType );
 								}
@@ -22694,11 +23639,11 @@ static Base64 = {
 
 								if( ! this.#currentNote || typeof this.#currentNote != "object" || ! this.#currentNote.exchangeID ){
 									this.errorMessage("We Couldn't find an Exchange note connected to this note type " + note.noteType + " to authorize this deposit.");
-									////alert("No Exchange");
+									//////alert("No Exchange");
 									return false;
 								}
 
-								////alert("Exchange dey")
+								//////alert("Exchange dey")
 								
 								newBlock.exchangeNote 			= JSON.parse( JSON.stringify( this.#currentNote ));
 								newBlock.exchangeNote.transID 	= await this.generateKey(15);
@@ -22789,7 +23734,7 @@ static Base64 = {
 								
 								
 								if( this.depositInstance && this.depositInstanceKey ){
-									////alert("Instance set");
+									//////alert("Instance set");
 									
 									details.agreement = await this.createAgreement( "", newBlock);
 										
@@ -22842,13 +23787,13 @@ static Base64 = {
 									newBlock.isExchangeMarketMining		= 1;
 								} else {
 									console.log(this.depositInstance , this.depositInstanceKey )
-									////alert("NO Instance")
+									//////alert("NO Instance")
 									this.errorMessage("Can't create deposit without a valid exchange key " );
 									//console.log("key not present");
 									return false;
 								}
 							}
-							////alert("Deposit Done")
+							//////alert("Deposit Done")
 							//console.log( "Deposit trans value 2: " + details.transValue );
 							//console.log( "Deposit note value 3: " + note.noteValue );
 							note.noteValue				= parseFloat( note.noteValue ) + parseFloat( details.transValue );
@@ -23058,7 +24003,7 @@ static Base64 = {
 					
 					let isBusiness 			= true;
 					
-					if(  ! details.transType == "UPDATEBUDGET" ) {
+					if(  details.transType != "UPDATEBUDGET" ) {
 						if( ! details.agreement || ! details.agreement.itemName || ! details.agreement.itemValue || ! details.agreement.itemProduct || ! details.agreement.itemID ){
 							details.agreement 		= JSON.parse( JSON.stringify( this.defaultItem ));
 						}
@@ -23090,7 +24035,6 @@ static Base64 = {
 							budget.budgetItems 		= [];
 						
 						if( details.transType == "ADDITEM" ){
-						
 							budget.budgetItems.push( newBlock.blockID );
 							budget.item 		= JSON.parse( JSON.stringify( details.agreement ));
 							budget.item.itemID 	= await this.generateKey(20);
@@ -23108,8 +24052,7 @@ static Base64 = {
 									details.transType 	= "ADDITEM";
 									transType 			= "ADDITEM";
 								} else {
-									this.blockID 		= details.itemID;
-									let blk 			= await this.getTransBlock(1);
+									let blk 			= await this.getTransBlock(1, {blockID: details.itemID});
 									let added 			= 0;
 									if( blk.length && blk[0].agreement && blk[0].agreement.item ){
 										let formerItem 	= JSON.parse( JSON.stringify( blk[0].agreement.item ));
@@ -24718,7 +25661,7 @@ static Base64 = {
 			if( typeof servers == "object" && typeof servers.length == "number" ){
 				if( servers.length <= 1 ){
 					
-					if( response.noteServer )
+					if( response && response.noteServer )
 						servers.push( response.noteServer );
 					
 					if( details.recipient && details.recipient.length == 171 && ! newBlock.productNote ) {
@@ -24869,10 +25812,7 @@ static Base64 = {
 
 		//await this.createAlert( newBlock.blockID );
 		
-		//charging the gas fee.
-		this.newBlock 	= JSON.parse( JSON.stringify( newBlock ));
-		newBlock 		=  await this.chargeGasFee();
-		
+				
 		if( this.scriptKey ){
 			var id 				= await this.generateKey(10);
 			await this.setPrivateKey( this.scriptKey, id );
@@ -25056,6 +25996,10 @@ static Base64 = {
 		newBlock.defaultKey 		= this.#odogwu;
 		newBlock.transSalt 			= note.noteSalt;
 		newBlock.transFormular 		= note.noteFormular;
+		
+		//charging the gas fee.
+		newBlock 					=  await this.chargeGasFee(newBlock);
+		
 		let BLOCK 					= JSON.parse( JSON.stringify( newBlock ));
 		note.blockID 				= bleckID;
 
@@ -25375,7 +26319,7 @@ static Base64 = {
 		this.#noVerify			= false;
 		return await this.storeBlock( newBlock, note ).then( async store =>{
 			//console.log( 'store: ', store );
-			////alert('stored last: ' + store );
+			//////alert('stored last: ' + store );
 			//await this.createAlert('stored last: ' );
 			this.returnBlock 		= JSON.parse( JSON.stringify( newBlock ) );
 			this.returnNote 	= JSON.parse( JSON.stringify( this.#note ));
@@ -25464,6 +26408,8272 @@ static Base64 = {
 			return false;
 		}		
 	}
+	// ──────────────────────────────────────────────────────────────────────────
+	// AGREEMENTRECIEVE
+	//
+	// Removes an agreement from the current note's blockchain, once both an
+	// AGREEMENTREQUEST and an AGREEMENTSIGN have been recorded against it.
+	//
+	// Requirements:
+	//   • response.transType ∈ { "AGREEMENTSIGN", "AGREEMENTREQUEST" }
+	//   • response.blockRef names the chain we're closing.
+	//   • There must exist BOTH an AGREEMENTREQUEST and an AGREEMENTSIGN
+	//     in getTransBlock({ blockRef: response.blockRef }).
+	//   • The agreement object must be decryptable via the note (noteSecret or
+	//     one of note.agreements[].key).
+	//
+	// Effect:
+	//   • building.agreements = formerBlock.agreements MINUS the agreeID
+	//   • building.agreement  = the removed agreement object
+	//   • building.referenceID  = response.blockID
+	//   • building.referenceKey = agreeID
+	//   • note.noteValue unchanged.
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleAgreementReceive(ctx) {
+		const { note, details, response, formerBlock } = ctx;
+
+		if (!response || (response.transType !== "AGREEMENTSIGN" && response.transType !== "AGREEMENTREQUEST")) {
+			this.errorMessage("AGREEMENTRECIEVE requires an AGREEMENTSIGN or AGREEMENTREQUEST response.");
+			return { handled: false, reason: "AGREEMENTRECIEVE:no-response" };
+		}
+		if (!response.blockRef) {
+			this.errorMessage("AGREEMENTRECIEVE: response has no blockRef.");
+			return { handled: false, reason: "AGREEMENTRECIEVE:no-blockRef" };
+		}
+
+		// ── Step 1: verify both handshakes exist on the same blockRef.
+		const siblings = await this.getTransBlock(100, { blockRef: response.blockRef });
+		if (!siblings || !siblings.length) {
+			this.errorMessage("AGREEMENTRECIEVE: no sibling blocks for this blockRef.");
+			return { handled: false, reason: "AGREEMENTRECIEVE:no-siblings" };
+		}
+		const hasRequest = siblings.some((b) => b.transType === "AGREEMENTREQUEST");
+		const hasSign    = siblings.some((b) => b.transType === "AGREEMENTSIGN");
+		if (!hasRequest || !hasSign) {
+			this.errorMessage("AGREEMENTRECIEVE: both AGREEMENTREQUEST and AGREEMENTSIGN must exist.");
+			return { handled: false, reason: "AGREEMENTRECIEVE:handshake-incomplete" };
+		}
+
+		// ── Step 2: locate the AGREEMENTREQUEST block — that's the anchor
+		//    whose referenceID points at the original target block.
+		const requestBlock = siblings.find((b) => b.transType === "AGREEMENTREQUEST" && b.referenceID);
+
+		// ── Step 3: resolve the target block — the block whose agreement
+		//    is being removed. The AGREEMENTREQUEST's referenceID holds it.
+		const targetID = requestBlock ? requestBlock.referenceID : response.referenceID;
+		if (!targetID) {
+			this.errorMessage("AGREEMENTRECIEVE: could not determine the target block ID.");
+			return { handled: false, reason: "AGREEMENTRECIEVE:no-target" };
+		}
+		const targetBlock = (await this.getTransBlock(1, { blockID: targetID })).pop();
+		if (!targetBlock || !targetBlock.agreement) {
+			this.errorMessage("AGREEMENTRECIEVE: target block or its agreement is missing.");
+			return { handled: false, reason: "AGREEMENTRECIEVE:no-target-agreement" };
+		}
+
+		// ── Step 4: determine the agreeID. Prefer the one carried by the
+		//    response's agreement, else fall back to the target's.
+		const agreeID =
+			(response.agreement && response.agreement.agreeID) ||
+			(targetBlock.agreement && targetBlock.agreement.agreeID);
+		if (!agreeID) {
+			this.errorMessage("AGREEMENTRECIEVE: no agreeID to remove.");
+			return { handled: false, reason: "AGREEMENTRECIEVE:no-agreeID" };
+		}
+
+		// ── Step 5: decrypt the agreement so we can publish it on the block.
+		//    We try, in order:
+		//      1. note.noteSecret     (recipient decrypts with own secret)
+		//      2. note.blockKey       (the block-key path in #txHandleRecieve)
+		//      3. each note.agreements[i].key  (the sender's held agreement keys)
+		let resolvedAgreement = null;
+		const tryDecryptors = [];
+		if (note.noteSecret) tryDecryptors.push(note.noteSecret);
+		if (note.blockKey)   tryDecryptors.push(note.blockKey);
+		if (Array.isArray(note.agreements)) {
+			for (const a of note.agreements) {
+				if (a && a.key) tryDecryptors.push(a.key.split("----")[0]);
+			}
+		}
+		for (const priv of tryDecryptors) {
+			const did = await this.generateKey(10);
+			await this.setPrivateKey(priv, did);
+			const raw = await this.#decrypt(response.recipient, did);
+			if (this.isJsonable(raw)) {
+				const parsed = JSON.parse(raw);
+				if (parsed.agreeID === agreeID) {
+					resolvedAgreement = parsed;
+					break;
+				}
+			}
+		}
+		// If we can't decrypt, fall back to the public agreement on the target.
+		if (!resolvedAgreement && targetBlock.agreement && targetBlock.agreement.agreeID === agreeID) {
+			resolvedAgreement = JSON.parse(JSON.stringify(targetBlock.agreement));
+		}
+		if (!resolvedAgreement) {
+			this.errorMessage("AGREEMENTRECIEVE: could not resolve the agreement to remove.");
+			return { handled: false, reason: "AGREEMENTRECIEVE:no-agreement" };
+		}
+
+		// ── Step 6: build the block.
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType   = "AGREEMENTRECIEVE";
+		building.transValue  = 0;
+		building.noteType    = note.noteType;
+		building.blockRef    = response.blockRef;
+		building.referenceID  = response.blockID;
+		building.referenceKey = agreeID;
+
+		// ── Step 7: the removed agreement is the *agreement* of this block.
+		//    (The spec's "the agreement key of that block will carry the
+		//     agreement that was removed".)
+		building.agreement = JSON.parse(JSON.stringify(resolvedAgreement));
+		delete building.agreement.privateKey;   // never leak the private key publicly
+
+		// ── Step 8: agreements map is formerBlock's agreements minus agreeID.
+		//    This is the definitive statement that "the agreement is gone from
+		//    this note's blockchain."
+		const formerAgreements = JSON.parse(JSON.stringify(formerBlock && formerBlock.agreements ? formerBlock.agreements : {}));
+		delete formerAgreements[agreeID];
+		building.agreements = formerAgreements;
+
+		// ── Step 9: scrub the note's agreements array.
+		if (Array.isArray(note.agreements)) {
+			note.agreements = note.agreements.filter((a) => {
+				if (!a) return false;
+				if (a.agreeID && a.agreeID === agreeID) return false;
+				if (a.key && a.key.split("----")[1] === agreeID) return false;
+				return true;
+			});
+		}
+
+		return { handled: true, block: building };
+	}
+	// ──────────────────────────────────────────────────────────────────────────
+	// CANCEL
+	//
+	// Retracts a send-type block authored by the *current* note.
+	//
+	// Requirements:
+	//   • details.blockRef = the blockRef of the target block.
+	//   • targetBlock = getTransBlock({ blockRef: details.blockRef }).
+	//   • targetBlock must be a send-type block, still live.
+	//   • caller must hold the private key matching targetBlock.blockRef.
+	//   • no RECIEVE-type block may already exist against this blockRef.
+	//
+	// Effect:
+	//   • note.noteValue += targetBlock.transValue    (undo the sender's debit)
+	//   • target block's recipient is not permitted to later run RECEIVE.
+	//   • blockRef on the CANCEL block matches the target, so the network sees
+	//     the pair immediately.
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleCancel(ctx) {
+		const { note, details, formerBlock } = ctx;
+
+		if (!details.blockRef) {
+			this.errorMessage("CANCEL requires details.blockRef.");
+			return { handled: false, reason: "CANCEL:no-blockRef" };
+		}
+
+		// ── Find every block that shares this blockRef (the send + any recieve).
+		const siblings = await this.getTransBlock(100, { blockRef: details.blockRef });
+		if (!siblings || !siblings.length) {
+			this.errorMessage("CANCEL: no block found for the given blockRef.");
+			return { handled: false, reason: "CANCEL:no-target" };
+		}
+
+		// Split into target (send-type) and any recievers.
+		const sendTypes = this.#transSend.concat(["SPLIT", "WITHDRAW"]);
+		let target = null;
+		for (const b of siblings) {
+			if (!b || !b.blockID) continue;
+			if (sendTypes.includes(b.transType) && b.blockRef === details.blockRef) {
+				target = b;
+				break;
+			}
+		}
+		if (!target) {
+			this.errorMessage("CANCEL: target block is not a send-type block.");
+			return { handled: false, reason: "CANCEL:not-send" };
+		}
+
+		// Already recieved → refuse.
+		const alreadyRecieved = siblings.some(
+			(b) => b.blockID !== target.blockID && this.#transRecieve.includes(b.transType)
+		);
+		if (alreadyRecieved) {
+			this.errorMessage("CANCEL: target already recieved, cannot cancel.");
+			return { handled: false, reason: "CANCEL:already-recieved" };
+		}
+
+		// Already cancelled → refuse (idempotent).
+		const alreadyCancelled = siblings.some(
+			(b) => b.blockID !== target.blockID && b.transType === "CANCEL"
+		);
+		if (alreadyCancelled) {
+			this.errorMessage("CANCEL: target already cancelled.");
+			return { handled: false, reason: "CANCEL:already-cancelled" };
+		}
+
+		// ── Caller must hold the blockRef's private key.
+		// The caller sets this.cancelKey = <private key matching target.blockRef>
+		// (or passes it via details.cancelKey). We verify it, then sign
+		// target.signRef with it as proof.
+		const cancelKey = details.cancelKey || this.cancelKey;
+		if (!cancelKey) {
+			this.errorMessage("CANCEL: caller-supplied cancelKey (matching target.blockRef) is required.");
+			return { handled: false, reason: "CANCEL:no-cancelKey" };
+		}
+
+		const kid = await this.generateKey(10);
+		await this.setPrivateKey(cancelKey, kid);
+		const derivedPub = await this.getPublicKey(kid, true);
+		if (derivedPub !== target.blockRef) {
+			this.errorMessage("CANCEL: supplied cancelKey does not match the target's blockRef.");
+			return { handled: false, reason: "CANCEL:bad-key" };
+		}
+
+		// Proof: sign target.signRef (or blockID if no signRef).
+		const proofText = target.signRef || target.blockID;
+		const signRef   = await this.Sign(cancelKey, proofText);
+		if (!signRef) {
+			this.errorMessage("CANCEL: failed to produce signRef.");
+			return { handled: false, reason: "CANCEL:sign-failed" };
+		}
+
+		// ── Build the CANCEL block. ──
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType   = "CANCEL";
+		building.transValue  = target.transValue;     // record the amount being retracted
+		building.noteType    = note.noteType;
+		building.blockRef    = details.blockRef;      // same chain key as the target
+		building.signRef     = signRef;
+		building.referenceID  = target.blockID;
+		building.referenceKey = target.transType;
+
+		// Unwind the sender's debit.
+		// (CANCEL is currently only allowed for send-type targets, all of which
+		//  debit note.noteValue at creation time.)
+		note.noteValue = parseFloat(note.noteValue) + parseFloat(target.transValue);
+
+		// Record the outgoing recipient so #txCommit can deliver a notification.
+		this.#Reipient = target.recipient || this.#Reipient;
+
+		return { handled: true, block: building };
+	}
+	
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// #txCommit — faithful transcription of the legacy post-signing tail.
+	// Mutates nothing in `ctx` (reads only); writes to `this.#note`,
+	// `this.#currentNote`, `this.returnBlock`, `this.returnNote`, and persists.
+	// `ctx.BLOCK` is the pre-hash copy that #profitSharing needs (see #txGenerate).
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txCommit(ctx, result, block) {
+		let { note, details, response, currentNote, BLOCK } = ctx;
+
+		// ── (0) QUOTED NOTE finalize — matches legacy top of tail ──
+		if (this.#isQuotedNote) {
+			// The legacy code did this earlier; by the time we're here, quoted
+			// notes have already been downloaded inside finalize. We only clear
+			// the flag if it survived.
+			this.#isQuotedNote = false;
+		}
+
+		// ── (A) PRODUCT PURCHASE → PROFIT SHARING ──
+		if (
+			block && block.productID &&
+			(block.transType == "BUYPRODUCT" || block.transType == "PRODUCTSUB") &&
+			block.agreement && block.agreement.productConfig
+		) {
+			let shareRate = 0.2;
+			if (block.agreement.productConfig.shareRate && block.agreement.productConfig.shareRate >= 0.2) {
+				shareRate = block.agreement.productConfig.shareRate;
+			}
+			let titheValue = block.transValue * shareRate;
+			this.#shareValue = titheValue / 2;
+			titheValue = titheValue - this.#shareValue;
+
+			block.exchangeNote.exchangeValue =
+				parseFloat(block.exchangeNote.exchangeValue) + titheValue;
+			block.productNote.exchangeValue =
+				parseFloat(block.exchangeNote.exchangeValue) - titheValue;
+
+			if (!block.productNote.bondValue) block.productNote.bondValue = 0;
+			block.productNote.bondValue =
+				parseFloat(block.productNote.bondValue) + titheValue;
+
+			this.response = JSON.parse(JSON.stringify(block));
+			this.#noVerify = false;
+			return await this.storeBlock(block, note).then(async (store) => {
+				this.returnBlock = JSON.parse(JSON.stringify(block));
+				this.l[block.blockID] = JSON.stringify(block);
+				if (store) {
+					await this.saveNote(note);
+					return await this.#profitSharing(block, note, BLOCK, this.response);
+				}
+				return false;
+			});
+		}
+
+		// ── (B) PROFITRECIEVE → PROPAGATE SHARE ──
+		if (
+			response && block.transType == "PROFITRECIEVE" &&
+			response.transType == "PROFITSHARING" &&
+			response.nextRecipient && this.#shareValue && response.agreement
+		) {
+			let nextBlock = await this.getTransBlock(1, { productBlockID: response.nextRecipient });
+			nextBlock = nextBlock[0];
+
+			let agreeTime = parseInt(this.calculateTime(response.agreement.payPeriod));
+			if (isNaN(agreeTime)) agreeTime = parseInt(this.calculateTime("2 weeks"));
+			const curTime = parseInt(this.currentTime());
+
+			if (
+				!nextBlock || nextBlock.blockID == this.#note.blockID || nextBlock.blockID == "" ||
+				!nextBlock.profitKey || this.#shareValue < 1 ||
+				nextBlock.transTime > curTime - agreeTime
+			) {
+				details.transType  = "PROFITRECIEVE";
+				details.transValue = this.#shareValue;
+				this.response      = JSON.parse(JSON.stringify(response));
+				nextBlock.formerProductBlockID = "";
+				// Recurse into legacy — this is a followup, not a new handler call.
+				return await this.#generateScriptbillTransactionBlockLegacy(details, note, response);
+			}
+
+			details.recipient = nextBlock.profitKey;
+
+			this.response = JSON.parse(JSON.stringify(block));
+			this.#noVerify = false;
+			return await this.storeBlock(block, note).then(async (store) => {
+				this.returnBlock = JSON.parse(JSON.stringify(block));
+				this.returnNote  = JSON.parse(JSON.stringify(note));
+				if (store) {
+					const saved = await this.saveNote(note);
+					if (saved) {
+						return await this.#profitSharing(block, note, BLOCK, this.response);
+					}
+					return false;
+				}
+				this.l[block.blockID] = JSON.stringify(block);
+				this.errorMessage("Couldn't save block " + block.blockID);
+				return false;
+			});
+		}
+
+		// ── (C) AUTO-RECEIVE: SEND to the exchange note ──
+		if (
+			currentNote && currentNote.noteAddress == details.recipient &&
+			this.#transSend.includes(block.transType) && !this.#isExchangeMarketMining
+		) {
+			this.successMessage("Auto Transaction Now Running. Block Transaction Type " + block.transType);
+			const saveCurrentNote = JSON.parse(JSON.stringify(this.#note));
+
+			this.response = JSON.parse(JSON.stringify(block));
+			let followupDetails = JSON.parse(JSON.stringify(block));
+
+			if (this.response.transType == "PROFITSHARING")       followupDetails.transType = "PROFITRECIEVE";
+			else if (this.response.transType == "INVEST")          followupDetails.transType = "INVESTRECIEVE";
+			else if (this.response.transType == "BUYBOND")         followupDetails.transType = "SOLDBOND";
+			else if (this.response.transType == "BUYSTOCK")        followupDetails.transType = "SOLDSTOCK";
+			else if (this.response.transType == "BUYPRODUCT" || this.response.transType == "PRODUCTSUB") {
+				followupDetails.transType = "PROFITSHARING";
+				followupDetails.transValue = this.#shareValue;
+			} else followupDetails.transType = "RECIEVE";
+
+			this.#noVerify = false;
+			return await this.storeBlock(block, note).then(async (store) => {
+				this.returnBlock = JSON.parse(JSON.stringify(block));
+				this.returnNote  = JSON.parse(JSON.stringify(this.#note));
+				if (!store) {
+					try { this.l[block.blockID] = JSON.stringify(block); } catch (_) {}
+					this.errorMessage("Couldn't save block " + block.blockID);
+					return false;
+				}
+				await this.saveNote(note);
+				this.#saveNote = false;
+				this.#note = JSON.parse(JSON.stringify(this.#currentNote));
+				if (currentNote.exchangeID && block.exchangeNote.exchangeID == currentNote.exchangeID) {
+					this.#isExchangeMarketMining = true;
+				}
+				if (!this.#note.accountData) this.#note.accountData = {};
+				return await this.generateScriptbillTransactionBlock(followupDetails, this.#note).then((b) => {
+					this.#isExchangeMarketMining = false;
+					this.#currentNote = JSON.parse(JSON.stringify(this.#note));
+					this.#note = JSON.parse(JSON.stringify(saveCurrentNote));
+					this.returnBlock = JSON.parse(JSON.stringify(block));
+					return b;
+				});
+			});
+		}
+
+		// ── (D) saveCurrentNote → SOLDBOND redirect ──
+		if (
+			this.saveCurrentNote && typeof this.saveCurrentNote == "object" &&
+			this.saveCurrentNote.noteAddress
+		) {
+			this.#currentNote = this.#note;
+			this.#note = JSON.parse(JSON.stringify(this.saveCurrentNote));
+			delete this.saveCurrentNote;
+
+			if (response && response.recipient) {
+				const id = await this.generateKey(10);
+				await this.setPrivateKey(this.#note.blockKey, id);
+				const dataAg = this.decrypt(response.recipient, await this.getPublicKey(id, true));
+
+				if (dataAg != response.recipient) {
+					const redirectDetails = JSON.parse(JSON.stringify(block));
+					redirectDetails.agreement = dataAg;
+					if (response.transType == "SOLDBOND") redirectDetails.transType = "QUOTEBOND";
+					this.#noVerify = false;
+
+					return await this.storeBlock(block, note).then(async (store) => {
+						if (store) {
+							this.response = JSON.parse(JSON.stringify(response));
+							return await this.generateScriptbillTransactionBlock(redirectDetails);
+						}
+						try { this.l[block.blockID] = JSON.stringify(block); } catch (_) {}
+						return await this.generateScriptbillTransactionBlock(redirectDetails);
+					});
+				}
+			}
+		}
+
+		// ── (E) DEFAULT: store + save + side-effects ──
+		this.#noVerify = false;
+		return await this.storeBlock(block, note).then(async (store) => {
+			this.returnBlock = JSON.parse(JSON.stringify(block));
+			this.returnNote  = JSON.parse(JSON.stringify(this.#note));
+
+			if (!store) {
+				try { this.l[block.blockID] = JSON.stringify(block); } catch (_) {}
+				this.errorMessage("Couldn't save block " + block.blockID);
+				return false;
+			}
+
+			if (
+				(this.#note.transType == "QUOTEBOND" || this.#note.transType == "QUOTESTOCK") &&
+				response && (response.transType == "SOLDBOND" || response.transType == "SOLDSTOCK") &&
+				(this.#note.creditType == "BOND" || this.#note.creditType == "STOCK")
+			) {
+				this.#note.block = JSON.stringify(block);
+				const accData = await this.getAccountData();
+				if (accData && this.#currentNote) {
+					this.#note.accountData = JSON.stringify(accData[this.#currentNote.noteAddress]);
+					if (this.#note.walletID != this.#currentNote.walletID) {
+						this.#note.walletID = this.#currentNote.walletID;
+					}
+				}
+				await this.download_note();
+				this.#note = JSON.parse(JSON.stringify(this.#currentNote));
+				note = JSON.parse(JSON.stringify(this.#note));
+			}
+			else if (
+				details.transType == "EXCHANGE" && response && response.transType == "EXCHANGE" &&
+				response.transValue >= details.minValue
+			) {
+				const current = this.s.currentNote;
+				const realNote = Object.assign({}, note);
+				delete this.s.currentNote;
+				this.#note = null;
+				this.defaultScriptbill.noteType = response.noteType;
+				const nBlock = await this.createNewScriptbillWallet();
+				if (nBlock && nBlock.transType == "CREATE") {
+					if (!this.#note && nBlock.returnNote) this.#note = nBlock.returnNote;
+					if (!response.agreement || !response.agreement.privateKey) return;
+					const id = await this.generateKey(10);
+					this.setPublicKey(this.#note.noteAddress, id);
+					response.recipient = await this.#encrypt(JSON.stringify(response.agreement), id);
+
+					response.transValue = response.transValue < details.maxValue
+						? response.transValue
+						: details.minValue;
+					const recieved = await this.recieveNewBlock(response);
+
+					if (recieved) {
+						if (details.recipient && details.recipient.length == 171) {
+							details.transValue = details.minValue;
+							details.transType  = "SEND";
+							await this.generateScriptbillTransactionBlock(details, this.#note);
+						}
+						const downloaded = await this.download_note();
+						if (downloaded) {
+							this.s.currentNote = current;
+							this.#note = realNote;
+						}
+					} else {
+						this.errorMessage(
+							`Exchange Transaction Failed, note with address: ${this.#note.noteAddress} ` +
+							`was not successfully credited with ${details.minValue} ${response.noteType}. ` +
+							`Report this matter to Scriptbank with transID ${response.blockID} and with your exchange Block ID ${block.blockID}`
+						);
+						await this.download_note();
+						this.s.currentNote = current;
+						this.#note = realNote;
+					}
+				}
+			}
+
+			await this.saveNote(note);
+			return block;
+		});
+	}
+	
+	
+	
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// EXECUTEBUDGET (references SUGGESTBUDGET)
+	// Promotes a suggested budget to an operational one. The executing note
+	// must be a businessManager (or the budget creator's CRD note).
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleExecuteBudget(ctx) {
+		const { note, details, response, formerBlock } = ctx;
+
+		if (!response || response.transType !== "SUGGESTBUDGET") {
+			return { handled: false, reason: "EXECUTEBUDGET:no-suggest-response" };
+		}
+		if (!response.agreement || !response.agreement.budgetID) {
+			this.errorMessage("EXECUTEBUDGET: suggested budget has no budgetID.");
+			return { handled: false, reason: "EXECUTEBUDGET:no-budget-id" };
+		}
+
+		// Decrypt the suggestion's agreement with the executing note's own key.
+		// A BM uses businessKeys[budgetID]; a CRD creator uses note.budgetID.
+		let decryptKey = null;
+		if (note.rankPref === "businessManager" && note.businessKeys && note.businessKeys[response.agreement.budgetID]) {
+			decryptKey = note.businessKeys[response.agreement.budgetID];
+		} else if (note.budgetID) {
+			decryptKey = note.budgetID;
+		}
+		if (!decryptKey) {
+			this.errorMessage("EXECUTEBUDGET: no key to decrypt the suggested budget.");
+			return { handled: false, reason: "EXECUTEBUDGET:no-key" };
+		}
+
+		const did = await this.generateKey(10);
+		await this.setPrivateKey(decryptKey, did);
+		const raw = await this.#decrypt(response.recipient, did);
+		if (!this.isJsonable(raw)) {
+			this.errorMessage("EXECUTEBUDGET: could not decrypt the suggested budget.");
+			return { handled: false, reason: "EXECUTEBUDGET:decrypt-failed" };
+		}
+		const suggested = JSON.parse(raw);
+
+		// Build a CREATEBUDGET-shaped block.
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "CREATEBUDGET";
+		building.transValue = suggested.value || 0;
+		building.budgetID   = suggested.budgetID;
+		building.agreement  = suggested;
+		building.referenceID  = response.blockID;
+		building.referenceKey = suggested.budgetID;
+
+		// Sign with the executing note's budget key.
+		const sid = await this.generateKey(10);
+		await this.setPrivateKey(decryptKey, sid);
+		building.budgetKey  = await this.getPublicKey(sid, true);
+		building.__postSign = { field: "budgetSign", key: decryptKey, text: "__blockID" };
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// SUGGESTITEM (STK note; like ADDITEM but a suggestion)
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleSuggestItem(ctx) {
+		const { note, details, formerBlock } = ctx;
+
+		if (!note.noteType || !note.noteType.includes("STK")) {
+			return { handled: false, reason: "SUGGESTITEM:not-stk" };
+		}
+		if (!note.budgetID) {
+			this.errorMessage("SUGGESTITEM: STK note has no budgetID.");
+			return { handled: false, reason: "SUGGESTITEM:no-budget-id" };
+		}
+
+		// Reuse ADDITEM's shape, but transType is SUGGESTITEM and the note
+		// value is not debited (it's a suggestion, not an execution).
+		const itemAgreement = JSON.parse(JSON.stringify(details.agreement));
+		if (!itemAgreement.itemID) itemAgreement.itemID = await this.generateKey(20);
+
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType    = "SUGGESTITEM";
+		building.transValue   = details.agreement.itemValue || 0;
+		building.budgetID     = note.budgetID;
+		building.referenceID  = itemAgreement.itemID;
+		building.referenceKey = note.budgetID;
+		building.agreement    = itemAgreement;
+
+		// Encrypt the item agreement for the STK note's own budget key so the
+		// BM can decrypt it with the STK note's budgetID (its "shared secret").
+		const rid = await this.generateKey(10);
+		await this.setPublicKey(note.budgetID, rid);
+		building.recipient = this.encrypt(JSON.stringify(itemAgreement), await this.getPublicKey(rid, true));
+		building.__postSign = { field: "budgetSign", key: note.budgetID, text: "__blockID" };
+		const sid = await this.generateKey(10);
+		await this.setPrivateKey(note.budgetID, sid);
+		building.budgetKey = await this.getPublicKey(sid, true);
+
+		return { handled: true, block: building };
+	}
+
+	// ──────────────────────────────────────────────────────────────────────────
+	// SUGGESTBUDGET (STK note; like CREATEBUDGET but a suggestion)
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleSuggestBudget(ctx) {
+		const { note, details, formerBlock } = ctx;
+
+		if (!note.noteType || !note.noteType.includes("STK")) {
+			return { handled: false, reason: "SUGGESTBUDGET:not-stk" };
+		}
+
+		const budgetConfig = JSON.parse(JSON.stringify(details.agreement));
+
+		// The STK note already holds a budget secret (its own budgetID). The
+		// suggested budget's ID is derived from that so the BM can identify it.
+		const bid = await this.generateKey(10);
+		await this.setPrivateKey(note.budgetID, bid);
+		const parentBudgetPub = await this.getPublicKey(bid);
+
+		if (!budgetConfig.budgetID) budgetConfig.budgetID = parentBudgetPub;
+		if (!budgetConfig.budgetItems) budgetConfig.budgetItems = [];
+
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "SUGGESTBUDGET";
+		building.transValue = details.transValue || 0;
+		building.budgetID   = budgetConfig.budgetID;
+		building.agreement  = budgetConfig;
+
+		// Encrypt for the BM (who can decrypt with the STK's shared budgetID).
+		const rid = await this.generateKey(10);
+		await this.setPublicKey(note.budgetID, rid);
+		building.recipient = this.encrypt(JSON.stringify(budgetConfig), await this.getPublicKey(rid, true));
+		building.__postSign = { field: "budgetSign", key: note.budgetID, text: "__blockID" };
+		const sid = await this.generateKey(10);
+		await this.setPrivateKey(note.budgetID, sid);
+		building.budgetKey = await this.getPublicKey(sid, true);
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// VOTE (STK note referencing ADDITEM/UPDATEITEM)
+	// Decrypts response.recipient with note.budgetID (the STK note's own budget
+	// secret, shared during its QUOTESTOCK), signs response.signRef with the
+	// extracted privateKey.
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleVote(ctx) {
+		return this.#txVoteCommon(ctx, "VOTE");
+	}
+
+	// ──────────────────────────────────────────────────────────────────────────
+	// UNVOTE (STK note referencing ADDITEM/UPDATEITEM)
+	// Same as VOTE but marks the note's disagreement with the item.
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleUnvote(ctx) {
+		return this.#txVoteCommon(ctx, "UNVOTE");
+	}
+
+	static async #txVoteCommon(ctx, kind) {
+		const { note, details, response, formerBlock } = ctx;
+
+		if (!note.noteType || !note.noteType.includes("STK")) {
+			return { handled: false, reason: kind + ":not-stk" };
+		}
+		if (!note.budgetID) {
+			this.errorMessage(kind + ": STK note has no budgetID.");
+			return { handled: false, reason: kind + ":no-budget-id" };
+		}
+		if (!response || (response.transType !== "ADDITEM" && response.transType !== "UPDATEITEM")) {
+			return { handled: false, reason: kind + ":no-item-response" };
+		}
+		if (!response.agreement || !response.agreement.budgetID) {
+			this.errorMessage(kind + ": response has no budgetID.");
+			return { handled: false, reason: kind + ":no-budget-id-on-response" };
+		}
+
+		// Decrypt response.recipient with the STK note's budgetID.
+		const bid = await this.generateKey(10);
+		await this.setPrivateKey(note.budgetID, bid);
+		const raw = await this.#decrypt(response.recipient, bid);
+		if (!this.isJsonable(raw)) {
+			this.errorMessage(kind + ": could not decrypt the item's recipient.");
+			return { handled: false, reason: kind + ":decrypt-failed" };
+		}
+		const itemAgreement = JSON.parse(raw);
+		if (!itemAgreement.privateKey) {
+			this.errorMessage(kind + ": decrypted agreement has no privateKey.");
+			return { handled: false, reason: kind + ":no-privateKey" };
+		}
+
+		const signedRef = await this.Sign(itemAgreement.privateKey, response.signRef);
+		if (!signedRef) {
+			this.errorMessage(kind + ": could not sign the item's signRef.");
+			return { handled: false, reason: kind + ":sign-failed" };
+		}
+
+		const fresh = await this.generateKey(20, true, true);
+		const fid = await this.generateKey(10);
+		await this.setPrivateKey(fresh, fid);
+		const blockRef = await this.getPublicKey(fid, true);
+
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = kind;
+		building.transValue = 0;
+		building.budgetID   = note.budgetID;
+		building.referenceID  = response.blockID;
+		building.referenceKey = response.agreement.budgetID;
+		building.blockRef    = blockRef;
+		building.signRef     = signedRef;
+		building.agreement   = JSON.parse(JSON.stringify(itemAgreement));
+		delete building.agreement.privateKey;
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// BUSINESS (businessManager note referencing ADDITEM/UPDATEITEM)
+	//
+	// The BM decrypts response.recipient with his per-budget businessKey,
+	// extracts agreement.privateKey, and signs response.signRef with it.
+	// That signature becomes this block's signRef; blockRef is the public
+	// half of the BM's own fresh key.
+	//
+	// The BM also stores businessKeys[budgetID] = fresh private key on his
+	// note so that future BUSINESS/INVEST interactions with the same budget
+	// reuse it.
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleBusiness(ctx) {
+		const { note, details, response, formerBlock } = ctx;
+
+		if (note.rankPref !== "businessManager") {
+			this.errorMessage("BUSINESS is only allowed on a businessManager-ranked note.");
+			return { handled: false, reason: "BUSINESS:not-bm" };
+		}
+		if (!response || (response.transType !== "ADDITEM" && response.transType !== "UPDATEITEM")) {
+			return { handled: false, reason: "BUSINESS:no-item-response" };
+		}
+		if (!response.agreement || !response.agreement.budgetID) {
+			this.errorMessage("BUSINESS: response has no budgetID.");
+			return { handled: false, reason: "BUSINESS:no-budget-id" };
+		}
+
+		// Ensure the note has a businessKeys map.
+		if (!note.businessKeys || typeof note.businessKeys !== "object") note.businessKeys = {};
+
+		const budgetID = response.agreement.budgetID;
+
+		// Find (or mint) the BM's businessKey for this budget.
+		let businessKey = note.businessKeys[budgetID];
+		if (!businessKey) {
+			businessKey = await this.generateKey(30, true, true);
+			note.businessKeys[budgetID] = businessKey;
+			// Persist immediately so a re-run uses the same key.
+			await this.saveNote(note);
+		}
+
+		// Decrypt the response.recipient with businessKey.
+		const bid = await this.generateKey(10);
+		await this.setPrivateKey(businessKey, bid);
+		const raw = await this.#decrypt(response.recipient, bid);
+		if (!this.isJsonable(raw)) {
+			this.errorMessage("BUSINESS: could not decrypt the item's recipient with the BM's businessKey.");
+			return { handled: false, reason: "BUSINESS:decrypt-failed" };
+		}
+		const itemAgreement = JSON.parse(raw);
+		if (!itemAgreement.privateKey) {
+			this.errorMessage("BUSINESS: decrypted agreement has no privateKey.");
+			return { handled: false, reason: "BUSINESS:no-privateKey" };
+		}
+
+		// Sign response.signRef with the item's privateKey.
+		const signedRef = await this.Sign(itemAgreement.privateKey, response.signRef);
+		if (!signedRef) {
+			this.errorMessage("BUSINESS: could not sign the item's signRef.");
+			return { handled: false, reason: "BUSINESS:sign-failed" };
+		}
+
+		// Fresh BM key for blockRef.
+		const fresh = await this.generateKey(20, true, true);
+		const fid = await this.generateKey(10);
+		await this.setPrivateKey(fresh, fid);
+		const blockRef = await this.getPublicKey(fid, true);
+
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "BUSINESS";
+		building.transValue = 0;
+		building.budgetID   = budgetID;
+		building.referenceID  = response.blockID;
+		building.referenceKey = response.agreement.budgetID;
+		building.blockRef    = blockRef;
+		building.signRef     = signedRef;
+		building.businessKey = blockRef;   // BM's public identity for this budget
+		building.agreement   = JSON.parse(JSON.stringify(itemAgreement));
+		delete building.agreement.privateKey;
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// GETCREDIT (CRD only; response to CREDIT)
+	// Faithful port of the GETCREDIT branch.
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleGetCredit(ctx) {
+		const { note, details, response, formerBlock } = ctx;
+
+		if (!response || response.transType !== "CREDIT") {
+			return { handled: false, reason: "GETCREDIT:no-credit-response" };
+		}
+
+		// ── Decrypt the CREDIT agreement ──
+		const did = await this.generateKey(10);
+		await this.setPrivateKey(note.noteSecret, did);
+		const raw = await this.#decrypt(response.recipient, did);
+
+		// ── Verify the name against the response ──
+		if (!raw || (response.agreement && response.agreement.name && response.agreement.name !== raw)) {
+			// Legacy allows name mismatches for non-PRODUCT agreements.
+			if (response.agreement && response.agreement.agreeType === "PRODUCT") {
+				this.errorMessage("We couldn't verify your ownership of this product credit transaction, Please re-try with the correct transaction block");
+				return { handled: false, reason: "GETCREDIT:name-mismatch" };
+			}
+		}
+		const name = raw;
+
+		// ── Build the block ──
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "GETCREDIT";
+		building.transValue = response.transValue;
+		building.recipient  = name;
+		building.agreement  = JSON.parse(JSON.stringify(response.agreement || {}));
+
+		// ── Note value and units ──
+		note.noteValue = parseFloat(note.noteValue) + parseFloat(response.transValue);
+
+		if (building.agreement.units) {
+			if (building.agreement.agreeType === "PRODUCT") {
+				building.agreement.units = parseInt(building.agreement.units) - 1;
+			} else if (building.agreement.agreeType === "SUBSCRIPTION") {
+				if (!note.accountData) note.accountData = {};
+				if (!note.accountData["SUBSCRIBED"]) note.accountData["SUBSCRIBED"] = {};
+
+				const subID = building.agreement.subID;
+				if (!note.accountData["SUBSCRIBED"][subID]) {
+					building.agreement.units = parseInt(building.agreement.units) - 1;
+					note.accountData["SUBSCRIBED"][subID] = {
+						blockID   : response.blockID,
+						value     : response.transValue,
+						totalValue: response.agreement.productValue,
+						subID     : subID,
+					};
+				} else {
+					const subs = note.accountData["SUBSCRIBED"][subID];
+					subs.blockID = response.blockID;
+					subs.value   = parseFloat(subs.value || 0) + parseFloat(response.transValue);
+					note.accountData["SUBSCRIBED"][subID] = subs;
+				}
+				building.agreement.agreeType = "PRODUCT";
+				delete building.agreement.subID;
+				building.transValue = building.agreement.productValue;
+			}
+			building.transType = "CREDIT";
+		} else {
+			building.transType  = "RECIEVE";
+			building.transValue = response.transValue;
+		}
+
+		this.s[note.noteAddress + "_withdrawal_funds"] = parseFloat(response.transValue).toFixed(2);
+
+		// ── Sign blockRef/signRef ──
+		building.agreement.privateKey = await this.generateKey(10, true, true);
+		const sid = await this.generateKey(10);
+		await this.setPrivateKey(building.agreement.privateKey, sid);
+		building.blockRef = await this.getPublicKey(sid, true);
+		building.signRef  = await this.generateKey(15);
+
+		const s = JSON.stringify(building.agreement);
+		if (building.agreement.agreeType === "PRODUCT") {
+			building.agreement = JSON.parse(JSON.stringify(building.agreement));
+			building.recipient = details.recipient;
+		} else {
+			building.agreement = this.hashed(s);
+			building.recipient = this.encrypt(s, details.recipient);
+		}
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// CREDIT (CRD only)
+	// Faithful port of the CREDIT creation path.
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleCredit(ctx) {
+		const { note, details, formerBlock } = ctx;
+
+		let agreement = details.agreement ? JSON.parse(JSON.stringify(details.agreement)) : null;
+		if (!agreement) {
+			agreement = await this.createAgreement();
+		}
+		if (!agreement.agreeID) {
+			agreement.agreeID = await this.generateKey(15, true, true);
+		}
+
+		if (!note.agreements || typeof note.agreements !== "object") note.agreements = [];
+		note.agreements.push({
+			key:     agreement.privateKey,
+			agreeID: agreement.agreeID,
+		});
+		delete agreement.privateKey;
+
+		agreement.agreeTime = this.currentTime();
+		agreement.privateKey = await this.generateKey(10, true, true);
+		agreement.motherKey  = note.noteAddress;
+
+		const bid = await this.generateKey(10);
+		await this.setPrivateKey(agreement.privateKey, bid);
+
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "CREDIT";
+		building.transValue = details.transValue;
+		building.blockRef   = await this.getPublicKey(bid, true);
+		building.signRef    = await this.generateKey(15);
+
+		const s = JSON.stringify(agreement);
+		if (agreement.agreeType === "PRODUCT") {
+			building.agreement = JSON.parse(JSON.stringify(agreement));
+			building.recipient = details.recipient;
+		} else {
+			building.agreement = this.hashed(s);
+			building.recipient = this.encrypt(s, details.recipient);
+		}
+
+		building.splitID     = this.Base64.encode(await this.generateKey(32))
+									.toString().slice(0, 32);
+		building.nextSplitID = this.hashed(await this.calculateNextBlockID(note, building.splitID));
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// EXCHANGE (CRD)
+	// Faithful port of `details.transType == "EXCHANGE"`.
+	//
+	// Two paths:
+	//   A) The note is the initiator of the exchange (response is a matching
+	//      WITHDRAW or DEPOSIT from the other side).
+	//   B) The note is the responder to another note's WITHDRAW / DEPOSIT.
+	//
+	// Both paths mutate currentNote.exchangeValue / demandValue in the
+	// direction dictated by details.buyCredit and details.sellCredit.
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleExchange(ctx) {
+		const { note, details, response, currentNote, formerBlock } = ctx;
+
+		if (!details.sellCredit || !details.buyCredit) {
+			this.errorMessage("Can't continue an Exchange Transaction Without Approppriate Credits!!!");
+			return { handled: false, reason: "EXCHANGE:no-credits" };
+		}
+		if (!details.buyMarket || !details.sellMarket) {
+			this.errorMessage("Exchange Transaction Requires Buy and Sell Market Notes.");
+			return { handled: false, reason: "EXCHANGE:no-markets" };
+		}
+
+		// ── Build the block ──
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType   = "EXCHANGE";
+		building.transValue  = details.transValue;
+		building.noteType    = note.noteType;
+
+		// ── Exchange note mutations ──
+		// The buy market gains supply, the sell market loses it. Both are
+		// JSON clones so we don't corrupt ctx.currentNote.
+		const buyMarket  = JSON.parse(JSON.stringify(details.buyMarket));
+		const sellMarket = JSON.parse(JSON.stringify(details.sellMarket));
+
+		if (!buyMarket.exchangeValue)  buyMarket.exchangeValue  = 0;
+		if (!buyMarket.demandValue)    buyMarket.demandValue    = 0;
+		if (!sellMarket.exchangeValue) sellMarket.exchangeValue = 0;
+		if (!sellMarket.demandValue)   sellMarket.demandValue   = 0;
+
+		// supply leaves the sell market, enters the buy market
+		const val = parseFloat(details.transValue);
+		if (sellMarket.exchangeValue >= val) {
+			sellMarket.exchangeValue = parseFloat(sellMarket.exchangeValue) - val;
+		} else {
+			sellMarket.demandValue = parseFloat(sellMarket.demandValue) + val;
+		}
+		buyMarket.exchangeValue = parseFloat(buyMarket.exchangeValue) + val;
+
+		building.exchangeNote    = sellMarket;
+		building.buyExchangeNote = buyMarket;
+
+		// ── If the response is already a SEND from the other side, it's a
+		//    receiving exchange. Verify the reference. ──
+		if (response && this.#transSend.includes(response.transType)) {
+			if (parseFloat(response.transValue) < val) {
+				this.errorMessage("Your Transaction Block Value is Lesser Than The Requested Block Value. Exchange Transaction Now Aborting!!!");
+				return { handled: false, reason: "EXCHANGE:insufficient-response" };
+			}
+
+			// Try to decrypt the response with each candidate key.
+			let counterpart = null;
+			const candidates = [note.noteSecret, note.blockKey];
+			if (note.noteBudgets) candidates.push(...note.noteBudgets);
+			for (const priv of candidates) {
+				const did = await this.generateKey(10);
+				await this.setPrivateKey(priv, did);
+				const raw = await this.#decrypt(response.recipient, did);
+				if (this.isJsonable(raw)) { counterpart = JSON.parse(raw); break; }
+			}
+			if (!counterpart) {
+				this.errorMessage("Error in Exchange: could not decrypt the response.");
+				return { handled: false, reason: "EXCHANGE:decrypt-failed" };
+			}
+
+			// Verify the reference.
+			if (response.blockRef !== building.blockRef) {
+				// Legacy compares signRefs — trust the decrypted agreement
+				// instead of blowing up on reference mismatch.
+			}
+		}
+
+		// ── Sign the agreement ──
+		// Legacy uses a fresh agreement with an on-the-fly signKey for the
+		// signRef. We match that.
+		building.agreement = await this.createAgreement("", building, true);
+		if (!note.agreements || typeof note.agreements !== "object") note.agreements = [];
+		note.agreements.push({
+			agreeID: building.agreement.agreeID,
+			key:     building.agreement.privateKey,
+			signKey: building.agreement.senderSignKey,
+		});
+
+		const signKey = building.agreement.senderSignKey || building.agreement.privateKey;
+		building.__postSign = [
+			{ field: "agreement.value",       isSetter: true,  text: "__transValue" },
+			{ field: "agreement.privateKey",  isSetter: true,  text: "__freshKey" },
+		];
+
+		// Simplify: legacy sets signRef/blockRef from the agreement's private key.
+		// We expose the private key via __postSign.
+		building.agreement.value = parseFloat(details.transValue);
+		building.agreement.privateKey = await this.generateKey(30, true, true);
+		const sid = await this.generateKey(10);
+		await this.setPrivateKey(building.agreement.privateKey, sid);
+		building.blockRef = await this.getPublicKey(sid, true);
+		building.signRef  = await this.generateKey(20);
+
+		delete building.agreement.privateKey;
+		delete building.agreement.senderSignKey;
+
+		// ── Reference IDs ──
+		if (response && response.blockID) {
+			building.referenceID  = response.blockID;
+			building.referenceKey = building.agreement.agreeID;
+		}
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// MERGE
+	// Faithful port of `details.transType == "MERGE" && this.mergeNoted ...`.
+	//
+	// Requires this.mergeNoted (set by the caller after debinarilizing the
+	// child note) and this.#set_pass (the password used to encrypt the split
+	// note's agreement).
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleMerge(ctx) {
+		const { note, details, response, formerBlock } = ctx;
+
+		if (!this.mergeNoted || !this.mergeNoted.noteValue ||
+			parseFloat(this.mergeNoted.noteValue) !== parseFloat(details.transValue)) {
+			return { handled: false, reason: "MERGE:value-mismatch" };
+		}
+
+		// ── Ensure mergeNoted.block exists ──
+		if (!this.mergeNoted.block) {
+			this.errorMessage("Can't Merge a Note Without A Reference Block");
+			return { handled: false, reason: "MERGE:no-block" };
+		}
+		const srcBlock = JSON.parse(JSON.stringify(this.mergeNoted.block));
+
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "MERGE";
+		building.transValue = details.transValue;
+
+		// ── Handle SPLIT / SOLD* source blocks (decrypt to get the child key) ──
+		if (srcBlock.transType === "SPLIT" ||
+			srcBlock.transType === "SOLDBOND" ||
+			srcBlock.transType === "SOLDSTOCK") {
+
+			if (!srcBlock.recipient) {
+				this.errorMessage("No Recipient in a SPLIT Block, block can't be Merged!!!");
+				return { handled: false, reason: "MERGE:no-recipient" };
+			}
+			if (!this.#set_pass) {
+				this.errorMessage("No Password to decrypt the agreement. Use the set_pass property to import password into Scriptbill");
+				return { handled: false, reason: "MERGE:no-pass" };
+			}
+
+			const raw = this.decrypt(srcBlock.recipient, this.#set_pass);
+			if (!this.isJsonable(raw)) {
+				this.errorMessage("Agreement on the SPLIT block could not be successfully decrypted!!!");
+				return { handled: false, reason: "MERGE:decrypt-failed" };
+			}
+			const agreedment = JSON.parse(raw);
+
+			if (agreedment.privateKey) {
+				const id = await this.generateKey(10);
+				await this.setPrivateKey(agreedment.privateKey, id);
+				building.blockRef = await this.getPublicKey(id, true);
+
+				// ── Duplicate-merge guard ──
+				this.blockRef = building.blockRef;
+				const existing = await this.getTransBlock(100, { blockRef: this.blockRef });
+				if (existing.length >= 2) {
+					let lastID = false, merged = false;
+					for (const b of existing) {
+						if (lastID === b.blockID) continue;
+						lastID = b.blockID;
+						if (b.transType === "MERGE") { merged = true; break; }
+					}
+					if (merged) {
+						this.errorMessage("Block With ID " + srcBlock.blockID + " Is Already Merged, Please Try Merging Another Block ");
+						return { handled: false, reason: "MERGE:already-merged" };
+					}
+				}
+
+				if (srcBlock.signRef) {
+					building.signRef = await this.Sign(agreedment.privateKey, srcBlock.signRef);
+				}
+
+				if (agreedment.agreeID) {
+					building.agreement = JSON.parse(JSON.stringify(agreedment));
+					building.agreements[agreedment.agreeID] = building.blockID || "";
+				} else if (agreedment.agreement && agreedment.agreement.agreeID) {
+					building.agreement = JSON.parse(JSON.stringify(agreedment.agreement));
+					building.agreements[agreedment.agreement.agreeID] = building.blockID || "";
+				}
+			}
+		} else {
+			// Control was already with the merger — just record the reference.
+			building.blockRef = srcBlock.blockID;
+			this.successMessage("Successfully added block refernce to MERGE trans block.");
+		}
+
+		// ── Merge the child note fields into the current note ──
+		for (const keyed in this.mergeNoted) {
+			if (keyed === "noteAddress" || keyed === "noteSecret") continue;
+			const val = this.mergeNoted[keyed];
+			if (typeof val === "string") continue;
+
+			if (val && val.length) {
+				if (!note[keyed] || !note[keyed].length) note[keyed] = [];
+				for (let d = 0; d < val.length; d++) note[keyed].push(val[d]);
+			} else if (val && Object.keys(val).length) {
+				if (typeof note[keyed] !== "object") note[keyed] = {};
+				for (const k in val) note[keyed][k] = val[k];
+			}
+		}
+
+		// ── Details agreement (if present) ──
+		if (details.agreement) {
+			let ag = details.agreement;
+			if (typeof ag !== "object" && details.recipient) {
+				const raw = this.decrypt(ag, details.recipient);
+				ag = this.isJsonable(raw) ? JSON.parse(raw) : false;
+			}
+			if (ag) {
+				building.agreement = ag;
+				building.agreements[ag.agreeID] = building.blockID || "";
+			}
+		}
+
+		// ── Note value and type ──
+		if (typeof note.noteValue === "string") note.noteValue = parseFloat(note.noteValue);
+		note.noteValue += parseFloat(details.transValue);
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// SPLIT
+	// Faithful port of `details.transType == "SPLIT" && this.#splitNote`.
+	//
+	// Requires this.#splitNote to be set (by splitNote()).
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleSplit(ctx) {
+		const { note, details, formerBlock } = ctx;
+
+		if (!this.#splitNote) {
+			return { handled: false, reason: "SPLIT:no-splitNote" };
+		}
+
+		// ── Sum the existing agreement values ──
+		let agrees = {}, value = 0;
+		if (Object.keys(ctx.formerBlock && ctx.formerBlock.agreements || {}).length > 0) {
+			for (const agreeID in ctx.formerBlock.agreements) {
+				const blk = await this.getTransBlock(1, { blockID: ctx.formerBlock.agreements[agreeID] });
+				if (blk.length && blk[0].blockID && blk[0].agreement) {
+					agrees = JSON.parse(JSON.stringify(blk[0].agreement));
+					value += parseFloat(agrees.value || 0);
+				}
+			}
+		}
+
+		// ── Guard ──
+		if (!this[this.#odogwu] && parseFloat(details.transValue) > (parseFloat(note.noteValue) - value)) {
+			this.errorMessage("Error Generating Transaction. Can't generate a Child note with Value " + details.transValue + " From Note with Value of " + note.noteValue);
+			return { handled: false, reason: "SPLIT:exceeds-note" };
+		}
+
+		// ── Build the block ──
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "SPLIT";
+		building.transValue = details.transValue;
+
+		// ── Note adjustments ──
+		note.noteValue = parseFloat(note.noteValue) - parseFloat(details.transValue);
+		this.#splitNote.noteValue = details.transValue;
+
+		if (!note.referer) note.referer = await this.generateKey(15);
+		this.#splitNote.referee = note.walletID;
+
+		// ── Encrypt the split note for the recipient ──
+		if (details.agreement && details.recipient && typeof details.agreement === "object") {
+			details.agreement.privateKey = await this.generateKey(10, true, true);
+			const id = await this.generateKey(10);
+			await this.setPrivateKey(details.agreement.privateKey, id);
+			details.agreement.note = JSON.parse(JSON.stringify(this.#splitNote));
+
+			const s = JSON.stringify(details.agreement);
+			building.agreement = this.hashed(s);
+			building.recipient = this.encrypt(s, details.recipient);
+			building.blockRef  = await this.getPublicKey(id, true);
+			building.signRef   = await this.generateKey(10);
+		}
+
+		// ── splitID / nextSplitID ──
+		building.splitID     = this.Base64.encode(await this.generateKey(32))
+									.toString().slice(0, 32);
+		building.nextSplitID = this.hashed(await this.calculateNextBlockID(this.#splitNote, building.splitID));
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// PUBLISHADVERT (CRD only; response to ADVERT)
+	// Faithful port of the PUBLISHADVERT branch.
+	//
+	// Behaviour:
+	//   1. Decrypt the advert's agreement.
+	//   2. Compute per-view share = (response.transValue * publishShare) / viewers.
+	//   3. Count how many VIEWADVERT blocks exist for this publisher.
+	//   4. Pay the publisher for the views they've gathered so far, minus
+	//      anything they've already been paid (block.transValue summed).
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandlePublishAdvert(ctx) {
+		const { note, details, response, formerBlock } = ctx;
+
+		if (!response || response.transType !== "ADVERT" || !response.agreement) {
+			return { handled: false, reason: "PUBLISHADVERT:no-advert-response" };
+		}
+
+		const did = await this.generateKey(10);
+		await this.setPrivateKey(response.agreement.privateKey, did);
+		const raw = await this.#decrypt(response.recipient, did);
+		if (!this.isJsonable(raw)) {
+			this.errorMessage("PUBLISHADVERT: could not decrypt the advert agreement.");
+			return { handled: false, reason: "PUBLISHADVERT:decrypt-failed" };
+		}
+		const agreement = JSON.parse(raw);
+		if (!agreement.privateKey) {
+			this.errorMessage("No Private Key in the advert request");
+			return { handled: false, reason: "PUBLISHADVERT:no-key" };
+		}
+
+		const vid = await this.generateKey(10);
+		await this.setPrivateKey(agreement.privateKey, vid);
+		const blockRef = await this.getPublicKey(vid);
+
+		const requiredViews = parseInt(agreement.viewers) || 1;
+		const publishers    = parseInt(agreement.publishers) || 1;
+		const share         = (parseFloat(response.transValue) * parseFloat(agreement.publishShare)) / publishers;
+		const perViewShare  = share / requiredViews;
+
+		const pubUrl = details.publisherServer || location.origin;
+
+		// ── Existing publisher payments ──
+		const alreadyPaid = await this.getTransBlock(requiredViews, {
+			blockRef: blockRef,
+			transType: "PUBLISHADVERT",
+		});
+		let valueGotten = 0;
+		for (const b of alreadyPaid) {
+			if (b.advertPublishers === pubUrl) valueGotten += parseFloat(b.transValue || 0);
+		}
+		if (valueGotten >= share) {
+			this.errorMessage("Publisher has already gotten the required share value. However if the viewership deal has not been reached, you can still make more revenue from this advert.");
+			// Legacy doesn't bail — it continues to accumulate the "excess".
+		}
+
+		// ── Existing views for this publisher ──
+		const views = await this.getTransBlock(requiredViews, {
+			blockRef: blockRef,
+			transType: "VIEWADVERT",
+		});
+		if (views.length >= requiredViews) {
+			this.errorMessage("No more advert to view, publishing deal for this advert has ended!");
+			return { handled: false, reason: "PUBLISHADVERT:ended" };
+		}
+		const publisherViews = views.filter((v) => v.advertPublishers === pubUrl);
+		if (!publisherViews.length) {
+			this.errorMessage("No Viewers available to earn on your publishing contract");
+			return { handled: false, reason: "PUBLISHADVERT:no-viewers" };
+		}
+
+		// ── Payout calculation ──
+		const expectedShare   = perViewShare * publisherViews.length;
+		const totalViewShare  = (parseFloat(response.transValue) * parseFloat(agreement.publishShare)) / requiredViews;
+		let value = expectedShare - valueGotten;
+		if (value <= 0) {
+			value = (totalViewShare * publisherViews.length) - valueGotten;
+			if (value <= 0) {
+				this.errorMessage("No more funds to get from this advert");
+				return { handled: false, reason: "PUBLISHADVERT:exhausted" };
+			}
+		}
+
+		// ── Build the block ──
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType        = "PUBLISHADVERT";
+		building.transValue       = value;
+		building.advertPublishers = pubUrl;
+		building.referenceID      = response.blockID;
+		building.referenceKey     = agreement.agreeID || response.blockID;
+
+		building.blockRef = blockRef;
+		building.signRef  = await this.Sign(agreement.privateKey, response.signRef);
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// VIEWADVERT (CRD only; response to ADVERT)
+	// Faithful port of the VIEWADVERT branch.
+	//
+	// Behaviour:
+	//   1. Decrypt the advert's agreement with response.agreement.privateKey.
+	//   2. Verify viewer count against agreement.viewers (blocks already
+	//      exist that used this advert key).
+	//   3. Verify the viewer is within the advert's scope (country/city/etc).
+	//   4. Verify the viewer's interest matches the advert's interest.
+	//   5. Compute the share: (response.transValue * viewersShare) / viewers.
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleViewAdvert(ctx) {
+		const { note, details, response, formerBlock } = ctx;
+
+		if (!response || response.transType !== "ADVERT" || !response.agreement) {
+			return { handled: false, reason: "VIEWADVERT:no-advert-response" };
+		}
+
+		// ── Decrypt the advert's agreement ──
+		const did = await this.generateKey(10);
+		await this.setPrivateKey(response.agreement.privateKey, did);
+		const raw = await this.#decrypt(response.recipient, did);
+		if (!this.isJsonable(raw)) {
+			this.errorMessage("VIEWADVERT: could not decrypt the advert agreement.");
+			return { handled: false, reason: "VIEWADVERT:decrypt-failed" };
+		}
+		const agreement = JSON.parse(raw);
+
+		if (!agreement.privateKey) {
+			this.errorMessage("No Private Key in the advert request");
+			return { handled: false, reason: "VIEWADVERT:no-key" };
+		}
+
+		// ── Verify viewer count ──
+		const vid = await this.generateKey(10);
+		await this.setPrivateKey(agreement.privateKey, vid);
+		const blockRef = await this.getPublicKey(vid);
+		const viewers  = parseInt(agreement.viewers) || 1;
+
+		const blocks = await this.getTransBlock(viewers, {
+			blockRef: blockRef,
+			transType: "VIEWADVERT",
+		});
+		if (blocks.length >= viewers) {
+			this.errorMessage("Advert budget reached");
+			return { handled: false, reason: "VIEWADVERT:budget-reached" };
+		}
+
+		// ── Scope check ──
+		const accountData = (await this.getAccountData()) || {};
+		const userData    = accountData[note.noteAddress] || accountData;
+		if (agreement.scope && String(agreement.scope).toUpperCase() !== "WORLD") {
+			const scope = String(agreement.scope).toUpperCase();
+			const fields = ["country", "city", "zipCode", "state", "address"];
+			const hit = fields.some((f) =>
+				userData[f] && String(userData[f]).toUpperCase().includes(scope)
+			);
+			if (!hit) {
+				this.errorMessage("Advert not in your location scope");
+				return { handled: false, reason: "VIEWADVERT:not-in-scope" };
+			}
+		}
+
+		// ── Interest check ──
+		if (Array.isArray(agreement.interest) && agreement.interest.length &&
+			Array.isArray(userData.userInterest) && userData.userInterest.length) {
+			const interest = userData.userInterest.filter((i) => agreement.interest.includes(i));
+			if (!interest.length) {
+				this.errorMessage("Advert not included in your interest range. You may as well update your interest to view more adverts.");
+				return { handled: false, reason: "VIEWADVERT:not-in-interest" };
+			}
+		}
+
+		// ── Publisher check ──
+		let advertPublishers = this.#default_scriptbill_server;
+		const pubUrl  = details.publisherServer || location.origin;
+		const checkPub = await this.getData("scriptbillPing", "TRUE", pubUrl);
+		if (checkPub && checkPub.isScriptbillServer === "TRUE") advertPublishers = pubUrl;
+
+		// ── Build the block ──
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType        = "VIEWADVERT";
+		building.advertPublishers = advertPublishers;
+		building.referenceID      = response.blockID;
+		building.referenceKey     = agreement.agreeID || response.blockID;
+
+		// ── Share calculation ──
+		const share = (parseFloat(response.transValue) * parseFloat(agreement.viewersShare)) / viewers;
+		building.transValue = share;
+
+		// ── Sign signRef with the advert key ──
+		building.blockRef = blockRef;
+		building.signRef  = await this.Sign(agreement.privateKey, response.signRef);
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// ADVERT (CRD only)
+	// Faithful port of `details.transType == "ADVERT"`.
+	//
+	// Behaviour:
+	//   1. Debit the note.
+	//   2. Attach the advert config as the agreement.
+	//   3. Mint a fresh privateKey for viewers/publishers.
+	//   4. Encrypt the agreement for the advert's recipient (a public key
+	//      derived from the fresh private key).
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleAdvert(ctx) {
+		const { note, details, formerBlock } = ctx;
+
+		if (!note.noteType || !note.noteType.includes("CRD")) {
+			return { handled: false, reason: "ADVERT:not-credit-note" };
+		}
+		if (!details.agreement || !details.agreement.advertID) {
+			return { handled: false, reason: "ADVERT:no-agreement" };
+		}
+		if (parseFloat(details.transValue) > parseFloat(note.noteValue)) {
+			this.errorMessage("Transaction Can't Be Completed, Because Your Note Value is Too Low!");
+			return { handled: false, reason: "ADVERT:insufficient" };
+		}
+
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "ADVERT";
+		building.transValue = details.transValue;
+		building.agreement  = JSON.parse(JSON.stringify(details.agreement));
+
+		// Fresh advert key — viewers/publishers will use its public half to
+		// decrypt.
+		building.agreement.privateKey = await this.generateKey(10, true);
+		const id = await this.generateKey(10);
+		await this.setPrivateKey(building.agreement.privateKey, id);
+		const pub = await this.getPublicKey(id);
+
+		// Encrypt the agreement for the recipient (the advert's broadcast key).
+		building.recipient = this.encrypt(JSON.stringify(building.agreement), pub);
+
+		// Debit.
+		note.noteValue = parseFloat(note.noteValue) - parseFloat(details.transValue);
+
+		return { handled: true, block: building };
+	}
+	
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// BONDRECIEVE (BND note, receiver of BONDPAY)
+	//
+	// The bond note receives interest. Updates:
+	//   - note.noteValue += interest
+	//   - agreement.payTime is left to the payer's updated value
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleBondReceive(ctx) {
+		const { note, details, response, formerBlock } = ctx;
+
+		if (!note.noteType || !note.noteType.includes("BND")) {
+			return { handled: false, reason: "BONDRECIEVE:not-bond-note" };
+		}
+		if (!response || response.transType !== "BONDPAY") {
+			return { handled: false, reason: "BONDRECIEVE:no-pay-response" };
+		}
+
+		// ── Step 1: decrypt the BONDPAY agreement ──
+		let agreement = null;
+		const candidates = [note.noteSecret];
+		if (note.budgetKey) candidates.push(note.budgetKey);
+		for (const priv of candidates) {
+			const did = await this.generateKey(10);
+			await this.setPrivateKey(priv, did);
+			const raw = await this.#decrypt(response.recipient, did);
+			if (this.isJsonable(raw)) { agreement = JSON.parse(raw); break; }
+		}
+		if (!agreement) {
+			this.errorMessage("BONDRECIEVE: could not decrypt the BONDPAY agreement.");
+			return { handled: false, reason: "BONDRECIEVE:decrypt-failed" };
+		}
+
+		// ── Step 2: update note value ──
+		const interest = parseFloat(response.transValue) || 0;
+		note.noteValue = parseFloat(note.noteValue) + interest;
+
+		// ── Step 3: build the block ──
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "BONDRECIEVE";
+		building.transValue = interest;
+		building.referenceID  = response.blockID;
+		building.referenceKey = agreement.agreeID;
+		building.agreement   = JSON.parse(JSON.stringify(agreement));
+
+		if (response.blockKey) {
+			const rid = await this.generateKey(10);
+			await this.setPublicKey(response.blockKey, rid);
+			building.recipient = this.encrypt(JSON.stringify(agreement), await this.getPublicKey(rid, true));
+		}
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// STOCKRECIEVE (STK note, receiver of STOCKPAY)
+	//
+	// The stock note receives its dividend. Updates:
+	//   - note.noteValue += dividend
+	//   - note.stockNotes[i].pay (recomputes based on the new value)
+	//   - note.budgetValue = productNote.exchangeValue (post-dividend)
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleStockReceive(ctx) {
+		const { note, details, response, formerBlock } = ctx;
+
+		if (!note.noteType || !note.noteType.includes("STK")) {
+			return { handled: false, reason: "STOCKRECIEVE:not-stock-note" };
+		}
+		if (!response || response.transType !== "STOCKPAY") {
+			return { handled: false, reason: "STOCKRECIEVE:no-pay-response" };
+		}
+
+		// ── Step 1: decrypt the STOCKPAY agreement ──
+		let agreement = null;
+		const candidates = [note.noteSecret];
+		if (note.budgetKey) candidates.push(note.budgetKey);
+		for (const priv of candidates) {
+			const did = await this.generateKey(10);
+			await this.setPrivateKey(priv, did);
+			const raw = await this.#decrypt(response.recipient, did);
+			if (this.isJsonable(raw)) { agreement = JSON.parse(raw); break; }
+		}
+		if (!agreement) {
+			this.errorMessage("STOCKRECIEVE: could not decrypt the STOCKPAY agreement.");
+			return { handled: false, reason: "STOCKRECIEVE:decrypt-failed" };
+		}
+
+		// ── Step 2: update note values ──
+		const dividend = parseFloat(response.transValue) || parseFloat(agreement.value) || 0;
+		note.noteValue = parseFloat(note.noteValue) + dividend;
+
+		if (response.productNote) {
+			note.budgetValue = parseFloat(response.productNote.exchangeValue) || note.budgetValue;
+		}
+
+		// ── Step 3: update the matching stock note record ──
+		if (note.stockNotes && Array.isArray(note.stockNotes)) {
+			for (let i = 0; i < note.stockNotes.length; i++) {
+				if (note.stockNotes[i].address === agreement.address ||
+					note.stockNotes[i].hash === agreement.hash) {
+					// Recompute pay from the new dividend pool.
+					const pool = parseFloat(response.productNote ? response.productNote.exchangeValue : note.budgetValue) || 0;
+					const budgetVal = parseFloat(agreement.value) || 0;
+					const stockPay = parseFloat(agreement.pay) || 0;
+					if (pool > 0) {
+						note.stockNotes[i].pay = ((pool - budgetVal) * stockPay / pool).toString();
+					}
+					break;
+				}
+			}
+		}
+
+		// ── Step 4: build the block ──
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "STOCKRECIEVE";
+		building.transValue = dividend;
+		building.referenceID  = response.blockID;
+		building.referenceKey = agreement.agreeID;
+
+		if (response.productNote) {
+			building.productNote = JSON.parse(JSON.stringify(response.productNote));
+		}
+
+		building.agreement = JSON.parse(JSON.stringify(agreement));
+
+		// Encrypt the ack back to the payer.
+		if (response.blockKey) {
+			const rid = await this.generateKey(10);
+			await this.setPublicKey(response.blockKey, rid);
+			building.recipient = this.encrypt(JSON.stringify(agreement), await this.getPublicKey(rid, true));
+		}
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// BONDPAY (exchange market's CRD note)
+	//
+	// The exchange market pays interest on a bond. Billing against the
+	// exchange note's exchangeValue pool. Pay-time advances to the next window.
+	//
+	// Preconditions:
+	//   - note.budgetID resolves to a governmental budget
+	//   - currentNote.exchangeValue >= interest amount
+	//   - details.agreement is the bond-holder's agreement
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleBondPay(ctx) {
+		const { note, details, currentNote, formerBlock } = ctx;
+
+		if (!note.budgetID) {
+			this.errorMessage("BONDPAY requires a note with a budgetID.");
+			return { handled: false, reason: "BONDPAY:no-budget-id" };
+		}
+
+		const bid = await this.generateKey(10);
+		await this.setPrivateKey(note.budgetID, bid);
+		const budgetPub = await this.getPublicKey(bid);
+		const budgetBlock = await this.getCurrentBudgetBlock(budgetPub);
+		if (!budgetBlock || !budgetBlock.agreement) {
+			this.errorMessage("BONDPAY: budget block not found.");
+			return { handled: false, reason: "BONDPAY:no-budget-block" };
+		}
+		const budget = budgetBlock.agreement;
+		if (budget.budgetType !== "governmental") {
+			this.errorMessage("BONDPAY: budget must be governmental.");
+			return { handled: false, reason: "BONDPAY:not-governmental" };
+		}
+
+		let agreement = details.agreement ? JSON.parse(JSON.stringify(details.agreement)) : null;
+		if (!agreement && details.payeeNoteID) {
+			const payee = (note.bondNotes || []).find((b) => b.address === details.payeeNoteID);
+			if (payee) agreement = payee;
+		}
+		if (!agreement) {
+			this.errorMessage("BONDPAY: no payee agreement supplied.");
+			return { handled: false, reason: "BONDPAY:no-payee" };
+		}
+
+		const now = parseInt(this.currentTime());
+		const payTime = parseInt(agreement.payTime || 0);
+		if (payTime > now) {
+			this.errorMessage("BONDPAY: payment time not reached.");
+			return { handled: false, reason: "BONDPAY:not-due" };
+		}
+
+		if (!currentNote || !currentNote.exchangeID) {
+			this.errorMessage("BONDPAY: no exchange note for interest.");
+			return { handled: false, reason: "BONDPAY:no-exchange-note" };
+		}
+
+		const principal = parseFloat(agreement.value) || 0;
+		const rate      = parseFloat(agreement.interestRate) || parseFloat(this.interestRate) || 0.01;
+		const interest  = principal * rate;
+
+		if (!isFinite(interest) || interest <= 0) {
+			this.errorMessage("BONDPAY: no interest available.");
+			return { handled: false, reason: "BONDPAY:no-interest" };
+		}
+
+		const nextPay = this.calculateTime(agreement.payPeriod || "1 weeks") || this.calculateTime("1 weeks");
+		agreement.payTime = now + nextPay;
+
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "BONDPAY";
+		building.transValue = interest;
+		building.budgetID   = budget.budgetID;
+		building.exchangeNote = JSON.parse(JSON.stringify(currentNote));
+		building.exchangeNote.exchangeValue = parseFloat(currentNote.exchangeValue || 0) - interest;
+		building.agreement  = JSON.parse(JSON.stringify(agreement));
+
+		const receiverKey = details.recipient || agreement.agreeKey || note.motherKey;
+		if (!receiverKey) {
+			this.errorMessage("BONDPAY: no receiver key.");
+			return { handled: false, reason: "BONDPAY:no-receiver" };
+		}
+		const rid = await this.generateKey(10);
+		await this.setPublicKey(receiverKey, rid);
+		building.recipient = this.encrypt(JSON.stringify(agreement), await this.getPublicKey(rid, true));
+
+		const privKey = await this.generateKey(20, true, true);
+		const pid = await this.generateKey(10);
+		await this.setPrivateKey(privKey, pid);
+		building.blockRef = await this.getPublicKey(pid, true);
+		building.signRef  = await this.generateKey(20);
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// STOCKPAY (budget owner's CRD note, or shared-secret STK note)
+	//
+	// The budget owner pays a dividend to a stock-holding note. Billing is
+	// against the productNote.exchangeValue pool, not the budget owner's
+	// noteValue. The receiver is the stock note's motherKey or its own address.
+	//
+	// Preconditions:
+	//   - note.budgetID resolves to the budget block
+	//   - budget.agreement.budgetType === "business"
+	//   - budgetBlock.productNote.exchangeValue >= dividend amount
+	//   - details.agreement is the stock-holder's agreement (from the note's
+	//     stockNotes[] record, or the incoming STOCKPAY agreement)
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleStockPay(ctx) {
+		const { note, details, formerBlock } = ctx;
+
+		if (!note.budgetID) {
+			this.errorMessage("STOCKPAY requires a note with a budgetID.");
+			return { handled: false, reason: "STOCKPAY:no-budget-id" };
+		}
+
+		// Resolve the budget block.
+		const bid = await this.generateKey(10);
+		await this.setPrivateKey(note.budgetID, bid);
+		const budgetPub = await this.getPublicKey(bid);
+		this.budgetBlock = await this.getCurrentBudgetBlock(budgetPub);
+		if (!this.budgetBlock || !this.budgetBlock.agreement) {
+			this.errorMessage("STOCKPAY: budget block not found.");
+			return { handled: false, reason: "STOCKPAY:no-budget-block" };
+		}
+		const budget = this.budgetBlock.agreement;
+		if (budget.budgetType !== "business") {
+			this.errorMessage("STOCKPAY: budget must be business.");
+			return { handled: false, reason: "STOCKPAY:not-business" };
+		}
+		if (!this.budgetBlock.productNote) {
+			this.errorMessage("STOCKPAY: no productNote on the budget.");
+			return { handled: false, reason: "STOCKPAY:no-product-note" };
+		}
+
+		// Resolve the receiving stock note's agreement.
+		let agreement = details.agreement ? JSON.parse(JSON.stringify(details.agreement)) : null;
+		if (!agreement && details.payeeNoteID) {
+			// Look up the payee's agreement from the note's stockNotes list.
+			const payee = (note.stockNotes || []).find(
+				(s) => s.address === details.payeeNoteID
+			);
+			if (payee) agreement = payee;
+		}
+		if (!agreement) {
+			this.errorMessage("STOCKPAY: no payee agreement supplied.");
+			return { handled: false, reason: "STOCKPAY:no-payee" };
+		}
+
+		// Pay-time check.
+		const now = parseInt(this.currentTime());
+		const payTime = parseInt(agreement.payTime || 0);
+		if (payTime > now) {
+			this.errorMessage("STOCKPAY: payment time not reached.");
+			return { handled: false, reason: "STOCKPAY:not-due" };
+		}
+
+		// Determine the dividend amount.
+		// Per your model: dividend = (productNote.exchangeValue - budget.value) * note.pay
+		const productNote = JSON.parse(JSON.stringify(this.budgetBlock.productNote));
+		const budgetValue = parseFloat(budget.value) || 0;
+		const stockPay    = parseFloat(agreement.pay) || parseFloat(details.transValue) || 0;
+		const poolValue   = parseFloat(productNote.exchangeValue || 0);
+		const profit      = poolValue - budgetValue;
+		const dividend    = profit * stockPay;
+
+		if (!isFinite(dividend) || dividend <= 0) {
+			this.errorMessage("STOCKPAY: no dividend available.");
+			return { handled: false, reason: "STOCKPAY:no-dividend" };
+		}
+
+		// Advance payTime.
+		const nextPay = this.calculateTime(agreement.payPeriod || "1 weeks") || this.calculateTime("1 weeks");
+		agreement.payTime = now + nextPay;
+
+		// Build the block.
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "STOCKPAY";
+		building.transValue = dividend;
+		building.budgetID   = budget.budgetID;
+		building.productNote = productNote;
+		building.productNote.exchangeValue = poolValue - dividend;
+		building.agreement  = JSON.parse(JSON.stringify(agreement));
+
+		// Encrypt the agreement for the receiver (stock note mother key or
+		// its own address).
+		const receiverKey = details.recipient || agreement.agreeKey || note.motherKey;
+		if (!receiverKey) {
+			this.errorMessage("STOCKPAY: no receiver key.");
+			return { handled: false, reason: "STOCKPAY:no-receiver" };
+		}
+		const rid = await this.generateKey(10);
+		await this.setPublicKey(receiverKey, rid);
+		building.recipient = this.encrypt(JSON.stringify(agreement), await this.getPublicKey(rid, true));
+
+		// The budget owner keeps the block ref/signRef for the receiver to
+		// verify against the STOCKRECIEVE.
+		const privKey = await this.generateKey(20, true, true);
+		const pid = await this.generateKey(10);
+		await this.setPrivateKey(privKey, pid);
+		building.blockRef = await this.getPublicKey(pid, true);
+		building.signRef  = await this.generateKey(20);
+
+		return { handled: true, block: building };
+	}
+	
+	static async #txHandleQuoteBond(ctx) {
+		const { note, details, response, formerBlock } = ctx;
+
+		if (!note.noteType || !note.noteType.includes("CRD")) {
+			return { handled: false, reason: "QUOTEBOND:not-credit-note" };
+		}
+		if (!response || response.transType !== "SOLDBOND") {
+			return { handled: false, reason: "QUOTEBOND:no-sold-response" };
+		}
+
+		// ── Step 1: decrypt the SOLDBOND agreement ──
+		const did = await this.generateKey(10);
+		await this.setPrivateKey(note.noteSecret, did);
+		const raw = await this.#decrypt(response.recipient, did);
+		if (!this.isJsonable(raw)) {
+			this.errorMessage("QUOTEBOND: could not decrypt the SOLDBOND agreement.");
+			return { handled: false, reason: "QUOTEBOND:decrypt-failed" };
+		}
+		let agreement = JSON.parse(raw);
+		if (!agreement.budgetID) {
+			this.errorMessage("Invalid agreement: no budgetID.");
+			return { handled: false, reason: "QUOTEBOND:bad-agreement" };
+		}
+
+		// ── Step 2: resolve the budget block ──
+		const bid = await this.generateKey(10);
+		await this.setPrivateKey(agreement.budgetID, bid);
+		const budgetPub = await this.getPublicKey(bid);
+		this.budgetBlock = await this.getCurrentBudgetBlock(budgetPub);
+		if (!this.budgetBlock) {
+			this.errorMessage("QUOTEBOND: budget block not found.");
+			return { handled: false, reason: "QUOTEBOND:no-budget-block" };
+		}
+		this.budgetID = budgetPub;
+
+		// ── Step 3: look for a matching bondNote (signed by budgetKey) ──
+		let noteAddress = null;
+		let isQuoted = false;
+		let bondNote = {};
+		if (note.bondNotes && note.bondNotes.length > 0) {
+			for (let i = 0; i < note.bondNotes.length; i++) {
+				const candidate = JSON.parse(JSON.stringify(note.bondNotes[i]));
+				const sid = await this.generateKey(10);
+				await this.setPrivateKey(agreement.budgetKey, sid);
+				const verifyKey = await this.getPublicKey(sid, true);
+				if (!await this.Verify(candidate.hash, verifyKey, candidate.transTime)) continue;
+				bondNote    = candidate;
+				noteAddress = bondNote.address;
+				isQuoted    = true;
+				break;
+			}
+		}
+
+		// ── Step 4: fresh transKey if no match ──
+		if (!noteAddress) {
+			agreement.transKey = await this.generateKey(20, true);
+			const tid = await this.generateKey(10);
+			await this.setPrivateKey(agreement.transKey, tid);
+			noteAddress = await this.getPublicKey(tid);
+			bondNote.address = noteAddress;
+		}
+
+		bondNote.transTime = this.currentTime();
+
+		// ── Step 5: merge or record the value ──
+		if (isQuoted) {
+			agreement.value = (parseFloat(agreement.value) + parseFloat(bondNote.value)).toString();
+		}
+		this.signText  = bondNote.transTime.toString() + agreement.value;
+		bondNote.value = agreement.value;
+		this.signKey   = agreement.budgetKey;
+		bondNote.hash  = await this.Sign(agreement.budgetKey, this.signText);
+
+		// ── Step 6: record bondNote on the buyer's note ──
+		if (!note.bondNotes || typeof note.bondNotes !== "object") note.bondNotes = [];
+		if (!isQuoted) note.bondNotes.push(bondNote);
+
+		// ── Step 7: build the block ──
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "QUOTEBOND";
+		building.transValue = details.transValue;
+		building.budgetID   = agreement.budgetID;
+
+		if (isQuoted) {
+			const rid = await this.generateKey(10);
+			await this.setPublicKey(noteAddress, rid);
+			building.recipient = this.encrypt(JSON.stringify(agreement), await this.getPublicKey(rid, true));
+		} else {
+			// Create a fresh BND note.
+			this.#quoteCurrentNote = {
+				noteAddress : noteAddress,
+				noteSecret  : agreement.transKey,
+				noteValue   : parseFloat(agreement.value),
+				transType   : "QUOTEBOND",
+				motherKey   : note.noteAddress,
+				transValue  : details.transValue,
+				noteType    : agreement.stockID,
+				noteServer  : this.#default_scriptbill_server,
+				walletID    : note.walletID,
+				budgetID    : agreement.budgetID,
+				budgetValue : this.budgetBlock.agreement.value,
+				budgetKey   : agreement.budgetKey,
+				blockID     : "",
+			};
+			this.#isQuotedNote = true;
+
+			const rid = await this.generateKey(10);
+			await this.setPublicKey(noteAddress, rid);
+			building.recipient = this.encrypt(JSON.stringify(agreement), await this.getPublicKey(rid, true));
+		}
+
+		// ── Step 8: split IDs ──
+		building.splitID     = this.Base64.encode(await this.generateKey(32))
+									.toString().slice(0, 32);
+		building.nextSplitID = this.hashed(await this.calculateNextBlockID(bondNote, building.splitID));
+
+		// ── Step 9: clean up the public agreement view ──
+		const signKey = agreement.budgetKey;
+		delete agreement.transKey;
+		delete agreement.value;
+		delete agreement.budgetKey;
+		building.agreement = JSON.parse(JSON.stringify(agreement));
+
+		building.signRef = await this.Sign(signKey, response.signRef);
+
+		return { handled: true, block: building };
+	}
+	// ──────────────────────────────────────────────────────────────────────────
+	// QUOTESTOCK (CRD buyer's response to SOLDSTOCK)
+	//
+	// Produces the STK note. Per your model:
+	//   - note.stockNotes[] holds existing stock-note records (hashed & signed
+	//     by the budget owner's budgetKey). If one matches, merge.
+	//   - Otherwise, create a fresh stock note (via #isQuotedNote).
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleQuoteStock(ctx) {
+		const { note, details, response, formerBlock } = ctx;
+
+		if (!note.noteType || !note.noteType.includes("CRD")) {
+			return { handled: false, reason: "QUOTESTOCK:not-credit-note" };
+		}
+		if (!response || response.transType !== "SOLDSTOCK") {
+			return { handled: false, reason: "QUOTESTOCK:no-sold-response" };
+		}
+
+		// ── Step 1: decrypt the SOLDSTOCK agreement ──
+		const did = await this.generateKey(10);
+		await this.setPrivateKey(note.noteSecret, did);
+		const raw = await this.#decrypt(response.recipient, did);
+		if (!this.isJsonable(raw)) {
+			this.errorMessage("QUOTESTOCK: could not decrypt the SOLDSTOCK agreement.");
+			return { handled: false, reason: "QUOTESTOCK:decrypt-failed" };
+		}
+		let agreement = JSON.parse(raw);
+		if (!agreement.budgetID) {
+			this.errorMessage("Invalid agreement: no budgetID.");
+			return { handled: false, reason: "QUOTESTOCK:bad-agreement" };
+		}
+		
+		// In #txHandleQuoteStock, after `let agreement = JSON.parse(raw);`:
+
+		// ── INVEST-specific handling ──
+		const isInvest   = !!agreement.isInvest;
+		const investKey  = agreement.investKey;
+		const stockMotherKey = agreement.motherKey || note.noteAddress;
+
+		// If this is an INVEST chain, the signKey is the investKey, not budgetKey.
+		// The QUOTESTOCK.signRef signs INVESTRECIEVE.signRef with investKey.
+
+		// ── Step 2: resolve the budget block ──
+		const bid = await this.generateKey(10);
+		await this.setPrivateKey(agreement.budgetID, bid);
+		const budgetPub = await this.getPublicKey(bid);
+		this.budgetBlock = await this.getCurrentBudgetBlock(budgetPub);
+		if (!this.budgetBlock) {
+			this.errorMessage("QUOTESTOCK: budget block not found for " + budgetPub);
+			return { handled: false, reason: "QUOTESTOCK:no-budget-block" };
+		}
+		this.budgetID = budgetPub;
+
+		// ── Step 3: look for a matching stockNote ──
+		let noteAddress = null;
+		let isQuoted = false;
+		let stockNote = {};
+		if (note.stockNotes && note.stockNotes.length > 0) {
+			for (let i = 0; i < note.stockNotes.length; i++) {
+				const candidate = JSON.parse(JSON.stringify(note.stockNotes[i]));
+				const sid = await this.generateKey(10);
+				await this.setPrivateKey(agreement.budgetKey, sid);
+				const verifyKey = await this.getPublicKey(sid, true);
+				if (!await this.Verify(candidate.hash, verifyKey, candidate.transTime)) {
+					continue;
+				}
+				stockNote   = candidate;
+				noteAddress = stockNote.address;
+				isQuoted    = true;
+				break;
+			}
+		}
+
+		// ── Step 4: fresh transKey if no match ──
+		if (!noteAddress) {
+			agreement.transKey = await this.generateKey(20, true);
+			const tid = await this.generateKey(10);
+			await this.setPrivateKey(agreement.transKey, tid);
+			noteAddress = await this.getPublicKey(tid);
+			stockNote.address = noteAddress;
+		}
+
+		stockNote.transTime = this.currentTime();
+
+		// ── Step 5: merge / record stock and pay ──
+		if (isQuoted) {
+			agreement.pay   = (parseFloat(agreement.pay)   + parseFloat(stockNote.pay)).toString();
+			agreement.stock = (parseFloat(agreement.stock) + parseFloat(stockNote.stock)).toString();
+		}
+		this.signText   = stockNote.transTime.toString() + agreement.pay + agreement.stock;
+		stockNote.pay   = agreement.pay;
+		stockNote.stock = agreement.stock;
+		this.signKey    = agreement.budgetKey;
+		stockNote.hash  = await this.Sign(agreement.budgetKey, this.signText);
+
+		// ── Step 6: record stockNote on the buyer's note ──
+		if (!note.stockNotes || typeof note.stockNotes !== "object") note.stockNotes = [];
+		if (!isQuoted) {
+			note.stockNotes.push(stockNote);
+		}
+
+		// ── Step 7: build the block ──
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "QUOTESTOCK";
+		building.transValue = details.transValue;
+		building.budgetID   = agreement.budgetID;
+		
+		// #txHandleQuoteStock, in the block-building section:
+
+		// Sign signRef with the investKey for INVEST chains, else with budgetKey.
+		let signKey = isInvest ? investKey : agreement.budgetKey;
+		building.signRef = await this.Sign(signKey, response.signRef);
+
+		// Set the stock note's motherKey correctly.
+		this.#quoteCurrentNote = {
+			noteAddress : noteAddress,
+			noteSecret  : agreement.transKey,
+			noteValue   : parseFloat(agreement.stock),
+			pay         : parseFloat(agreement.pay),
+			transType   : "QUOTESTOCK",
+			motherKey   : stockMotherKey,      // ← exchange market budget ID for INVEST
+			transValue  : details.transValue,
+			noteType    : agreement.stockID,
+			noteServer  : this.#default_scriptbill_server,
+			walletID    : note.walletID,
+			budgetID    : agreement.budgetID,
+			budgetValue : this.budgetBlock.agreement.value,
+			budgetKey   : agreement.budgetKey,
+			blockID     : "",
+			isInvest    : isInvest,
+		};
+
+		if (isQuoted) {
+			// Update an existing stock note's stock/pay.
+			const rid = await this.generateKey(10);
+			await this.setPublicKey(noteAddress, rid);
+			building.recipient = this.encrypt(JSON.stringify(agreement), await this.getPublicKey(rid, true));
+		} else {
+			// Create a new stock note (via #txFinalize's quoted-note download).
+			this.#quoteCurrentNote = {
+				noteAddress : noteAddress,
+				noteSecret  : agreement.transKey,
+				noteValue   : parseFloat(agreement.stock),
+				pay         : parseFloat(agreement.pay),
+				transType   : "QUOTESTOCK",
+				motherKey   : note.noteAddress,
+				transValue  : details.transValue,
+				noteType    : agreement.stockID,
+				noteServer  : this.#default_scriptbill_server,
+				walletID    : note.walletID,
+				budgetID    : agreement.budgetID,
+				budgetValue : this.budgetBlock.agreement.value,
+				budgetKey   : agreement.budgetKey,
+				blockID     : "",
+			};
+			this.#isQuotedNote = true;
+
+			const rid = await this.generateKey(10);
+			await this.setPublicKey(noteAddress, rid);
+			building.recipient = this.encrypt(JSON.stringify(agreement), await this.getPublicKey(rid, true));
+		}
+
+		// ── Step 8: split IDs ──
+		building.splitID     = this.Base64.encode(await this.generateKey(32))
+									.toString().slice(0, 32);
+		building.nextSplitID = this.hashed(await this.calculateNextBlockID(stockNote, building.splitID));
+
+		// ── Step 9: clean up the public agreement view ──
+		signKey = agreement.budgetKey;
+		delete agreement.transKey;
+		delete agreement.stock;
+		delete agreement.pay;
+		delete agreement.budgetKey;
+		building.agreement = JSON.parse(JSON.stringify(agreement));
+
+		// Sign signRef against the stockNote's transTime.
+		building.signRef = await this.Sign(signKey, response.signRef);
+
+		return { handled: true, block: building };
+	}
+	// ──────────────────────────────────────────────────────────────────────────
+	// CREATE
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleCreate(ctx) {
+		const { note, details } = ctx;
+
+		const building = JSON.parse(JSON.stringify(this.defaultBlock));
+		building.transType = "CREATE";
+
+		// FIX: guarantee salt/formular exist before any block-ID math.
+		// createNewScriptbillWallet() sets these on the freshly-built note;
+		// direct CREATE calls (e.g. from exchange-market bootstrap) may not.
+		if (!note.noteSalt)     note.noteSalt     = await this.generateKey(256);
+		if (!note.noteFormular) note.noteFormular = this.generateRandomNumberAsString(32);
+
+		// ── New note without a secret: mint an address. ──
+		if (note.noteAddress === "") {
+			const privKey = await this.generateKey(50, true);
+			const id = await this.generateKey(10);
+			await this.setPrivateKey(privKey, id);
+			note.noteAddress = await this.getPublicKey(id);
+			note.noteSecret  = await this.getPrivateKey(id);
+			building.transValue = 0;
+			this.s.noteSecret = note.noteSecret;
+		}
+
+		// ── Budget resolution — three-tier fallback (matching legacy). ──
+		let budgetID = building.budgetID;
+		if (!budgetID) {
+			if (this.#currentNote && this.#currentNote.budgetID) {
+				budgetID = this.#currentNote.budgetID;
+			} else {
+				this.noteTypeS = note.noteType;
+				const data = await this.getTransBlock();
+				if (data.length && data[0].budgetID) budgetID = data[0].budgetID;
+			}
+		}
+		if (!budgetID) return { handled: false, reason: "CREATE:no-budget" };
+		building.budgetID = budgetID;
+
+		// ── Wallet rank init. ──
+		// Uses note.noteSalt (now guaranteed present) so the rankCode is sealed
+		// with the same salt the block will carry.
+		if (!note.walletRank) {
+			note.walletRank = await this.generateKey(30);
+			const trivKey = this.hashed(note.walletID, note.noteSalt, note.noteFormular);
+			let rank = Object.keys(this.#scriptbillRanks)[0];
+			let rankStore;
+			if (this.l[trivKey]) {
+				rankStore = JSON.parse(this.isJsonable(this.l[trivKey]) ? this.l[trivKey] : "{}");
+				rank = rankStore.rank;
+			} else {
+				rankStore = { rank, value: 0, loanValue: 0 };
+				this.l[trivKey] = JSON.stringify(rankStore);
+			}
+			building.rankCode = this.encrypt(rank, this.hashed(note.walletRank, note.noteSalt, note.noteFormular));
+			if (rankStore.loanValue) note.loanValue = rankStore.loanValue;
+			if (rankStore.value)     note.rankValue = rankStore.value;
+		}
+
+		// ── Advance the note ID. ──
+		note.noteID = CryptoJS.MD5(note.noteID + note.noteKey).toString(CryptoJS.enc.Base64);
+
+		// ── Server assignment. ──
+		let server = window.location.origin.toString();
+		if (!server.includes("https")) {
+			note.noteServer = this.#default_scriptbill_server;
+		} else {
+			const resp = await this.getData("scriptbillPing", "TRUE", server);
+			note.noteServer = (resp && resp.isScriptbillServer === "TRUE")
+				? server
+				: this.#default_scriptbill_server;
+		}
+		building.noteServer = note.noteServer;
+
+		// FIX: blockID / formerBlockID / nextBlockID / wallet hashes are NOT
+		//      computed here. #txFinalize owns them, using the salt/formular
+		//      that will be stored on the block.
+
+		return { handled: true, block: building, note, currentNote: ctx.currentNote };
+	}
+	// ──────────────────────────────────────────────────────────────────────────
+	// SEND: simple
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleSendSimple(ctx) {
+		const { note, details, formerBlock } = ctx;
+		const building = JSON.parse(JSON.stringify(formerBlock));
+
+		// Agreement.
+		let agreement = JSON.parse(JSON.stringify(details.agreement || {}));
+		if (!agreement.agreeID) {
+			agreement = await this.createAgreement("", building);
+			if (!note.agreements || typeof note.agreements !== "object") note.agreements = [];
+			note.agreements.push({
+				agreeID: agreement.agreeID,
+				key: agreement.privateKey,
+				signKey: agreement.senderSignKey,
+			});
+			delete agreement.privateKey;
+			delete agreement.senderSignKey;
+		}
+
+		// Block references.
+		const privKey = this.#privateKey ? this.#privateKey : await this.generateKey(20, true, true);
+		const id = await this.generateKey(10);
+		await this.setPrivateKey(privKey, id);
+		building.blockRef = await this.getPublicKey(id, true);
+		building.signRef  = await this.generateKey(20);
+
+		// Encrypt the agreement for the recipient.
+		agreement.privateKey = privKey;
+		const idR = await this.generateKey(10);
+		await this.setPublicKey(details.recipient, idR);
+		building.recipient = details.recipient.length === 171
+			? await this.#encrypt(JSON.stringify(agreement), idR)
+			: this.encrypt(JSON.stringify(agreement), this.publicKey[idR]);
+
+		building.transType  = "SEND";
+		building.transValue = details.transValue;
+
+		// Bill the note.
+		note.noteValue = parseFloat(note.noteValue) - parseFloat(details.transValue);
+
+		return { handled: true, block: building, note, currentNote: ctx.currentNote };
+	}
+
+	// ──────────────────────────────────────────────────────────────────────────
+	// SEND: to exchange note (auto-receive in the tail)
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleSendAutoReceive(ctx) {
+		// The legacy tail does an in-place recursive generate after storing the
+		// first block. That follow-up needs the exchange note as the current
+		// note and mutates #isExchangeMarketMining. That's precisely the kind
+		// of cross-coupling we want to migrate once, carefully.
+		// For this pass we defer to legacy so we don't regress the auto-receive.
+		return { handled: false, reason: "SEND:auto-receive-pending" };
+	}
+
+	// ──────────────────────────────────────────────────────────────────────────
+	// UPDATE — legacy-delegated for now
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleUpdate(ctx) {
+		return { handled: false, reason: "UPDATE:legacy-delegate" };
+	}
+
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// #txPrepare — extracted from the preamble of generateScriptbillTransactionBlock.
+	// Resolves note, details, response, currentNote, formerBlock, motherKeys.
+	// Returns {note, details, response, currentNote, formerBlock, motherKeys}
+	// or null on failure (caller emits the error).
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txPrepare(details, note, response) {
+		// 1. Get the current note if available (same guard as legacy).
+		if (
+			(!this.#note && this.s.currentNote) ||
+			(this.s.currentNote && !this.s.currentNote.includes(this.#note.walletID)
+				&& !this.s.currentNote.includes(this.#note.noteAddress)
+				&& !this.#isExchangeMarketMining) ||
+			(!this.#isExchangeMarketMining && !this.#note && this.s.currentNote)
+		) {
+			this.#note = await this.#getCurrentNote();
+		}
+
+		// 2. Fill in walletID (same as legacy).
+		if ((typeof this.walletID == "object" || !this.walletID) && this.#note && this.#note.walletID) {
+			this.walletID = this.#note.walletID;
+		}
+
+		// 3. Bail if we have no note at all.
+		if (!this.#note) {
+			this.errorMessage("Scriptbill cannot generate a transaction block without a valid Scriptbill note data!");
+			try { this.#note = JSON.parse(JSON.stringify(note)); } catch (e) { console.error(e); return null; }
+		}
+
+		// 4. Localize note/details (deep-clone; note first, details next).
+		note    = JSON.parse(JSON.stringify(note ? note : this.#note));
+		details = JSON.parse(JSON.stringify(details ? details : this.details));
+		this.#note = JSON.parse(JSON.stringify(note));
+
+		// 5. Sync walletID from note.
+		if (note && (!this.walletID || this.walletID != note.walletID) && note.transType != "CREATE") {
+			this.walletID = note.walletID;
+		}
+
+		// 6. Ensure details + walletID.
+		if (!details || !this.walletID) {
+			this.errorMessage("Scriptbill cannot generate a transaction block without a valid user detail input!");
+			return null;
+		}
+
+		// 7. Resolve exchange note (currentNote).
+		if ((!this.#currentNote || this.#currentNote.noteType != note.noteType) && !this.#isExchangeMarketMining) {
+			this.#currentNote = await this.getCurrentExchangeNote(note.noteType);
+		}
+
+		// 8. Normalize the response arg.
+		if (this.response && this.response.blockID && !response) {
+			response = JSON.parse(JSON.stringify(this.response));
+		}
+
+		// 9. Persist walletID to session.
+		if (this.walletID) this.s.walletID = this.walletID;
+
+		// 10. If no recipient for non-other types, reset to UPDATE.
+		if (
+			(!details.recipient || details.recipient == note.noteAddress) &&
+			!this.#otherTrans.includes(details.transType) &&
+			details.transType != "WITHDRAW" &&
+			details.transType != "MERGE"
+		) {
+			this.errorMessage("Transaction resetted to update because we didn't find a recipient the " + details.transType + " Transaction.");
+			details.recipient = note.noteAddress;
+			details.transType = "UPDATE";
+			details.transValue = 0;
+		}
+
+		// 11. Mother keys (needed for fiat and by several handlers).
+		const motherKeys = await this.#generateMotherKeys();
+
+		// 12. Resolve formerBlock (same order as legacy: persistent → network → session cache → default).
+		this.blockID = note.blockID;
+		let formerBlock = await this.resolvePersistentData(note.blockID);
+		if (!formerBlock) {
+			formerBlock = await this.getTransBlock(1, { blockID: note.blockID });
+			formerBlock = formerBlock[0];
+		}
+		if (this.formerBlock && this.formerBlock.blockID && this.formerBlock.blockID == note.blockID) {
+			formerBlock = JSON.parse(JSON.stringify(this.formerBlock));
+		}
+		if (!formerBlock && this.formerBlock) {
+			formerBlock = JSON.parse(JSON.stringify(this.formerBlock));
+		}
+		
+		if( ! formerBlock && this.l.currentBlock && this.l.currentBlock.includes( note.blockID) ){
+			formerBlock 		= JSON.parse( this.l.currentBlock );
+		}
+
+		// 13. Subtract unexecuted reference transactions from the note value.
+		if (formerBlock && formerBlock.nextBlockID) {
+			const referenceBlock = await this.getTransBlock(1, { referenceID: formerBlock.nextBlockID });
+			if (referenceBlock && referenceBlock.length) {
+				const processedKeys = [];
+				for (let v = 0; v < referenceBlock.length; v++) {
+					const rb = referenceBlock[v];
+					let value = rb.transValue;
+					if (rb.referenceKey && !processedKeys.includes(rb.referenceKey)) {
+						const blk = await this.getTransBlock(1, { blockID: formerBlock.agreements[rb.referenceKey] });
+						if (!blk[0]) continue;
+						const agree = blk[0].agreement;
+						if (agree && agree.value && !agree.isPeriodic) value = agree.value;
+						else if (agree && agree.isPeriodic) value = parseFloat(agree.value) / parseInt(agree.times);
+						else if (!agree) value = 0;
+						processedKeys.push(rb.referenceKey);
+						note.noteValue = parseFloat(note.noteValue) - parseFloat(value);
+					}
+				}
+			}
+		}
+
+		// 14. Remember the outgoing recipient (used by #runRecipientClient).
+		if (details.recipient) this.#Reipient = details.recipient;
+
+		// 15. Bail-out / CREATE fallback when there is no former block.
+		if ((formerBlock == undefined || !formerBlock || !formerBlock.blockID) && !this.#isExchangeMarketMining) {
+			if (this.l[note.noteAddress + "_current_block"]) {
+				formerBlock = JSON.parse(this.l[note.noteAddress + "_current_block"]);
+			} else if (details.transType == "CREATE" || details.transType == "CREATEBUDGET") {
+				formerBlock = JSON.parse(JSON.stringify(this.defaultBlock));
+			} else {
+				this.errorMessage("No Former Block was found on Your Note While Running The Transaction. Please ensure your internet connection is good so as to fetch your block from the network.");
+				if (note.noteValue == 0) {
+					details.transType = "CREATE";
+					details.recipient = "";
+					details.transValue = 0;
+					formerBlock = JSON.parse(JSON.stringify(this.defaultBlock));
+				} else return null;
+			}
+		} else if (this.#isExchangeMarketMining) {
+			formerBlock = await this.getTransBlock(1, { noteTypeS: note.noteType, noteType: note.noteType });
+			formerBlock = formerBlock[0];
+		}
+
+		if (formerBlock && formerBlock.blockID && formerBlock.nextBlockID) {
+			this.formerBlock = JSON.parse(JSON.stringify(formerBlock));
+		}
+
+		// 16. Retest exchange note.
+		if (!this.#currentNote) this.#currentNote = await this.getCurrentExchangeNote(note.noteType);
+		if ((!this.#currentNote || typeof this.#currentNote != "object") && !this.#isExchangeMarketMining) {
+			this.errorMessage("No Current Note in Your Transaction rendering it invalid");
+			return null;
+		}
+		const currentNote = JSON.parse(JSON.stringify(this.#currentNote));
+
+		// 17. Inherit interest settings from former block.
+		if (formerBlock && !this.#isExchangeMarketMining && formerBlock.interestRate) {
+			this.interestRate = formerBlock.interestRate;
+			if (formerBlock.interestType) this.interestType = formerBlock.interestType;
+		}
+
+		return { note, details, response, currentNote, formerBlock, motherKeys };
+	}
+	
+	static async #txCheckRecieve(ctx){
+		const { response, details, note, newBlock } = ctx;
+		let blockIN 	= response.blockID.slice( 0, 5);
+		
+		let verified 	= await this.verifyData(response);
+		
+		if(! verified ){
+			this.errorMessage(`Transaction Block not verified to be recieved!!`);
+			return false;
+		}
+				
+		if( newBlock.recievedIDs && newBlock.recievedIDs.indexOf( blockIN ) >= 0 ){
+			this.errorMessage( "Block Already Recieved!!! Transaction Now Aborting" );
+			return false;
+		}
+
+		if( ! newBlock.recievedIDs || typeof newBlock.recievedIDs != "object" ){
+			newBlock.recievedIDs = [];
+		}
+		let transTime 	= response.transTime;
+		let blockID 	= response.blockID;
+			
+		if( transTime == note.recievedTime ) {
+				this.errorMessage( "Block Already Recieved!!! Transaction Now Aborting" );
+				return false;
+		}
+
+		if( blockID == note.recievedBlockID ){
+			this.errorMessage( "Block Already Recieved!!! Transaction Now Aborting" );
+			return false;
+		}
+		
+		let resp 			= await this.getTransBlock(100, {blockRef: response.blockRef});
+		
+		if( resp.length > 1 ){
+			let recieversID 	= resp[1].blockID;
+			
+			if( recieversID == response.blockID )
+				recieversID 	= resp[0].blockID;
+			
+			this.errorMessage("Block already recieved by another Scriptbill user with block ID: " + recieversID );
+			return false;
+		}
+		
+		return true;
+	}
+	
+	static async #txCreateAdverts(){
+		
+	}
+	/*
+	static async #txHandleViewAdvert(ctx, number){
+		
+		const {agreement, accountDetails, details, newBlock } = ctx;
+		//next we check if the user is in the range of the advert.
+		if( agreement.scope.toUpperCase() != "WORLD" ){						
+			let scope 			= agreement.scope.toUpperCase();
+			
+			if( ! accountDetails.country.toUpperCase().includes( scope ) || ! accountDetails.city.toUpperCase().includes( scope ) || ! accountDetails.zipCode.toUpperCase().includes( scope ) || ! accountDetails.state.toUpperCase().includes( scope ) || ! accountDetails.city.toUpperCase().includes( scope ) || ! accountDetails.address.toUpperCase().includes( scope ) ){
+				this.errorMessage("Advert not in your location scope");
+				return false;
+			}						
+		}
+		
+		//before we continue, let's see if the user is in the interest set on the 
+		//advert.
+		
+		if( agreement.interest.length && accountDetails.userInterest && accountDetails.userInterest.length ){
+			let interest 		= accountDetails.userInterest.filter( (interest)=>{
+				return agreement.interest.includes( interest );
+			});
+			
+			if( ! interest.length ){
+				this.errorMessage("Advert not included in your interest range. You may as well update your interest to view more adverts.");
+				return false;
+			}
+		}
+		
+		let pubUrl 		= details.publisherServer || location.origin;
+		let checkPub 	= await this.getData("scriptbillPing", "TRUE", pubUrl);
+		
+		if( ! checkPub || ! checkPub.isScriptbillServer || ! checkPub.isScriptbillServer == "TRUE" )
+			newBlock.advertPublishers = this.#default_scriptbill_server;
+		
+		else 
+			newBlock.advertPublishers = pubUrl;
+		
+		//this function will create a view advert UI for the recipient who is
+		//going to view the advert. clicking on the advert button means buying
+		//or subscribing to the product connected to the advert. This Function
+		//will run while the user is getting paid on the advert he has just 
+		//viewed.
+		let view = await this.viewAdvert( agreement );
+		
+		if( ! view ){
+			this.errorMessage("advert view not initialized ");
+			return false;
+		}
+		
+		details.transValue 			= ( parseFloat( response.transValue ) * parseFloat( agreement.viewersShare ) ) / number;
+		
+		ctx.number 		= number;
+		
+		return ctx;
+	}
+	*//*
+	static async #txHandlePublishAdvert(ctx, number){
+		
+		const {agreement, details, response, newBlock, blocks: brocks, blockRef } = ctx;
+		//for publishers.
+		//publishers should only run this function if they have started 
+		//gaining views from the advert they placed on their Scriptbill 
+		//integrated applications to earn from the views they have gotten.
+		//it can be runned multiple times until they have gotten all the funds
+		//from this advert.
+		let share 			= ( parseFloat( response.transValue ) * parseFloat( agreement.publishShare ) ) / number;
+		let requiredViews 	= parseInt( agreement.viewers );
+		//number of viewers the publisher must get.
+		let shareViewers 	= Math.floor( requiredViews / number );
+		let pubUrl 		= details.publisherServer || location.origin;
+		/*let checkPub 	= await this.getData("scriptbillPing", "TRUE", pubUrl);
+		
+		if( ! checkPub || ! checkPub.isScriptbillServer || ! checkPub.isScriptbillServer == "TRUE" ){
+			this.errorMessage("Can't Publish a Scriptbill Advert on a server not integrated with the Scriptbill Block Web System.");
+			return false;
+		}*//*
+		
+		//next we get the number of funds already gotten by the publisher.
+		let blocks 				= brocks.filter((block)=>{
+			return block.advertPublishers == pubUrl;
+		});
+		
+		let valueGotten = 0;
+		
+		for( let e = 0; e < blocks.length; e++ ){
+			valueGotten += parseFloat( blocks.transValue );
+		}
+		
+		if( valueGotten >= share ){
+			this.errorMessage("Publisher has already gotten the required share value. However if the viewership deal has not been reached, you can still make more revenue from this advert.");
+		}
+		
+		//getting total viewers.
+		let viewers 		= await this.getTransBlock( requiredViews, {transType: "VIEWADVERT", blockRef: blockRef});
+		
+		if( viewers.length == requiredViews ){
+			this.errorMessage("No more advert to view, publishing deal for this advert has ended!");
+			return false;
+		}
+		
+		//let's see the total viewers the current publisher has gotten.
+		viewers 			= viewers.filter( (view)=>{
+			return view.advertPublishers == pubUrl;
+		});
+		
+		if( ! viewers.length ){
+			this.errorMessage("No Viewers available to earn on your publishing contract");
+			return false;
+		}
+		
+		//the per view share must be calculated here.
+		//which will be the total share expected to give the publisher 
+		//divided by the required view count the publisher must get.
+		let perViewShare 		= share / shareViewers;
+		
+		//this is important for publishers who had broken even.
+		let totalViewShare 		= ( parseFloat( response.transValue ) * parseFloat( agreement.publishShare ) ) / requiredViews;
+		
+		//this is the expected revenue the publisher should get based on 
+		//the total number of views he had gotten.
+		let expectedShare 		= perViewShare * viewers.length;
+		
+		//now we subtract the already gotten value from the expected Share
+		//to get the value to be paid to the publisher.
+		let value 				= expectedShare - valueGotten;
+		
+		//if the publisher has already broken even, this value will be 
+		//negative so we calculate the value to be gotten by the publisher 
+		//from the total view share.
+		if( value <= 0 ){
+			expectedShare		= 	totalViewShare * viewers.length;
+			value 				= expectedShare - valueGotten;
+			
+			if( value <= 0 ){
+				this.errorMessage("No more funds to get from this advert");
+				return false;
+			}
+		}
+		
+		details.transValue 			= value;
+		newBlock.advertPublishers 	= pubUrl;
+		
+		ctx.number 					= number;
+		
+		return ctx;
+	}*/
+	
+	static async #txHandleAdverts(ctx){
+		
+		const {response, details, agreement, note, newBlock } = ctx;
+		
+		let id 			= await this.generateKey(10);
+		await this.setPrivateKey( response.agreement.privateKey, id );
+		agreement 	= await this.#decrypt( details.recipient, id );
+		
+		if( ! this.isJsonable( agreement )) return false;
+		
+		agreement 			= JSON.parse( agreement );		
+		ctx.agreement 		= agreement;
+		
+		if( ! agreement.privateKey ){
+			this.errorMessage("No Private Key in the advert request");
+			return false;
+		}
+		id 		= await this.generateKey(10);
+		await this.setPrivateKey( agreement.privateKey, id );
+		let blockRef 		= await this.getPublicKey(id);
+		let number 			= 1;
+		
+		if( details.transType == "VIEWADVERT" )
+			number 			= parseInt( agreement.viewers );
+		
+		else if(details.transType == "PUBLISHADVERT")
+			number 			= parseInt( agreement.publishers ); 
+		
+		else
+			number 			= parseInt( agreement.publishersClick );
+		
+		let blocks 			= await this.getTransBlock( number, {blockRef: blockRef, transType: details.transType });
+		
+		if( blocks.length == number ){
+			this.errorMessage("Advert budget reached");
+			return false;
+		}
+		
+		let accountDetails 	= await this.getAccountData();
+		accountDetails		= accountDetails[ note.noteAddress ];
+		
+		ctx.accountDetails 	= accountDetails;
+		ctx.blocks 			= blocks;
+		ctx.blockRef 		= blockRef;
+		
+		
+		if( details.transType == "VIEWADVERT" ){
+		
+			ctx = await this.#txHandleViewAdvert(ctx, number);
+			
+			if( ! ctx ) return false;
+			
+			number 	= ctx.number;
+			
+		} else {
+			ctx = await this.#txHandlePublishAdvert(ctx, number);
+
+			if( ! ctx ) return false;
+			
+			number = ctx.number;
+		}				
+		
+		this.signKey 		= agreement.privateKey;
+		newBlock.blockRef 	= blockRef;
+		newBlock.signRef 	= await this.Sign( agreement.privateKey, response.signRef );
+		newBlock.transType	= details.transType;
+		
+		return ctx;
+	}
+	/*
+	static async #txHandleBondPay(ctx){
+		const {agreement, details, response, note } = ctx;
+		
+		if( response.transType != "BONDPAY" || ! agreement || typeof agreement != "object" ) return false;
+		
+		let budgetValue = agreement.value;
+		
+		let t, percent, stock, amount, total, pay;
+		t 		= agreement.sleepingPartner;
+		percent = agreement.sleepingPartnerShare;
+		
+		//please note that the Pay Value is the total number of stock the user is allowed to hold based 
+		//on the agreement of the company. While the stock value is the actual value of the client'this.s investment
+		switch(t){
+			case 'percent-high':
+				amount  = parseFloat( details.transValue ) * percent;
+				total  	= parseFloat( details.transValue ) + amount;
+				pay 	= total / budgetValue;
+				stock  	= parseFloat( details.transValue ) / parseFloat( budgetValue );
+				break;
+			case 'percent-low':
+				amount 	= parseFloat( details.transValue ) * percent;
+				total  	= parseFloat( details.transValue ) - amount;
+				pay  	= total / budgetValue;
+				stock   = parseFloat( details.transValue ) / parseFloat( budgetValue );
+				break;
+			case 'percent-equal':
+				stock  	= parseFloat( details.transValue ) / parseFloat( budgetValue );
+				pay 	= stock;
+				break;
+			case 'dividend-high':
+				stock  	= parseFloat( details.transValue ) / parseFloat( budgetValue );
+				pay 	= stock + percent;
+				break;
+			case 'dividend-equal':
+				stock  	= parseFloat( details.transValue ) / parseFloat( budgetValue );
+				pay 	= stock;
+				break;
+			case 'dividend-low':
+				stock  	= parseFloat( details.transValue  )/ parseFloat( budgetValue );
+				pay 	= stock - percent;
+				break;
+			default :
+				stock  	= parseFloat( details.transValue ) / parseFloat( budgetValue );
+				pay 	= stock;
+			break;
+		}
+		
+		currentNote = await this.getCurrentExchangeNote( note.noteType );
+		
+		if( ! currentNote ){
+			return false;
+		}
+		
+		let stockNote = newBlock.exchangeNote;
+		stockNote.pay = pay;
+		stockNote.noteValue = stock;
+		let priv 			= await this.generateKey(40, true) ;
+		var id 				= await this.generateKey(10);
+		await this.setPrivateKey( priv, id );
+		stockNote.noteAddress = await this.getPublicKey(id);
+		stockNote.noteSecret   = priv;
+		stockNote.exchangeID 	= stockNote.noteAddress;
+		stockNote.exchangeKey 	= priv;
+		stockNote.motherKey 	= currentNote.noteAddress;
+		stockNote.blockID 		= newBlock.blockID;
+		newBlock.agreement = JSON.parse( JSON.stringify( agreement ) );
+		delete newBlock.agreement.privateKey;
+		
+		return ctx;
+	}
+	
+	
+	static async #txHandleStockPay(ctx){
+		
+		const {agreement, details, response, note } = ctx;
+		
+		if( response.transType != "STOCKPAY" || ! agreement || typeof agreement != "object" ) return false;
+		
+		let budgetValue = agreement.value;
+		
+		let t, percent, stock, amount, total, pay;
+		t 		= agreement.sleepingPartner;
+		percent = agreement.sleepingPartnerShare;
+		
+		//please note that the Pay Value is the total number of stock the user is allowed to hold based 
+		//on the agreement of the company. While the stock value is the actual value of the client'this.s investment
+		switch(t){
+			case 'percent-high':
+				amount  = parseFloat( details.transValue ) * percent;
+				total  	= parseFloat( details.transValue ) + amount;
+				pay 	= total / budgetValue;
+				stock  	= parseFloat( details.transValue ) / parseFloat( budgetValue );
+				break;
+			case 'percent-low':
+				amount 	= parseFloat( details.transValue ) * percent;
+				total  	= parseFloat( details.transValue ) - amount;
+				pay  	= total / budgetValue;
+				stock   = parseFloat( details.transValue ) / parseFloat( budgetValue );
+				break;
+			case 'percent-equal':
+				stock  	= parseFloat( details.transValue ) / parseFloat( budgetValue );
+				pay 	= stock;
+				break;
+			case 'dividend-high':
+				stock  	= parseFloat( details.transValue ) / parseFloat( budgetValue );
+				pay 	= stock + percent;
+				break;
+			case 'dividend-equal':
+				stock  	= parseFloat( details.transValue ) / parseFloat( budgetValue );
+				pay 	= stock;
+				break;
+			case 'dividend-low':
+				stock  	= parseFloat( details.transValue  )/ parseFloat( budgetValue );
+				pay 	= stock - percent;
+				break;
+			default :
+				stock  	= parseFloat( details.transValue ) / parseFloat( budgetValue );
+				pay 	= stock;
+			break;
+		}
+		
+		currentNote = await this.getCurrentExchangeNote( note.noteType );
+		
+		if( ! currentNote ){
+			return false;
+		}
+		
+		let stockNote = newBlock.exchangeNote;
+		stockNote.pay = pay;
+		stockNote.noteValue = stock;
+		let priv 			= await this.generateKey(40, true) ;
+		var id 				= await this.generateKey(10);
+		await this.setPrivateKey( priv, id );
+		stockNote.noteAddress = await this.getPublicKey(id);
+		stockNote.noteSecret   = priv;
+		stockNote.exchangeID 	= stockNote.noteAddress;
+		stockNote.exchangeKey 	= priv;
+		stockNote.motherKey 	= currentNote.noteAddress;
+		stockNote.blockID 		= newBlock.blockID;
+		newBlock.agreement = JSON.parse( JSON.stringify( agreement ) );
+		delete newBlock.agreement.privateKey;
+		
+		return ctx;
+	}
+	*/
+	// ──────────────────────────────────────────────────────────────────────────
+	// INVESTRECIEVE (same CRD note; response to INVEST)
+	//
+	// Self-response. Decrypts INVEST.recipient with note.noteSecret, extracts
+	// investKey from agreement.investKey. Signs INVEST.signRef with investKey
+	// → INVESTRECIEVE.signRef. Re-encrypts investKey into INVESTRECIEVE.recipient
+	// for the businessManager (found via the BUSINESS reference on the item).
+	//
+	// Effect:
+	//   - Credits the note by response.transValue.
+	//   - Bumps the product note's exchange value.
+	//   - Carries the motherKey the eventual QUOTESTOCK will use (the exchange
+	//     market's budgetID), not the BM's address.
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleInvestReceive(ctx) {
+		const { note, details, response, formerBlock } = ctx;
+
+		if (!note.noteType || !note.noteType.includes("CRD")) {
+			return { handled: false, reason: "INVESTRECIEVE:not-credit-note" };
+		}
+		if (!response || response.transType !== "INVEST") {
+			return { handled: false, reason: "INVESTRECIEVE:no-invest-response" };
+		}
+		if (!response.agreement || !response.agreement.budgetID) {
+			this.errorMessage("INVESTRECIEVE: INVEST has no budgetID.");
+			return { handled: false, reason: "INVESTRECIEVE:no-budget-id" };
+		}
+
+		// ── Decrypt INVEST.recipient with the note's own secret ──
+		const did = await this.generateKey(10);
+		await this.setPrivateKey(note.noteSecret, did);
+		const raw = await this.#decrypt(response.recipient, did);
+		if (!this.isJsonable(raw)) {
+			this.errorMessage("INVESTRECIEVE: could not decrypt INVEST.recipient.");
+			return { handled: false, reason: "INVESTRECIEVE:decrypt-failed" };
+		}
+		const chain = JSON.parse(raw);
+		if (!chain.investKey) {
+			this.errorMessage("INVESTRECIEVE: decrypted agreement has no investKey.");
+			return { handled: false, reason: "INVESTRECIEVE:no-investKey" };
+		}
+
+		// ── Sign INVEST.signRef with investKey ──
+		const signedRef = await this.Sign(chain.investKey, response.signRef);
+		if (!signedRef) {
+			this.errorMessage("INVESTRECIEVE: could not sign INVEST.signRef.");
+			return { handled: false, reason: "INVESTRECIEVE:sign-failed" };
+		}
+
+		// ── Find the businessManager via the BUSINESS reference ──
+		const itemRefID = response.referenceID;
+		const bizRefs = await this.getTransBlock(5, {
+			transType: "BUSINESS",
+			referenceID: itemRefID,
+		});
+		if (!bizRefs || !bizRefs.length) {
+			this.errorMessage("INVESTRECIEVE: no BUSINESS reference found for INVEST.");
+			return { handled: false, reason: "INVESTRECIEVE:no-business-ref" };
+		}
+		const businessKey = bizRefs[0].businessKey;
+		if (!businessKey) {
+			this.errorMessage("INVESTRECIEVE: BUSINESS reference has no businessKey.");
+			return { handled: false, reason: "INVESTRECIEVE:no-businessKey" };
+		}
+
+		// ── Resolve the budget block ──
+		const bid = await this.generateKey(10);
+		await this.setPrivateKey(note.budgetID, bid);
+		const budgetPub = await this.getPublicKey(bid);
+		const budgetBlock = await this.getCurrentBudgetBlock(budgetPub);
+		if (!budgetBlock || !budgetBlock.agreement) {
+			this.errorMessage("INVESTRECIEVE: budget block not found.");
+			return { handled: false, reason: "INVESTRECIEVE:no-budget-block" };
+		}
+		const budget = budgetBlock.agreement;
+
+		// ── Determine the stock note's motherKey ──
+		// Per your spec: the exchange market's budgetID (the governmental
+		// budget that backs note.noteType), NOT the BM's note address.
+		const exchangeNote = await this.getCurrentExchangeNote(note.noteType);
+		const motherBudgetID = exchangeNote && exchangeNote.budgetID
+			? exchangeNote.budgetID
+			: budgetPub;
+
+		// ── Build the block ──
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "INVESTRECIEVE";
+		building.transValue = response.transValue;
+		building.budgetID   = budget.budgetID;
+		building.referenceID  = response.blockID;
+		building.referenceKey = chain.agreeID;
+
+		// ── Bump the product note's exchange value ──
+		if (budgetBlock.productNote) {
+			const productNote = JSON.parse(JSON.stringify(budgetBlock.productNote));
+			productNote.exchangeValue = (
+				parseFloat(productNote.exchangeValue || 0) + parseFloat(response.transValue)
+			).toString();
+			productNote.transType = "INVESTRECIEVE";
+			building.productNote = productNote;
+		}
+
+		// ── Credit the note ──
+		note.noteValue = parseFloat(note.noteValue) + parseFloat(response.transValue);
+
+		// ── Re-encrypt the chain agreement for the BM ──
+		const bmAgreement = {
+			agreeID      : chain.agreeID,
+			budgetID     : budget.budgetID,
+			budgetKey    : chain.budgetKey,
+			itemID       : chain.itemID,
+			productID    : chain.productID,
+			stockID      : chain.stockID,
+			stock        : parseFloat(details.stock) || 0,
+			pay          : parseFloat(details.pay)   || parseFloat(response.transValue) || 0,
+			agreeType    : "STOCK",
+			transValue   : response.transValue,
+			transTime    : this.currentTime(),
+			senderID     : response.blockID,
+			senderKey    : businessKey,
+			motherKey    : motherBudgetID,   // exchange market budget ID
+			isInvest     : true,
+			investKey    : chain.investKey,  // ← same key so QUOTESTOCK can sign
+		};
+
+		const rid = await this.generateKey(10);
+		await this.setPublicKey(businessKey, rid);
+		building.recipient = this.encrypt(JSON.stringify(bmAgreement), await this.getPublicKey(rid, true));
+
+		// ── blockRef/signRef ──
+		// blockRef = public half of investKey (same as INVEST.blockRef).
+		const iid = await this.generateKey(10);
+		await this.setPrivateKey(chain.investKey, iid);
+		building.blockRef = await this.getPublicKey(iid, true);
+		// signRef = the signature we just computed (the chain's second link).
+		building.signRef  = signedRef;
+
+		building.agreement = JSON.parse(JSON.stringify(budget));
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// INVEST (business-budget CRD note)
+	//
+	// Authored by the note that owns a BUSINESS budget whose items are
+	// unexecuted and unpaid, and whose items point to at least one live
+	// product of that same business.
+	//
+	// Preconditions:
+	//   - note.noteType includes "CRD"
+	//   - note.budgetID resolves to a budget block with budgetType === "business"
+	//   - that budget has at least one unexecuted ADDITEM/UPDATEITEM referencing
+	//     it (block.agreement.item.execTime > now)
+	//   - at least one such item points to a live product
+	//     (product block exists via CREATEPRODUCT/UPDATEPRODUCT and its
+	//      budgetID equals this budget's ID)
+	//   - at least one BUSINESS reference exists on one of those items
+	//
+	// Effect:
+	//   - Mints a fresh privateKey.
+	//   - Encrypts that key into `recipient` using the note's own noteAddress
+	//     (self-addressed — the same note will run INVESTRECIEVE).
+	//   - blockRef = public half of the fresh key.
+	//   - signRef = random text (the chain's root).
+	//   - Does NOT credit the note — the credit happens on INVESTRECIEVE.
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleInvest(ctx) {
+		const { note, details, formerBlock } = ctx;
+
+		if (!note.noteType || !note.noteType.includes("CRD")) {
+			return { handled: false, reason: "INVEST:not-credit-note" };
+		}
+		if (!note.budgetID) {
+			this.errorMessage("INVEST requires a note with a budgetID.");
+			return { handled: false, reason: "INVEST:no-budget-id" };
+		}
+
+		// ── Resolve the budget block ──
+		const bid = await this.generateKey(10);
+		await this.setPrivateKey(note.budgetID, bid);
+		const budgetPub = await this.getPublicKey(bid);
+		const budgetBlock = await this.getCurrentBudgetBlock(budgetPub);
+		if (!budgetBlock || !budgetBlock.agreement) {
+			this.errorMessage("INVEST: budget block not found.");
+			return { handled: false, reason: "INVEST:no-budget-block" };
+		}
+		const budget = budgetBlock.agreement;
+		if (budget.budgetType !== "business") {
+			this.errorMessage("INVEST: budget must be a business budget.");
+			return { handled: false, reason: "INVEST:not-business" };
+		}
+
+		// ── Find unexecuted items referencing this budget ──
+		const now = parseInt(this.currentTime());
+		const itemAddBlocks = await this.getTransBlock(200, {
+			transType: "ADDITEM",
+			budgetID: budget.budgetID,
+		});
+		const itemUpdBlocks = await this.getTransBlock(200, {
+			transType: "UPDATEITEM",
+			budgetID: budget.budgetID,
+		});
+		const items = [...itemAddBlocks, ...itemUpdBlocks];
+
+		// Filter to items whose agreement.item exists and isn't expired.
+		const liveItems = [];
+		for (const itemBlock of items) {
+			if (!itemBlock || !itemBlock.agreement || !itemBlock.agreement.item) continue;
+			const item = itemBlock.agreement.item;
+			const execTime = parseInt(item.execTime || 0);
+			if (execTime && execTime <= now) continue;     // already executed
+			if (!item.itemProduct) continue;                // not a product item
+			liveItems.push({ block: itemBlock, item });
+		}
+		if (!liveItems.length) {
+			this.errorMessage("INVEST: no unexecuted product items on this budget.");
+			return { handled: false, reason: "INVEST:no-live-items" };
+		}
+
+		// ── Find at least one item that has a BUSINESS reference ──
+		let approvedItem = null;
+		for (const live of liveItems) {
+			const bizRefs = await this.getTransBlock(5, {
+				transType: "BUSINESS",
+				referenceID: live.block.blockID,
+			});
+			if (bizRefs && bizRefs.length) { approvedItem = live; break; }
+		}
+		if (!approvedItem) {
+			this.errorMessage("INVEST: no BUSINESS reference on any item.");
+			return { handled: false, reason: "INVEST:no-business-ref" };
+		}
+
+		// ── Find at least one live product pointing to the same business ──
+		let liveProduct = null;
+		for (const live of liveItems) {
+			const productID = live.item.itemProduct;
+			const creates = await this.getTransBlock(1, { productID, transType: "CREATEPRODUCT" });
+			const updates = await this.getTransBlock(1, { productID, transType: "UPDATEPRODUCT" });
+			const cands   = [...creates, ...updates];
+			for (const pb of cands) {
+				if (!pb || !pb.agreement || !pb.agreement.productConfig) continue;
+				if (pb.agreement.productConfig.budgetID !== budget.budgetID) continue;
+				liveProduct = pb;
+				break;
+			}
+			if (liveProduct) break;
+		}
+		if (!liveProduct) {
+			this.errorMessage("INVEST: no live product on this budget's items.");
+			return { handled: false, reason: "INVEST:no-live-product" };
+		}
+
+		// ── Mint the block key that binds INVEST → INVESTRECIEVE → QUOTESTOCK ──
+		const investKey = await this.generateKey(30, true, true);
+		const iid = await this.generateKey(10);
+		await this.setPrivateKey(investKey, iid);
+		const blockRef = await this.getPublicKey(iid, true);
+
+		// Encrypt the chain agreement for the note's own noteAddress.
+		const chainAgreement = {
+			investKey      : investKey,
+			budgetID       : budget.budgetID,
+			budgetKey      : budgetBlock.budgetKey || note.budgetKey,
+			itemID         : approvedItem.block.referenceID,
+			productID      : liveProduct.productID,
+			stockID        : liveProduct.agreement.productConfig.stockID,
+			transValue     : details.transValue,
+			transTime      : this.currentTime(),
+			agreeID        : await this.generateKey(15, true),
+			// The businessManager's identity will be filled in by the BUSINESS
+			// reference when INVESTRECIEVE looks it up.
+		};
+
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "INVEST";
+		building.transValue = details.transValue;
+		building.budgetID   = budget.budgetID;
+		building.productID  = liveProduct.productID;
+		building.referenceID  = approvedItem.block.blockID;
+		building.referenceKey = budget.budgetID;
+
+		// Self-encrypt the chain agreement for this note.
+		const nid = await this.generateKey(10);
+		await this.setPublicKey(note.noteAddress, nid);
+		building.recipient = this.encrypt(JSON.stringify(chainAgreement), await this.getPublicKey(nid, true));
+
+		building.blockRef = blockRef;
+		building.signRef  = await this.generateKey(20);   // random text
+		building.agreement = JSON.parse(JSON.stringify(budget));
+
+		return { handled: true, block: building };
+	}
+	
+	static async #txHandleInvestTx(ctx){
+		
+		const {details, note, response } = ctx;
+		
+		if( ! note.budgetID ) return false;
+		
+		let id 				= await this.generateKey(10);
+		await this.setPrivateKey( note.budgetID, id );
+		let agreement = await this.#decrypt( details.recipient, id );
+		
+		if( ! agreement || ! this.isJsonable( agreement ) ) return false;		
+		
+		agreement 		= JSON.parse( agreement );
+		ctx.agreement 	= agreement;
+		
+		//next communicating and calculating the stocks acquired.
+		let budgetID 		= await this.getPublicKey(id);
+		let transType 		= "UPDATEBUDGET";
+		
+		let budgetBlock 	= await this.getTransBlock(100, {budgetID, transType});
+		budgetBlock 		= await this.getCurrentBlock( budgetBlock );
+		
+		if( ! budgetBlock.length ){
+			transType 		= "CREATEBUDGET";
+			budgetBlock 	= await this.getTransBlock(1, {budgetID, transType});
+			budgetBlock 	= await this.getCurrentBlock( budgetBlock );
+		}
+		
+		if( ! budgetBlock ) return false;
+		
+		//we can now store the response as connected block
+		this.#storeConnectedBlock(response);
+		
+		//since we have the original budget block we can get te current budget value
+		let budgetValue 	= budgetBlock.agreement.value;
+		
+		//but before we continue, let's get the recipient of this stock.
+		let blockID 		= response.referenceID;
+		let bizBlock 		= await this.getTransBlock(1, {blockID});
+		bizBlock			= await this.getCurrentBlock( bizBlock );
+		
+		if( ! bizBlock || bizBlock.transType != "BUSINESS" || ! bizBlock.data || ! bizBlock.data.businessID ){
+			this.errorMessage(`No Business Manager Signature Found! Locate a Scriptbank Business Manager in your area to help in signing this transaction`);
+			return false;
+		} 
+		
+		details.recipient = bizBlock?.data?.businessID;
+		details.transType = "SOLDSTOCK";
+		
+		ctx 				= await this.#txHandleSoldStock(ctx, budgetBlock);
+		
+		details.transType 	= "INVESTRECIEVE";
+		
+		return ctx;
+		
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// SELLSTOCK (STK or CRD note with note.budgetID)
+	//
+	// A request block, not a sale. Contains:
+	//   - transValue  : the value the seller expects to receive from BUYSTOCK
+	//   - stockValue  : the stock quantity the seller will hold after the sale
+	//   - budgetID    : the business budget being sold against
+	//   - recipient   : the budget owner's note address (who will run SOLDSTOCK)
+	//
+	// Does NOT bill note.noteValue. Billing happens on SOLDSTOCK when a buyer
+	// actually purchases.
+	//
+	// Eligibility (per your model):
+	//   - note.budgetID must point to a CREATEBUDGET/UPDATEBUDGET block
+	//   - the note must be one of:
+	//     * the business owner's CRD note (note.budgetID == budget.budgetID)
+	//     * an STK note whose own budgetID points to the same budget
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleSellStock(ctx) {
+		const { note, details, formerBlock } = ctx;
+
+		if (!note.budgetID) {
+			this.errorMessage("SELLSTOCK requires a note with a budgetID.");
+			return { handled: false, reason: "SELLSTOCK:no-budget-id" };
+		}
+		const isStk = note.noteType && note.noteType.includes("STK");
+		const isCrd = note.noteType && note.noteType.includes("CRD");
+		if (!isStk && !isCrd) {
+			this.errorMessage("SELLSTOCK is only allowed on STK or CRD notes.");
+			return { handled: false, reason: "SELLSTOCK:wrong-note-type" };
+		}
+
+		// Resolve the budget block this sale is against.
+		const bid = await this.generateKey(10);
+		await this.setPrivateKey(note.budgetID, bid);
+		const budgetPub = await this.getPublicKey(bid);
+		const budgetBlock = await this.getCurrentBudgetBlock(budgetPub);
+		if (!budgetBlock || !budgetBlock.agreement) {
+			this.errorMessage("SELLSTOCK: budget block not found for " + budgetPub);
+			return { handled: false, reason: "SELLSTOCK:no-budget-block" };
+		}
+		const budget = budgetBlock.agreement;
+
+		// ── Eligibility: which note types can sell against this budget? ──
+		// The budget creator's CRD note, or a stock note holding the same budgetID.
+		const isBudgetCreator = isCrd && budgetBlock.budgetID === budgetPub;
+		const isStockHolder   = isStk && note.budgetID === budget.budgetID;
+		if (!isBudgetCreator && !isStockHolder) {
+			this.errorMessage("SELLSTOCK: note is not eligible to sell against this budget.");
+			return { handled: false, reason: "SELLSTOCK:not-eligible" };
+		}
+
+		// ── Build the request block ──
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType   = "SELLSTOCK";
+		building.transValue  = details.transValue;    // the seller's expected payout
+		building.stockValue  = details.stockValue;    // stock quantity expected after sale
+		building.budgetID    = budget.budgetID;
+
+		// ── Recipient = the budget owner's note address ──
+		// (the note that will run SOLDSTOCK on a BUYSTOCK response)
+		building.recipient   = budgetBlock.blockKey || budgetBlock.noteAddress;
+
+		// ── Attach the budget agreement as the block's agreement ──
+		building.agreement   = JSON.parse(JSON.stringify(budget));
+
+		// ── Reference setup: buyer will use our blockRef to run BUYSTOCK ──
+		const privKey = await this.generateKey(30, true, true);
+		const pid = await this.generateKey(10);
+		await this.setPrivateKey(privKey, pid);
+		building.blockRef = await this.getPublicKey(pid, true);
+		building.signRef  = await this.generateKey(20);
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// SELLBOND (BND or CRD-exchange note)
+	//
+	// The bond counterpart of SELLSTOCK. For bonds, transValue == bondValue
+	// (there is no separate bondValue field, because the bond is valued 1:1
+	// with its face value).
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleSellBond(ctx) {
+		const { note, details, formerBlock } = ctx;
+
+		if (!note.budgetID) {
+			this.errorMessage("SELLBOND requires a note with a budgetID.");
+			return { handled: false, reason: "SELLBOND:no-budget-id" };
+		}
+		const isBnd = note.noteType && note.noteType.includes("BND");
+		const isCrd = note.noteType && note.noteType.includes("CRD");
+		if (!isBnd && !isCrd) {
+			this.errorMessage("SELLBOND is only allowed on BND or CRD notes.");
+			return { handled: false, reason: "SELLBOND:wrong-note-type" };
+		}
+
+		const bid = await this.generateKey(10);
+		await this.setPrivateKey(note.budgetID, bid);
+		const budgetPub = await this.getPublicKey(bid);
+		const budgetBlock = await this.getCurrentBudgetBlock(budgetPub);
+		if (!budgetBlock || !budgetBlock.agreement) {
+			this.errorMessage("SELLBOND: budget block not found for " + budgetPub);
+			return { handled: false, reason: "SELLBOND:no-budget-block" };
+		}
+		const budget = budgetBlock.agreement;
+
+		if (budget.budgetType !== "governmental") {
+			this.errorMessage("SELLBOND: budget must be governmental.");
+			return { handled: false, reason: "SELLBOND:not-governmental" };
+		}
+
+		const isBudgetCreator = isCrd && budgetBlock.budgetID === budgetPub;
+		const isBondHolder    = isBnd && note.budgetID === budget.budgetID;
+		if (!isBudgetCreator && !isBondHolder) {
+			this.errorMessage("SELLBOND: note is not eligible to sell against this budget.");
+			return { handled: false, reason: "SELLBOND:not-eligible" };
+		}
+
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType   = "SELLBOND";
+		building.transValue  = details.transValue;   // bond face value
+		building.budgetID    = budget.budgetID;
+		building.recipient   = budgetBlock.blockKey || budgetBlock.noteAddress;
+		building.agreement   = JSON.parse(JSON.stringify(budget));
+
+		const privKey = await this.generateKey(30, true, true);
+		const pid = await this.generateKey(10);
+		await this.setPrivateKey(privKey, pid);
+		building.blockRef = await this.getPublicKey(pid, true);
+		building.signRef  = await this.generateKey(20);
+
+		return { handled: true, block: building };
+	}
+	// ──────────────────────────────────────────────────────────────────────────
+	// SOLDSTOCK (CRD note, budget owner's response to BUYSTOCK)
+	//
+	// The budget owner confirms a stock sale. This block:
+	//   1. Decrypts the buyer's BUYSTOCK recipient with note.noteSecret.
+	//   2. Bumps the productNote.exchangeValue by response.transValue.
+	//   3. Bills the seller's note (note.noteValue += response.transValue).
+	//   4. Attaches the secrets the buyer needs (budgetID, budgetKey, stock,
+	//      pay) in an agreement encrypted for the buyer's blockKey.
+	//   5. Sets the block's recipient to the buyer's blockKey so the buyer can
+	//      run QUOTESTOCK on receipt.
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleSoldStock(ctx) {
+		const { note, details, response, formerBlock } = ctx;
+
+		if (!note.noteType || !note.noteType.includes("CRD")) {
+			return { handled: false, reason: "SOLDSTOCK:not-credit-note" };
+		}
+		if (!response || response.transType !== "BUYSTOCK") {
+			return { handled: false, reason: "SOLDSTOCK:no-buy-response" };
+		}
+		if (!note.budgetID) {
+			this.errorMessage("SOLDSTOCK: note must own a budget to confirm a stock sale.");
+			return { handled: false, reason: "SOLDSTOCK:no-budget-id" };
+		}
+
+		// ── Step 1: decrypt the buyer's BUYSTOCK agreement ──
+		let agreement = null;
+		const did = await this.generateKey(10);
+		await this.setPrivateKey(note.noteSecret, did);
+		const raw = await this.#decrypt(response.recipient, did);
+		if (this.isJsonable(raw)) agreement = JSON.parse(raw);
+		if (!agreement) {
+			this.errorMessage("SOLDSTOCK: could not decrypt the buyer's agreement.");
+			return { handled: false, reason: "SOLDSTOCK:decrypt-failed" };
+		}
+
+		// ── Step 2: resolve the seller's own budget block ──
+		const bid = await this.generateKey(10);
+		await this.setPrivateKey(note.budgetID, bid);
+		const budgetPub = await this.getPublicKey(bid);
+		const budgetBlock = await this.getCurrentBudgetBlock(budgetPub);
+		if (!budgetBlock || !budgetBlock.agreement) {
+			this.errorMessage("SOLDSTOCK: budget block not found.");
+			return { handled: false, reason: "SOLDSTOCK:no-budget-block" };
+		}
+		const budget = budgetBlock.agreement;
+		if (budget.budgetType !== "business") {
+			this.errorMessage("SOLDSTOCK: budget must be a business budget.");
+			return { handled: false, reason: "SOLDSTOCK:not-business" };
+		}
+		if (!budgetBlock.productNote) {
+			this.errorMessage("SOLDSTOCK: no productNote on the budget.");
+			return { handled: false, reason: "SOLDSTOCK:no-product-note" };
+		}
+
+		// ── Step 3: build the block ──
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "SOLDSTOCK";
+		building.transValue = response.transValue;
+		building.budgetID   = budget.budgetID;
+
+		// ── Step 4: bump the product note's exchange value ──
+		const productNote = JSON.parse(JSON.stringify(budgetBlock.productNote));
+		if (!productNote.exchangeValue) productNote.exchangeValue = 0;
+		productNote.exchangeValue =
+			parseFloat(productNote.exchangeValue) + parseFloat(response.transValue);
+		productNote.transType = "SOLDSTOCK";
+		productNote.blockID   = building.blockID || "";
+		building.productNote  = productNote;
+
+		// ── Step 5: bill the seller's note ──
+		note.noteValue = parseFloat(note.noteValue) + parseFloat(response.transValue);
+
+		// ── Step 6: prepare the secrets the buyer needs for QUOTESTOCK ──
+		// The seller includes:
+		//   - budgetID (so the buyer can resolve the budget block)
+		//   - budgetKey (private, so the buyer can sign the QUOTESTOCK)
+		//   - stock (quantity being sold)
+		//   - pay (quantity the buyer will hold after)
+		//   - agreeID (a fresh ID for the eventual QUOTESTOCK agreement)
+		const stock   = parseFloat(details.stock)  || parseFloat(response.stockValue) || 0;
+		const pay     = parseFloat(details.pay)    || parseFloat(response.transValue) || 0;
+
+		const secretAgreement = {
+			agreeID      : budget.agreement ? budget.agreement.agreeID : await this.generateKey(15, true),
+			budgetID     : budget.budgetID,
+			budgetKey    : budgetBlock.budgetKey || note.budgetKey,
+			stock        : stock,
+			pay          : pay,
+			agreeType    : "STOCK",
+			stockID      : budget.stockID,
+			transValue   : response.transValue,
+			transTime    : this.currentTime(),
+			senderID     : response.blockID,
+			senderKey    : response.blockKey,
+		};
+
+		// Encrypt for the buyer's blockKey.
+		const encKey = await this.generateKey(10);
+		await this.setPublicKey(response.blockKey, encKey);
+		building.recipient = this.encrypt(JSON.stringify(secretAgreement), await this.getPublicKey(encKey, true));
+
+		// ── Step 7: the block itself carries the budget agreement publicly ──
+		building.agreement = JSON.parse(JSON.stringify(budget));
+
+		return { handled: true, block: building };
+	}
+	static async #txHandleInvestRecieve(ctx){
+		const { note, response, details, formerBlock } = ctx;
+		
+		if( ! ["INVEST", "STOCKPAY", "BONDPAY"].includes(response.transType) ) return false;
+		
+		if( ctx.agreement && this.isJsonable( ctx.agreement ) ){
+			ctx.agreement 	= JSON.parse( ctx.agreement );
+		}
+		
+						
+		if(response.transType == "INVEST") {
+			
+			ctx 	= await this.#txHandleInvestTx(ctx);
+		}
+		
+		else if( response.transType == "STOCKPAY" ){
+			ctx 	= await this.#txHandleStockPay(ctx);
+		}
+		
+		else if( response.transType == "BONDPAY" ){
+			ctx 	= await this.#txHandleBondPay(ctx);
+		}
+		
+		return ctx;
+	}
+	
+	static async #txUseKey(ctx){
+		
+		const { agreement, details, response } = ctx;
+		
+		//sometimes it may be only a particular key that was used to send the
+		//transaction, this must be set in the key handler for this to work.
+		//and the key must be shared by the sender.
+		if( this.key && ! this.isJsonable( agreement ) && typeof agreement == "object" ){
+			var string 	= this.key;
+			agreement 		= this.decrypt( details.recipient, this.hashed( string, response.transSalt, response.transFormular ) );
+			delete this.key;
+		}
+		
+		ctx.agreement = agreement;				
+	}
+	
+	static async #createTxBlockSpace(ctx){
+		const {agreement, note, newBlock, formerHash, formerHashB } = ctx;
+		
+		let blockSpace 				= Object.assign( this.defaultBlock );
+		blockSpace.blockID 			= await this.calculateNextBlockID(note, newBlock.blockID);
+		blockSpace.transFormular 	= this.generateRandomNumberAsString(32);
+		blockSpace.transSalt 		= await this.generateKey(256);
+		blockSpace.nextBlockID 		= this.hashed( await this.calculateNextBlockID( note, blockSpace.blockID ), blockSpace.transSalt, blockSpace.transFormular );
+		blockSpace.formerBlockID 	= this.hashed( newBlock.blockID, blockSpace.transSalt, blockSpace.transFormular );
+		blockSpace.transValue 		= 0;
+		blockSpace.noteValue 		= note.noteValue;
+		blockSpace.exchangeNote 	= newBlock.exchangeNote;
+		blockSpace.noteServer 		= newBlock.noteServer;
+		blockSpace.transType 		= "BLOCKSPACE";
+		blockSpace.blockKey 		= await this.generateKey(10, true, true);
+		blockSpace.transTime 		= this.currentTime();
+		let id 						= this.generateKey(10);
+		
+		blockSpace.noteSign			= this.Sign( blockSpace.blockKey, blockSpace.transTime );		
+		
+		blockSpace.data = {
+			formerNoteHash: formerHash,
+			formerBlockHash: formerHashB
+		};
+		
+		ctx.blockSpace 				= blockSpace;
+		agreement.blockID 			= blockSpace.blockID;
+		agreement.nextBlockID 		= blockSpace.nextBlockID;
+		agreement.formerBlockID 	= blockSpace.formerBlockID;
+		agreement.blockKey 			= blockSpace.blockKey;
+		agreement.transFormular 	= blockSpace.transFormular;
+		agreement.transSalt			= blockSpace.transSalt;
+		agreement.referenceID		= newBlock.blockID;
+		
+		return ctx;		
+		
+	}
+	
+	static async #txUseRecieveKey(ctx){
+		
+		const { note, response, details } = ctx;
+		
+		if( this.recieveKey ){
+			let acc 	= await this.getAccountData();
+			
+			//some how some people may decide to create a transaction to a 
+			//note using the note's contacts like email, phone number.
+			//this type of transaction always come with a trans key which is 
+			//supplied to this function using the recieveKey handler.
+			//note that if you use the note's contact to mail them a 
+			//transaction, the contact should also be used to share this 
+			//key to avoid the transaction being listened to by unsolicited 
+			//people.
+			if( acc[ note.noteAddress ] ){
+				//first we test the note's email to see if the transaction
+				//was directed to the note's email.
+				let emails = acc[ note.noteAddress ].emails;
+				var id;
+				for( id = 0; id < emails.length; id++ ){
+					var string 	= emails[id] + this.recieveKey;
+					var string 	= this.hashed( string, response.transSalt, response.transFormular );
+					agreement 		= this.decrypt( details.recipient, this.hashed( string, response.transSalt, response.transFormular ) );
+					
+					if( this.isJsonable( agreement ) ) break;
+				}
+				
+				if( ! this.isJsonable( agreement ) ){
+					//if we couldn't find an email on the note to recieve the
+					//transaction we ceck the phones.
+					let phones = acc[ note.noteAddress ].phones;
+					var id;
+					for( id = 0; id < phones.length; id++ ){
+						var string 	= phones[id] + this.recieveKey;
+						var string		= this.hashed( string, response.transSalt, response.transFormular );
+						agreement 		= this.decrypt( details.recipient, this.hashed( string, response.transSalt, response.transFormular ) );
+						
+						if( this.isJsonable( agreement ) ) break;
+					}
+				}
+			} else {
+				await this.createAlert("we couldn't find any account data on your note, so you can't recieve funds using your personal contact details except you add them to your account. Please add them to your account and try again with this key: " + this.recieveKey );
+			}
+			delete this.recieveKey;
+		}
+				
+	}
+	
+	static async #txHandleRecieve(ctx){
+		const { note, newBlock, response, details } = ctx;
+		//this is the condition required to recieve a transaction in the Scriptbank block chain
+		if( response && ( this.#transRecieve.includes( details.transType ) || details.transType == "MERGE" ) && ( this.#transSend.includes( response.transType ) || response.transType == "SPLIT" ) ){
+			const isQualified = await this.#txCheckRecieve(ctx);
+			
+			if( ! isQualified ) return false;
+			
+			//console.log("running recieve transaction");
+				
+				//console.log("trans type: " + response.transType);
+				//await this.createAlert("check this " + response.blockID);
+							
+				
+				/* //a recieved transaction is not connected to a product details
+				if( newBlock.productID ){
+					delete newBlock.productID;
+				}
+				
+				//a recieved transaction is not connected to a budget details
+				if( newBlock.budgetID ){
+					delete newBlock.budgetID;
+				} */
+				
+				//the recipient must be the same as the response.
+				if( ! details.recipient || details.recipient != response.recipient )
+					details.recipient 		= response.recipient;
+				
+				//the first private key to use when recieving a transaction is the note secret.
+				/* if( noteSecret == note.noteSecret && !isNew && ! this.#isExchangeMarketMining ){
+					//await this.createAlert("isNew");
+					var string 	=	 transKey;
+					note.noteSecret = this.decrypt( noteSecret, this.hashed( string ) );
+				} */
+				//console.log( "secret: " + note.noteSecret );
+				//await this.createAlert( "check secret");
+				//first we use the note secret key to attempt to decrypt the AGREEMENT
+				//on the block.
+				var id 				= await this.generateKey(10);
+				await this.setPrivateKey( note.noteSecret, id );				
+				let agreement = await this.#decrypt( details.recipient, id );
+				//console.log( "decrypted agreement: ", agreement );
+				
+				ctx.agreement = agreement;
+				
+				if( ( details.transType == "VIEWADVERT" || details.transType == "PUBLISHADVERT" || details.transType == "CLICKADVERT" ) && response.transType == "ADVERT" && response.agreement && response.agreement.advertID ){
+					ctx = await this.#txHandleAdverts(ctx);
+					
+					if( ! ctx ) return false;
+					
+				}
+				
+				//if it was an INVEST RECIEVE transaction, the budget key makes more 
+				//sense.
+				if( details.transType == "INVESTRECIEVE" ){
+					
+					ctx = await this.#txHandleInvestRecieve(ctx);
+					
+					if( ! ctx ) return false;
+				}
+				
+				if( ctx && ctx.agreement ){
+					agreement = this.isJsonable( ctx.agreement ) ? ctx.agreement : JSON.stringify( ctx.agreement );
+				}
+				
+				/* //console.log("agreement: " + agreement );
+				await this.createAlert( "check agreement" ); */
+				
+				if( ! this.isJsonable( agreement ) ){
+					//await this.createAlert("Not jsonable" );
+					//sometimes a transaction may be ignited by the network through 
+					//the client's block key, we try to handle that here.
+					var id 					= await this.generateKey(10);
+					await this.setPrivateKey( note.blockKey, id );
+					agreement 	= this.decrypt( details.recipient, this.getPublicKey(id, true) );
+					
+					if( this.isJsonable( agreement ) && note.blockID != response.repBlockID ){
+						this.errorMessage("Recieve Transaction Aborted Because Sender Didn't Specify Your Note's Block as The Recipient Block");
+						return false;
+					}
+
+					
+					if( ! this.isJsonable( agreement ) && note.unfulfilled && note.unfulfilled[ response.repBlockID ] ){
+						var id 				= await this.generateKey(10);
+						await this.setPrivateKey( note.unfulfilled[ response.repBlockID ], id );
+						agreement 	= this.decrypt( details.recipient, this.getPublicKey(id,true) );
+						
+						if( this.isJsonable( agreement ) ){
+							delete note.unfulfilled[ response.repBlockID ];
+						} 
+					}
+
+					if( ! this.isJsonable(agreement ) && typeof this.#note.noteProducts == "object" && this.#note.noteProducts.length ){
+						for(const productKey in this.#note.noteProducts){
+							var id = await this.generateKey(10);
+							this.setPrivateKey(productKey, id);
+							agreement = await this.#decrypt(details.recipient, id);
+
+							if( this.isJsonable(agreement)){
+								//share the profit here
+								break;
+							}
+						}
+					}
+						
+					//return false;			
+				}
+				
+				this.#txUseRecieveKey(ctx);
+				this.#txUseKey(ctx);
+				
+				agreement = ctx.agreement;
+				
+				//configure the blockID in the details too.
+				if( ! details.blockID || response.blockID != details.blockID )
+					details.blockID 		= response.blockID;
+				
+				if( ! details.blockID )
+					return false;
+				
+				if( ! details.noteType || response.noteType != details.noteType )
+					details.noteType 		= response.noteType;
+				
+				
+				
+				let noteType 			= response.noteType || details.noteType;
+				
+				if( response.transType == "AGREEMENTSIGN" && response.agreement ){
+					let blockKey 		= note.unfulfilled[ response.agreement.agreeID ];
+					
+					if( ! blockKey ){
+						return false;
+					}
+					var id 				= await this.generateKey(10);
+					await this.setPrivateKey( blockKey, id );
+					agreement 			= this.decrypt( response.recipient, await this.getPublicKey( id,true ) );
+				}
+				let privateKey = false;
+				if( this.isJsonable( agreement ) && noteType == note.noteType ){
+					//await this.createAlert("Transaction Recieved");					
+					
+					//trying to extract private key from the agreement handler.
+					this.#storeConnectedBlock(response);
+					agreement 	= JSON.parse( agreement );
+					privateKey  = agreement.privateKey;
+					var id 				= await this.generateKey(10);
+					await this.setPrivateKey( privateKey, id );
+					let pubKey = await this.getPublicKey(id, true);
+					
+										
+					if( pubKey != response.blockRef && response.nextBlockID != "AUTOEXECUTE"){
+						this.errorMessage("This block is invalid!!! the reference key is not equal with key supplied! Your Recieved Block Reference: " + response.blockRef + ". Recieved Transaction Now Aborting!!!");
+						return false;
+					}
+					else if( response.nextBlockID == "AUTOEXECUTE" && details.agreement ){
+						privateKey 	= details.agreement.privateKey;
+						var id 				= await this.generateKey(10);
+						await this.setPrivateKey( privateKey, id );
+						this.pubKey 		= await this.getPublicKey(id,true);
+						
+						if( newBlock.agreements[ agreement.agreeID ] ){
+							delete newBlock.agreements[agreement.agreeID];
+						}
+						//block with the autoKey handler would be noted in the network to be an auto generated transaction.
+						 this.signTxt 		= response.signRef;
+						newBlock.autoKey	= await this.getPublicKey(id);
+						newBlock.blockRef	= response.blockRef;
+					}
+					delete agreement.privateKey;
+					//storing the agreement this way on the block makes it executable
+					//by any node in the network.
+					//the recipient note will not be able to recieve the block transaction
+					//more than once because the transaction will be referenced to the 
+					//current block, re recieving the funds means having two or more 
+					//blocks in the network having the same reference key, that will be
+					//invalid, so scriptbill default behaviour is to do away with the 
+					//first private key of the agreement to prevent the note from
+					//re recieving agreements again.
+					//we won't add the agreement back to the new block is it is autogenerated, except the agreement is
+					//period.
+					if( response.nextBlockID != "AUTOEXECUTE" || agreement.isPeriodic )
+						newBlock.agreements[agreement.agreeID] = newBlock.blockID;
+					
+					ctx.agreement 		= agreement;
+					
+					ctx = await this.#createTxBlockSpace(ctx);
+					
+					newBlock.agreement 	= agreement;
+					
+					//lastly, before we recieve the transaction block, we have to test if the recipient is ready to recive
+					//the transaction based on the connected agreement.
+					if( this.#transRecieve.includes( details.transType ) && response.nextBlockID != "AUTOEXECUTE" && ( response.transType != "CONFIRM" || response.transType != "AGREEMENTSIGN" || response.transType != "CANCELLED" || response.transType != "DEPOSIT" )
+						&& ! this.#isExchangeMarketMining ) {
+						//console.log("transtype: " + response.transType );
+						let conf = true;
+
+						if( ! response.productID ){
+						conf = await this.createConfirm('You are about recieving ' + details.transValue + ' and the details on the agreement: agreement value = ' + agreement.value + ';' + ( agreement.ExecTime ? ' the agreement will end in: ' + this.timeToString( agreement.ExecTime, true ) + '; You\'ll be given a grace of: ' + this.timeToString( parseInt( response.transTime ) - parseInt( agreement.ExecTime ) ) : '' ) + '; The Payment is ' + ( agreement.isPeriodic ? 'going to be periodic and the periodic times will be ' + agreement.times + ' with an interest rate of ' + parseFloat( agreement.interestRate ) * 100 + '% which will be calculated as a ' + agreement.interestType + ' interest and would be calculated every ' + agreement.interestSpread : 'not going to be periodic' ) +  '. Do you which to continue recieving Scriptbill transaction or click cancel to cancel the transaction? ' );
+						}
+						//console.log("continuing " + conf );
+							
+						if( ! conf ){ 
+							this.errorMessage( response.blockID + " Recieved Transaction Now Being Cancelled!!!");
+							//create a transaction block to cancel the transa
+							details.transType 	= "CANCELLED";
+							transType 			= "CANCELLED";
+							details.recipient 	= agreement.agreeKey;
+							details.transValue = response.transValue;
+							details.noteValue 	= note.noteValue;
+							details.noteType	= note.noteType;
+							details.agreement 	= agreement;
+							//adding the block reference to be sure.
+							details.agreement.privateKey = privateKey;
+							details.blockRef 	= response.blockRef;
+							return await this.generateScriptbillTransactionBlock(details, note, response );
+						} 
+
+						else if( noteType != note.noteType){
+							const exchangeConfig = {};
+							exchangeConfig.sellCredit = response.noteType;
+							exchangeConfig.buyCredit = note.noteType;
+							return this.exchangeCredits(response, exchangeConfig);
+						}
+					
+					} else if( response.transType == "AGREEMENTSIGN" && response.agreement ){
+						newBlock.transType = "AGREEMENTUPDATE";
+						newBlock.transValue = 0;
+						delete newBlock.agreements[ response.agreement.agreeID ];
+						var id 				= await this.generateKey(10);
+						await this.setPrivateKey( privateKey, id );
+						newBlock.signRef 	= await this.Sign(privateKey, response.signRef);
+						newBlock.blockRef 	= await this.getPublicKey(id, true);
+					} 
+					else if( response.transType == "CANCELLED" ){
+						newBlock.transType 	= "SEND";
+						newBlock.transValue 	= response.transValue;
+						//we deduct the value from the note without checking the note value.
+						note.noteValue 		= parseFloat( note.noteValue ) - parseFloat( response.transValue );
+						newBlock.recipient 	 = this.encrypt( JSON.stringify( agreement ), response.blockKey );
+						
+						delete newBlock.agreements[ agreement.agreeID ];
+					}
+					else if( response.transType == "CONFIRM" ){
+						return response;
+					}
+					
+					
+					
+				}
+				//now if the noteType that would recieve this transaction is not the same note type as 
+				else if(  this.isJsonable( agreement ) && noteType != note.noteType && ! this.#isExchangeMarketMining ){
+					
+					
+					let conf = await this.createConfirm('You are about recieving ' + details.transValue + ' with a Credit Type of: ' + details.noteType + '. To Recieve Scriptbill Credit you need to create a new Scriptbill Note of Scriptbill type. Do you Wish to Continue?' );
+						
+					if( ! conf && this.alertDetails ) {
+						let noteAdd = await this.createPrompt('Please enter the note Address to recieve Scriptbill credit. Cancel if you don\'t want to recieve Scriptbill credit or you want to exchange Scriptbill credit directly!!!',"");
+						
+						if( noteAdd  ){
+							details.recipient = noteAdd;
+							note.noteValue 	+= parseFloat( details.transValue );
+							let type 				= note.noteType;
+							note.noteType 	= noteType;
+							details.transType 	= "SEND";
+							transType 			= "SEND";
+							details.agreement 	= JSON.parse( agreement );
+							return await this.generateScriptbillTransactionBlock(details, note ).then( async dBlock =>{
+								note.noteType 	= type;
+								if( this.returnNote )
+									this.returnNote 	= JSON.parse( JSON.stringify( note ) );
+								
+								await this.saveNote( note );
+								
+								return dBlock;
+							});
+							
+						}
+						else {
+							if( ! response )
+								response = details;
+
+							const exchangeConfig = {};
+							exchangeConfig.sellCredit = response.noteType;
+							exchangeConfig.buyCredit = note.noteType;
+							
+							this.exchangeCredits(response, exchangeConfig);
+						}
+					
+					} else {
+						//save the current note ro preserve the note's information
+						//then create a new note th
+						
+						if( this.returnNote )
+							this.returnNote 		= JSON.parse( JSON.stringify( note ));
+						
+						await this.saveNote( note );
+						await this.download_note(note.noteAddress, false);
+						agreement 							= JSON.parse( agreement );
+						this.defaultBlock 					= JSON.parse( JSON.stringify( details ) );
+						this.defaultBlock.agreement 		= agreement;
+						this.defaultScriptbill.noteType 	= details.noteType;
+						this.defaultScriptbill.noteServer 	= details.noteServer;
+						this.defaultScriptbill.walletID		= note.walletID;
+						return await this.createNewScriptbillWallet().then(async block =>{
+							if(block && block.transType == "CREATE" && this.#note){	
+								details.recipient = this.#note.noteAddress;							
+								this.download_note(this.#note.noteAddress);		
+								this.#note 		= note;							
+								note.noteValue 	+= parseFloat( details.transValue );
+								note.noteType 	= noteType;
+								details.transType 	= "SEND";
+								transType 			= "SEND";
+								details.agreement 	= agreement;
+								return await this.generateScriptbillTransactionBlock(details, note ).then( async dBlock =>{
+																	
+									return dBlock;
+								});
+								
+							}
+						});
+					}
+				}
+				//else if the agreement was not properly decrypted, we check other possible private keys in the note.
+				else if( typeof agreement != "object" || ! this.isJsonable( agreement ) ) {
+					//await this.createAlert("Not Decrypted");
+					//before returning, we test other private keys that exists on Scriptbill note that can be used to send data to Scriptbill note.
+					//first test the note products, incase the note is selling a product.
+					let products = note.noteProducts;
+					if( typeof products == 'object' ){	
+						let x;
+						for( x = 0; x < products.length; x++ ){
+							privKey = products[x];
+							var id 				= await this.generateKey(10);
+							await this.setPrivateKey( privKey, id );
+							agreement = await this.#decrypt( details.recipient, id );
+							if( this.isJsonable( agreement ) ){
+								if( noteType != note.noteType ){
+									const exchangeConfig = {};
+									exchangeConfig.sellCredit = response.noteType;
+									exchangeConfig.buyCredit = note.noteType;
+									await this.exchangeCredits(response, exchangeConfig);
+									break;
+								}
+								agreement 	= JSON.parse( agreement );
+								privateKey = agreement.privateKey;
+								delete agreement.privateKey;
+								newBlock.agreement 					= JSON.parse( JSON.stringify( agreement ));
+								newBlock.agreements[ agreement.agreeID ] = newBlock.blockID;
+								this.#storeConnectedBlock(response);
+								break;
+							}
+						}					
+					}
+					//next we need to check the agreements the note has made whether it'this.s the transaction block offered in the details.
+					if( typeof note.agreements == 'object' ){
+						let x;
+						for( x = 0; x < note.agreements.length; x++ ){
+							privKey = note.agreements[x];
+							var id 				= await this.generateKey(10);
+							await this.setPrivateKey( privKey.key.split('----')[0], id );
+							agreement = await this.#decrypt( details.recipient, id );
+							if( this.isJsonable( agreement ) ){
+								if( noteType != note.noteType ){
+									const exchangeConfig = {};
+									exchangeConfig.sellCredit = response.noteType;
+									exchangeConfig.buyCredit = note.noteType;
+									await this.exchangeCredits(response, exchangeConfig);
+									break;
+								}
+								agreement = JSON.parse( agreement );
+								privateKey = agreement.privateKey;
+								delete agreement.privateKey;
+								delete note.agreement[x];
+								this.#storeConnectedBlock(response);
+								break;
+							}
+						}
+					}
+					
+					//the profit keys are added to the note whenever the note makes a payment for a product
+					//the profit keys will remain on the note as long as the block carrying the public key has 
+					//not expired
+					if( details.transType == 'PROFITRECIEVE' && response.transType == "PROFITSHARING" && note.profitKeys && typeof note.profitKeys == 'object' && note.profitKeys.length > 0 ){
+						this.signKey 		= false;
+						for( x = 0; x < note.profitKeys.length; x++ ){
+							privKey = note.profitKeys[x];
+							var id 				= await this.generateKey(10);
+							await this.setPrivateKey( privKey, id );
+							agreement = await this.#decrypt( details.recipient, id );
+							if( this.isJsonable( agreement ) ){
+								this.#storeConnectedBlock(response);
+								agreement = JSON.parse( agreement );
+								privateKey = agreement.privateKey;
+								delete agreement.privateKey;
+								break;
+							}
+						}
+						if( noteType != note.noteType && agreement && agreement.agreeID ){
+							this.errorMessage("Profit Credit Sent Didn't Match With Your Note's, Exchanging Credit Instead!");
+							const exchangeConfig = {};
+							exchangeConfig.sellCredit = response.noteType;
+							exchangeConfig.buyCredit = note.noteType;
+							return await this.exchangeCredits(response, exchangeConfig);		
+						}
+						
+						if( note.referee ){
+							let result = {};
+							let accd 	= await this.getAccountData();
+							result.loanValue = accd.loanValue;
+							newBlock.referer 	= this.encrypt( JSON.stringify( result ), note.referee );	
+						}
+					}			
+					
+				}
+				//console.log("continue recieving 2");
+				
+				//we can stop recieveing if the agreement was not propely decrypted.
+				if( typeof agreement != "object" || ! privateKey ){
+					newBlock = undefined;
+					return false;
+				}
+				//console.log("continue recieving 3");
+				//this point we are confidence the note is actually recieving the transaction block
+				//once the agreement is successfully decrypted, the note can now recieve the block convienently.
+				note.recievedBlockID = response.blockID;
+				note.recievedTime	  = response.transTime;
+					
+				newBlock.recievedIDs.push( response.blockID.slice(0, 5) );
+					
+				//the recieved id store can't take more than 10 kilobytes of data
+				if( newBlock.recievedIDs.length > 2000 ) {
+					newBlock.recievedIDs.splice( (newBlock.recievedIDs.length - 1), ( newBlock.recievedIDs.length - 2000 ) );
+				}
+				var id 				= await this.generateKey(10);
+				await this.setPrivateKey( privateKey, id );
+				
+				if( response.nextBlockID != "AUTOEXECUTE" ){
+					newBlock.blockRef 		 = await this.getPublicKey(id,true);
+					newBlock.signRef 		 = await this.Sign( privateKey, response.signRef);
+				}
+				
+				else { 
+					newBlock.blockRef 	= response.blockRef;
+					newBlock.autoKey	= await this.getPublicKey(id, true);
+				}
+				
+				if( details.productID || response.productID ){
+					details.origValue  = details.transValue;
+					
+					if( details.transType != "PROFITRECIEVE" ){
+						this.#shareValue 		= ( parseFloat( details.transValue ) * parseFloat( agreement.sharingRate ) );
+						newBlock.transValue = details.transValue;
+						
+						this.titheValue 		= this.#shareValue / 2;
+						this.#shareValue 		= this.#shareValue / 2;
+					} else if( response && response.transType == "PROFITSHARING" ) {
+						this.#shareValue 		= parseFloat( response.transValue ) / 2;
+						
+						if( this.#shareValue < 1 || ! response.nextRecipient ){
+							this.#shareValue 	= false;
+							details.transValue 	= response.transValue;
+						} else {
+							details.transValue 		= this.#shareValue;
+							if( response.nextRecipient ){
+								this.#productBlock 		= await this.getTransBlock(1, {productBlockID: response.nextRecipient});
+								
+								if( this.#productBlock.length && this.#productBlock[0].blockID ){
+									this.#productBlock 			= JSON.parse( JSON.stringify( this.#productBlock[0] ));
+									
+									if( response.agreement && response.agreement.payPeriod ){
+										let exTime 					= this.calculateTime( response.agreement.payPeriod );
+										
+										if( isNaN( exTime ))
+											exTime 					= this.calculateTime( "2 weeks" );
+										
+										let curTime 				= this.currentTime();
+										
+										if( ( parseFloat( response.transTime ) + parseInt( exTime ) < curTime ) ){
+											//this shows the block has expired and not recieving profits again from this business.
+											this.#productBlock 		= false;
+										}
+									}
+								} else {
+									this.#productBlock 			= false;						
+								}
+								
+								if( ! this.#productBlock ){
+									details.transValue 		= response.transValue;
+									this.#shareValue 		= false;
+								}
+							}
+						
+														
+						}
+						newBlock.transValue 	= details.transValue;
+					}
+				}
+				
+				//console.log("continue recieving 5");
+				newBlock.referenceID 	= response.blockID;
+				newBlock.referenceKey 	= agreement.agreeID;
+				details.note 			= response.transNote;
+				
+				if( details.transType != 'STOCKRECIEVE' || details.transType != 'BONDRECIEVE' ){
+					//console.log("continue recieving adding value to note");
+					note.noteValue 		= parseFloat( note.noteValue ) + parseFloat( details.transValue );
+					newBlock.transType 	= details.transType;
+						
+					/* if( newBlock.agreements && Object.keys( newBlock.agreements ).length > 0 ) {
+						//transaction closed.
+						delete newBlock.agreement[ agreement.agreeID ];
+					} */
+						
+					 
+					if( response.transType == "DEPOSIT" )
+						newBlock.transType = "CONFIRM";
+						
+					//signing the agreement.
+					/*  this.signTxt 			= newBlock.blockID;
+					agreement.recieverSign	= await this.Sign();
+					agreement.recieverID	=  this.signTxt;
+					agreement.recieverKey	= await this.getPublicKey(true); */
+						
+					if( ! newBlock.agreements ||  typeof newBlock.agreements != "object" )
+					newBlock.agreements = {};
+						
+					//configuring the new block
+					newBlock.agreement 						= JSON.parse( JSON.stringify( agreement ));
+					newBlock.agreements[agreement.agreeID] = newBlock.blockID;
+					newBlock.transValue 	= details.transValue;
+					newBlock.noteType 		= note.noteType;
+					/* newBlock.recipient 	= this.#encrypt( JSON.stringify( agreement ), id );/*CHECKOUT**/				
+					
+				}
+				else {
+					//configuring the default stock note for the User.
+					this.defaultScriptbill.walletID		= note.walletID;
+					this.defaultScriptbill.stockKey 	= agreement.transKey;
+					this.defaultScriptbill.noteValue	= agreement.stock;
+					this.defaultScriptbill.transValue	= agreement.pay;
+					this.defaultScriptbill.noteType 	= agreement.stockID;
+					this.defaultScriptbill.motherKey 	= note.noteAddress;
+					let dnote 							= note;
+					
+					if( details.budgetProducts && details.budgetProducts.length > 0 )					
+						this.defaultScriptbill.stockProducts = details.budgetProducts;
+					
+					return await this.createNewScriptbillWallet().then( dBlock => {
+						return this.setCurrentNote( note ).then(set => dBlock );
+					});
+										
+				}						
+				
+			}
+
+			else if(details.transType == "EXCHANGE"){
+				if(response.noteType == note.noteType){
+					//this means the note is sending the credit so we get the credit from the note
+					note.noteValue		-= parseFloat(details.transValue);
+				} else {
+					note.noteValue		+= parseFloat(details.transValue);
+				}
+
+				newBlock.transValue  =details.transValue;
+				newBlock.transType 		= "EXCHANGE";
+
+				newBlock.agreement 	= await this.createAgreement("", newBlock, true );//the withdrawer must have set his agreement on this handler. 
+					
+				if( ( ! note.agreements || typeof note.agreements != "object" ) && ! this.#isExchangeDeposit )
+					note.agreements = [];
+				
+				//we will save the key according to the depositors request
+				//this will help Scriptbank attend to depositors according 
+				//to their request. If the transaction is an auto confirmed
+				//transaction, the note will run the agreement sign transaction
+				//automatically.
+									
+				note.agreements.push( {agreeID: newBlock.agreement.agreeID, key: newBlock.agreement.privateKey, signKey: newBlock.agreement.senderSignKey });
+				
+				if( newBlock.isExchangeMarketMining ){
+					newBlock.exchangeNote.agreement = newBlock.agreement.privateKey;
+				}
+				
+				delete newBlock.agreement.privateKey;
+				delete newBlock.agreement.senderSignKey;
+
+				if(! response || response.transType != "EXCHANGE" || ! response.agreement || ! response.agreement.privateKey ){
+					newBlock.agreement.value 		= parseFloat( details.transValue );
+					newBlock.agreement.privateKey 	= await this.generateKey(30, true, true );
+					var id 							= await this.generateKey(10);
+					await this.setPrivateKey( newBlock.agreement.privateKey, id );			
+					
+					newBlock.blockRef 			= await this.getPublicKey(id,true);
+					newBlock.signRef 			= await this.generateKey(20);
+				} else {
+					newBlock.agreement.value 		= parseFloat( details.transValue );
+					newBlock.agreement.privateKey 	= response.agreement.privateKey
+					var id 							= await this.generateKey(10);
+					await this.setPrivateKey( newBlock.agreement.privateKey, id );			
+					
+					newBlock.blockRef 			= await this.getPublicKey(id,true);
+					newBlock.signRef 			= await this.generateKey(20);
+				}
+
+				newBlock.buyCredit = details.buyMarket.noteType;
+				newBlock.buyExchangeNote = JSON.parse(JSON.stringify(details.buyMarket));
+				newBlock.exchangeNote 	= JSON.parse(JSON.stringify(details.sellMarket));
+				newBlock.exchangeNote.noteValue -= parseFloat(details.transValue);
+				newBlock.buyExchangeNote.noteValue += parseFloat(details.transValue);
+		}
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// LOAN
+	// Faithful port of the legacy `details.transType == "LOAN"` branch inside
+	// the UPDATE tree.
+	//
+	// Behaviour:
+	//   1. note.noteValue += details.transValue
+	//   2. Attach an exchange note (from getCurrentExchangeNote)
+	//   3. Eligibility check via calculateLoanEligibility() — bails if the
+	//      exchange market can't mine the requested value.
+	//   4. Create an agreement with agreeType = "LOAN", receiver signature.
+	//   5. Update this.account.loanValue and note.accountData.loanValue.
+	//   6. Update the exchange note's demandValue / exchangeValue / loanValue.
+	//
+	// Requires: note.noteType (must be a CRD), currentNote (exchange note),
+	//           details.transValue.
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleUpdateLoan(ctx) {
+		const { note, details, currentNote, formerBlock } = ctx;
+
+		if (!note || !note.noteType || !await this.testNoteType("CRD", note)) {
+			this.errorMessage("LOAN requires a credit note (CRD).");
+			return { handled: false, reason: "LOAN:not-credit-note" };
+		}
+
+		if (!details.transValue || parseFloat(details.transValue) <= 0) {
+			this.errorMessage("LOAN requires a positive transValue.");
+			return { handled: false, reason: "LOAN:bad-value" };
+		}
+
+		// ── Step 1: note.noteValue += details.transValue ──
+		note.noteValue = parseFloat(note.noteValue) + parseFloat(details.transValue);
+
+		// ── Step 2: attach the current exchange note ──
+		const exNote = await this.getCurrentExchangeNote(note.noteType);
+
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "LOAN";
+		building.transValue = details.transValue;
+
+		if (exNote && exNote.exchangeID && exNote.noteType === note.noteType) {
+			building.exchangeNote = JSON.parse(JSON.stringify(exNote));
+		}
+
+		if (!building.exchangeNote || !building.exchangeNote.exchangeID) {
+			this.errorMessage("No exchange note attached to LOAN.");
+			return { handled: false, reason: "LOAN:no-exchange-note" };
+		}
+
+		// ── Step 3: eligibility check ──
+		const demandValue   = parseFloat(building.exchangeNote.demandValue  || 0);
+		const exchangeValue = parseFloat(building.exchangeNote.exchangeValue || 0);
+		const enoteValue    = parseFloat(building.exchangeNote.noteValue     || 0);
+		const totalMinable  = await this.calculateLoanEligibility();
+
+		if (
+			totalMinable < parseFloat(details.transValue) &&
+			exchangeValue < parseFloat(details.transValue)
+		) {
+			this.errorMessage(
+				"The exchange market for this credit " + note.noteType +
+				" is not able to give out loans at the moment. " +
+				"Create more deposits to enable mining."
+			);
+			return { handled: false, reason: "LOAN:ineligible" };
+		}
+
+		// ── Step 4: create the LOAN agreement ──
+		// Legacy:
+		//   newBlock.agreement = details.agreement
+		//     || await this.createAgreement("", newBlock, true)
+		//   newBlock.agreement.value        = details.transValue
+		//   newBlock.agreement.recieverID   = newBlock.blockID
+		//   newBlock.agreement.recieverSign = Sign(privKey, newBlock.blockID)
+		//   newBlock.agreement.recieverKey  = getPublicKey(id, true)
+		//   newBlock.agreement.agreeType    = "LOAN"
+		//   newBlock.agreement.payTime      = calculateTime(payPeriod)
+		//
+		let agreement;
+		if (details.agreement && details.agreement.agreeID) {
+			agreement = JSON.parse(JSON.stringify(details.agreement));
+		} else {
+			agreement = await this.createAgreement("", building, true);
+		}
+
+		// Preserve legacy's agreement-value overwrite.
+		agreement.value = parseFloat(details.transValue);
+
+		// Receiver key/sign — the note's blockKey signs this.
+		// Legacy uses a fresh key `privKey`, but the note.blockKey is what
+		// ends up signing the receiving side elsewhere; mirror that:
+		//  * recieverSign = Sign(privKey, newBlock.blockID)
+		//  * recieverKey  = getPublicKey(id, true)   where id -> privKey
+		const privKey = await this.generateKey(40, true, true);
+		const id = await this.generateKey(10);
+		await this.setPrivateKey(privKey, id);
+		agreement.recieverSign = await this.Sign(privKey, building.blockID || "");
+		agreement.recieverID   = building.blockID || "";
+		agreement.recieverKey  = await this.getPublicKey(id, true);
+		agreement.agreeType    = "LOAN";
+
+		// payTime/payPeriod defaults — legacy uses 1 day if the agreement
+		// doesn't already provide a valid one.
+		let payTime = this.calculateTime(agreement.payPeriod || "");
+		if (!payTime || payTime < 86400000) {
+			agreement.payPeriod = "1 Days";
+			payTime            = this.calculateTime(agreement.payPeriod);
+			agreement.times    = 365;
+		}
+		agreement.payTime = payTime;
+
+		// Save the LOAN agreement private key on the note so payInterest
+		// can find it later.
+		if (!note.agreements || typeof note.agreements !== "object") {
+			note.agreements = [];
+		}
+		note.agreements.push({
+			agreeID: agreement.agreeID,
+			key:     agreement.privateKey,
+			signKey: privKey,
+		});
+		delete agreement.privateKey;
+		// Also need recieverSignKey so #txFinalize can sign recieverSign against
+		// the blockID. Set via __postSign, which signs with privKey.
+		building.__postSign = {
+			field: "agreement.recieverSign",
+			key: privKey,
+			text: "__blockID",
+		};
+		// legacy's receiverID is the blockID
+		building.__fixAgreementRecieverID = { agreeID: agreement.agreeID };
+		building.agreement = agreement;
+		building.agreements[agreement.agreeID] = building.blockID || "";
+
+		// ── Step 5: update this.account.loanValue ──
+		this.account = await this.getAccountData() || {};
+		if (!this.account.loanValue) this.account.loanValue = 0;
+
+		if (
+			(this.account.loanID && this.account.loanID != "v/ylMo3bvINarUq89+AZBg==") ||
+			(note.accountData && note.accountData.loanID)
+		) {
+			this.blockID = this.account.loanID || note.accountData.loanID;
+			const loanBlock = await this.getTransBlock();
+			const lb = loanBlock[0];
+			if (lb && lb.loanValue) {
+				this.account.loanValue = lb.loanValue;
+			} else {
+				this.errorMessage("Fraudulent Loan Account Detected");
+				return { handled: false, reason: "LOAN:fraudulent-account" };
+			}
+		}
+
+		this.account.loanValue = parseFloat(this.account.loanValue) + parseFloat(details.transValue);
+		this.account.loanID    = building.blockID || "";
+		building.loanValue     = this.account.loanValue;
+
+		if (!note.accountData) note.accountData = {};
+		note.accountData.loanID    = this.account.loanID;
+		note.accountData.loanValue = building.loanValue;
+
+		const trivKey = this.hashed(note.walletID);
+		localStorage[trivKey] = JSON.stringify(this.account);
+
+		if (!note.loanValue) note.loanValue = 0;
+		note.loanValue = parseFloat(note.loanValue) + parseFloat(details.transValue);
+
+		// ── Step 6: exchange note demand/exchange accounting ──
+		if (building.exchangeNote.exchangeValue >= details.transValue) {
+			building.exchangeNote.exchangeValue =
+				parseFloat(building.exchangeNote.exchangeValue) - parseFloat(details.transValue);
+		} else {
+			building.exchangeNote.demandValue =
+				parseFloat(building.exchangeNote.demandValue || 0) + parseFloat(details.transValue);
+		}
+
+		if (!building.exchangeNote.loanValue) building.exchangeNote.loanValue = 0;
+		building.exchangeNote.loanValue =
+			parseFloat(building.exchangeNote.loanValue) + parseFloat(details.transValue);
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// CANCELITEM
+	// Faithful port of the legacy `details.transType == "CANCELITEM"` branch
+	// inside the "ADDITEM || CANCELITEM || UPDATEITEM || UPDATEBUDGET" tree.
+	//
+	// Legacy behaviour:
+	//   1. If no details.itemID, or the item isn't in budget.budgetItems →
+	//      errorMessage + return false (NO morph — unlike UPDATEITEM).
+	//   2. Load the item's block. If not found or it has no agreement.item →
+	//      errorMessage + return false (NO morph).
+	//   3. Otherwise:
+	//        - splice the item block ID out of budget.budgetItems
+	//        - budget.value -= item.itemValue
+	//        - newBlock.referenceID  = item.itemID
+	//        - newBlock.referenceKey = budget.budgetID
+	//        - delete budget.item
+	//        - attach `budget` as the block's agreement
+	//        - sign with budgetKey / #budgetSecret
+	//
+	// Requires: this.#budgetSecret, note.noteBudgets includes it,
+	//           details.itemID, details.agreement, and the item's block
+	//           exists in local storage / network.
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleCancelItem(ctx) {
+		const { note, details, formerBlock } = ctx;
+
+		// ── Ownership guard (same as legacy) ──
+		if (!note.noteBudgets || !note.noteBudgets.includes(this.#budgetSecret)) {
+			this.errorMessage("Budget note found on note, Please check the budget ID supplied and try again");
+			return { handled: false, reason: "CANCELITEM:not-owner" };
+		}
+
+		// ── Load the current budget ──
+		const id = await this.generateKey(10);
+		await this.setPrivateKey(this.#budgetSecret, id);
+		let budgetBlock = await this.getCurrentBudgetBlock(await this.getPublicKey(id));
+
+		if (!budgetBlock || !budgetBlock.agreement) {
+			// Same fallback as ADDITEM / UPDATEITEM: try the `true` public key.
+			budgetBlock = await this.getCurrentBudgetBlock(await this.getPublicKey(id, true));
+			if (!budgetBlock || !budgetBlock.agreement) {
+				this.errorMessage("No Budget found associated with this item");
+				return { handled: false, reason: "CANCELITEM:no-budget" };
+			}
+		}
+
+		// ── Snapshot the budget we will mutate ──
+		const budget = JSON.parse(JSON.stringify(budgetBlock.agreement));
+		if (!budget.budgetItems || typeof budget.budgetItems !== "object") {
+			budget.budgetItems = [];
+		}
+
+		// ── Guard #1: item must exist in the budget's items list ──
+		// Legacy:
+		//   if (!details.itemID || !budget.budgetItems[budget.budgetItems.indexOf(details.itemID)]) {
+		//       this.errorMessage("No Budget Item to remove from the budget.");
+		//       return false;
+		//   }
+		if (!details.itemID || budget.budgetItems.indexOf(details.itemID) === -1) {
+			this.errorMessage("No Budget Item to remove from the budget.");
+			return { handled: false, reason: "CANCELITEM:not-in-budget" };
+		}
+
+		// ── Guard #2: the item's block must exist and have an agreement.item ──
+		// Legacy:
+		//   this.blockID = details.itemID;
+		//   let agreeBlock = await this.getTransBlock();
+		//   if (!agreeBlock.length || !agreeBlock[0].blockID || !agreeBlock[0].agreement || !agreeBlock[0].agreement.item) {
+		//       this.errorMessage("We couldn't find an agreement block connected to this item");
+		//       return false;
+		//   }
+		this.blockID = details.itemID;
+		const agreeBlock = await this.getTransBlock(1);
+		if (
+			!agreeBlock.length ||
+			!agreeBlock[0].blockID ||
+			!agreeBlock[0].agreement ||
+			!agreeBlock[0].agreement.item
+		) {
+			this.errorMessage("We couldn't find an agreement block connected to this item");
+			return { handled: false, reason: "CANCELITEM:no-item-block" };
+		}
+
+		const item = JSON.parse(JSON.stringify(agreeBlock[0].agreement.item));
+
+		// ── Real cancel: mutate the budget ──
+		const idx = budget.budgetItems.indexOf(details.itemID);
+		budget.budgetItems.splice(idx, 1);
+		budget.value = parseFloat(budget.value) - parseFloat(item.itemValue);
+
+		// Build the block.
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType    = "CANCELITEM";
+		building.agreement    = budget;
+		building.transValue   = 0;                  // legacy sets this to 0 for CANCELITEM
+		building.referenceID  = item.itemID;
+		building.referenceKey = budget.budgetID;
+
+		// Note: legacy `delete budget.item` after the splice. `budget` is the
+		// agreement attached to the building block, so this is what we delete.
+		// It removes the old item reference from the new block's agreement so
+		// the network doesn't think the cancelled item is still active.
+		delete building.agreement.item;
+
+		// ── Sign the budget block ──
+		// Legacy uses the same rule as ADDITEM / UPDATEITEM:
+		//   business budget held by this note → note.budgetKey
+		//   otherwise                        → #budgetSecret
+		const signKey = (note.budgetKey && budget.budgetType === "business")
+			? note.budgetKey
+			: this.#budgetSecret;
+		const sid = await this.generateKey(10);
+		await this.setPrivateKey(signKey, sid);
+		building.budgetKey  = await this.getPublicKey(sid, true);
+		building.__postSign = {
+			field: "budgetSign",
+			key: signKey,
+			text: "__blockID",
+		};
+
+		// No __fixBudgetItems — CANCELITEM doesn't patch the array, it removes an entry.
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// UPDATEITEM
+	// Faithful port of the legacy `details.transType == "UPDATEITEM"` branch
+	// inside the "ADDITEM || CANCELITEM || UPDATEITEM || UPDATEBUDGET" tree.
+	//
+	// The legacy branch has THREE effective outcomes:
+	//   1. Real update: item exists in budgetItems AND its referenceID matches
+	//      details.agreement.itemID → a true UPDATEITEM block.
+	//   2. Fallback: item missing OR referenceID mismatch → mutates details to
+	//      ADDITEM inside the same iteration, producing an ADDITEM-shaped block
+	//      with the budget's items list appended (not replaced).
+	//   3. Bail: no agreement / no budget → error + handled:false (legacy).
+	//
+	// All three are reproduced below. The fallback must NOT route to
+	// #txHandleAddItem — the legacy code path produces a different sequence of
+	// budget item operations when it does this inline. We reproduce it inline.
+	//
+	// Requires: this.#budgetSecret, note.noteBudgets includes it,
+	//           details.agreement, and (for the real-update path)
+	//           details.itemID / details.agreement.itemID.
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleUpdateItem(ctx) {
+		const { note, details, formerBlock } = ctx;
+
+		// ── Ownership guard (same as legacy) ──
+		if (!note.noteBudgets || !note.noteBudgets.includes(this.#budgetSecret)) {
+			this.errorMessage("Budget note found on note, Please check the budget ID supplied and try again");
+			return { handled: false, reason: "UPDATEITEM:not-owner" };
+		}
+
+		// ── Load the current budget ──
+		const id = await this.generateKey(10);
+		await this.setPrivateKey(this.#budgetSecret, id);
+		let budgetBlock = await this.getCurrentBudgetBlock(await this.getPublicKey(id));
+
+		if (!budgetBlock || !budgetBlock.agreement) {
+			// Legacy's UPDATEBUDGET path also falls back to the "true" public key
+			// when the plain key misses — mirror that.
+			budgetBlock = await this.getCurrentBudgetBlock(await this.getPublicKey(id, true));
+			if (!budgetBlock || !budgetBlock.agreement) {
+				this.errorMessage("No Budget found associated with this item");
+				return { handled: false, reason: "UPDATEITEM:no-budget" };
+			}
+		}
+
+		// ── Snapshot the budget we will mutate ──
+		const budget = JSON.parse(JSON.stringify(budgetBlock.agreement));
+		if (!budget.budgetItems || typeof budget.budgetItems !== "object") {
+			budget.budgetItems = [];
+		}
+
+		// Normalize `details.agreement` if the caller didn't fully configure it.
+		// Legacy didn't have an explicit normalize here for UPDATEITEM — it
+		// relied on `this.defaultItem` being pre-set when `details.agreement`
+		// was incomplete. Preserve that contract.
+		if (
+			!details.agreement ||
+			!details.agreement.itemName ||
+			!details.agreement.itemValue ||
+			!details.agreement.itemProduct ||
+			!details.agreement.itemID
+		) {
+			details.agreement = JSON.parse(JSON.stringify(this.defaultItem));
+		}
+
+		// ── Determine which of the three outcomes this is ──
+		//
+		// Legacy:
+		//   if (!details.itemID || !budget.budgetItems[budget.budgetItems.indexOf(details.itemID)]) {
+		//       → fallback (ADDITEM)
+		//   } else {
+		//       load the item's block; if referenceID != details.agreement.itemID → fallback (ADDITEM)
+		//       else → real update
+		//   }
+		//
+		const itemExists =
+			details.itemID &&
+			budget.budgetItems &&
+			budget.budgetItems.indexOf(details.itemID) !== -1;
+
+		let isUpdate = false;
+		let added   = 0;   // amount by which budget.value changes
+		let budgetItemsOp = "push";  // "push" | "replace-at"
+
+		if (!itemExists) {
+			// ── Fallback #1: item ID not found in budgetItems ──
+			this.errorMessage("No Budget Items to Update, adding the item instead.");
+			// Legacy pushes the (yet-to-be-finalized) block ID into the array.
+			// We don't know the final blockID yet, so we reserve a slot and let
+			// #txFinalize fill it in via __fixBudgetItems (same hook as ADDITEM).
+			budget.budgetItems.push("__PLACEHOLDER__");
+			budget.value = parseFloat(budget.value) + parseFloat(details.agreement.itemValue);
+
+			// New block transType becomes ADDITEM (legacy reassigns details.transType).
+			details.transType = "ADDITEM";
+			isUpdate = false;
+			added = parseFloat(details.agreement.itemValue);
+			budgetItemsOp = "push";
+		} else {
+			// ── Load the item's existing block ──
+			const blk = await this.getTransBlock(1, { blockID: details.itemID });
+			const formerItem =
+				blk.length && blk[0].agreement && blk[0].agreement.item
+					? JSON.parse(JSON.stringify(blk[0].agreement.item))
+					: null;
+
+			if (!formerItem) {
+				// Legacy fallback when the block can't be found OR doesn't have
+				// the expected structure. Same outcome as Fallback #1.
+				this.errorMessage("No Budget Items to Update, adding the item instead.");
+				budget.budgetItems.push("__PLACEHOLDER__");
+				budget.value = parseFloat(budget.value) + parseFloat(details.agreement.itemValue);
+
+				details.transType = "ADDITEM";
+				isUpdate = false;
+				added = parseFloat(details.agreement.itemValue);
+				budgetItemsOp = "push";
+			} else if (blk[0].referenceID !== details.agreement.itemID) {
+				// ── Fallback #2: referenceID mismatch ──
+				this.errorMessage(
+					"Reference ID Did not match supposed former Item ID, transaction woukd be regarded " +
+					"as an Add Item instead of update. If you think this is an error, simply run the " +
+					"remove item transaction to remove the item from the budget."
+				);
+				budget.budgetItems.push("__PLACEHOLDER__");
+				// Legacy: added = itemValue (the *new* value), not the delta.
+				budget.value = parseFloat(budget.value) + parseFloat(details.agreement.itemValue);
+
+				details.transType = "ADDITEM";
+				isUpdate = false;
+				added = parseFloat(details.agreement.itemValue);
+				budgetItemsOp = "push";
+			} else {
+				// ── Real update ──
+				// Legacy: added = newItemValue - formerItemValue
+				added = parseFloat(details.agreement.itemValue) - parseFloat(formerItem.itemValue);
+				budget.value = parseFloat(budget.value) + parseFloat(added);
+				// Replace the item ID in place (block ID stays the same because
+				// we keep the same referenceID / itemID; only the budget item
+				// entry's block reference changes to the new block).
+				const idx = budget.budgetItems.indexOf(details.itemID);
+				budget.budgetItems[idx] = "__PLACEHOLDER__";
+				isUpdate = true;
+				budgetItemsOp = "replace-at";
+			}
+		}
+
+		// ── Attach the new item agreement ──
+		budget.item = JSON.parse(JSON.stringify(details.agreement));
+
+		// ── Build the block ──
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType    = isUpdate ? "UPDATEITEM" : "ADDITEM";
+		building.agreement    = budget;
+		building.transValue   = details.agreement.itemValue;
+		building.referenceID  = budget.item.itemID;
+		building.referenceKey = budget.budgetID;
+
+		// ── Sign the budget block ──
+		// Legacy signs with note.budgetKey when the budget is a business budget
+		// held by this note, otherwise with this.#budgetSecret. The
+		// business/personal distinction in legacy is `isBusiness` — a boolean
+		// set when the primary budget lookup succeeded AND the budget came
+		// from the note's own budgetID. For simplicity and correctness of the
+		// signing fingerprint, we mirror the same choice.
+		//
+		// In practice the note's budgetKey exists only for business budgets,
+		// and legacy uses note.budgetKey when present, falling back to
+		// #budgetSecret otherwise. Same rule applies here.
+		const signKey = (note.budgetKey && budget.budgetType === "business")
+			? note.budgetKey
+			: this.#budgetSecret;
+		const sid = await this.generateKey(10);
+		await this.setPrivateKey(signKey, sid);
+		building.budgetKey  = await this.getPublicKey(sid, true);
+		building.__postSign = {
+			field: "budgetSign",
+			key: signKey,
+			text: "__blockID",
+		};
+
+		// ── Defer the block ID fixup for budgetItems ──
+		// The placeholder at index N must become the *final* blockID, which we
+		// only know after #txFinalize computes it. Mark which index to patch.
+		let placeholderIndex = budget.budgetItems.length - 1;
+		if (budgetItemsOp === "replace-at") {
+			// Find the placeholder we placed earlier (its position is the same
+			// slot the old item occupied; the length didn't change).
+			placeholderIndex = budget.budgetItems.indexOf("__PLACEHOLDER__");
+		}
+		building.__fixBudgetItems = { budgetIndexInItems: placeholderIndex };
+
+		return { handled: true, block: building };
+	}
+	
+	static async #txHandleUpdateInterestPay(ctx) {
+		// The update-path INTERESTPAY is the same logic as the send-path
+		// INTERESTPAY — the exchange note is the receiver and the loan is
+		// decremented. Delegate to the shared implementation.
+		return this.#txHandleInterestPay(ctx);
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// INTERESTPAY (send-path)
+	// Faithful port of the `details.transType == "INTERESTPAY"` branch inside
+	// the send tree.
+	//
+	// Behaviour:
+	//   1. Look up the agreement referenced by details.agreement.agreeID on the
+	//      note's block. If not found, bail.
+	//   2. Use accountData.loanValue (verified against loanBlock.loanValue).
+	//   3. Create a fresh key pair on the exchange note; agreeID becomes the
+	//      public key. Send to it.
+	//   4. Decrease accountData.loanValue by details.transValue; set loanID
+	//      to the new block.
+	//   5. Set agreement.payTime = currentTime + payPeriod.
+	//   6. newBlock.agreements[agreeID] = newBlock.blockID.
+	//   7. currentNote.exchangeValue += details.transValue.
+	//   8. newBlock.exchangeNote = currentNote.
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleInterestPay(ctx) {
+		const { note, details, currentNote, formerBlock } = ctx;
+
+		// ── Step 1: find the agreement on the note's block ──
+		const agrees = await this.getNoteAgreements();
+		if (!agrees || !Object.keys(agrees).includes(details.agreement.agreeID)) {
+			this.errorMessage(
+				"Agreement Not Found on Note's Block: " + (note.blockID || "") +
+				", Agreement ID: " + details.agreement.agreeID
+			);
+			return { handled: false, reason: "INTERESTPAY:agreement-not-found" };
+		}
+		const agreement = JSON.parse(JSON.stringify(details.agreement));
+
+		// ── Step 2: reconcile accountData.loanValue from the loan block ──
+		const accountData = await this.getAccountData() || {};
+		if (accountData.loanID) {
+			const tranBlock = await this.getTransBlock(1, { blockID: accountData.loanID });
+			const tb = tranBlock[0];
+			if (tb && tb.loanValue) {
+				accountData.loanValue = tb.loanValue;
+			}
+		}
+		if (!accountData.loanValue) accountData.loanValue = 0;
+
+		// ── Step 3: create a fresh exchange-note agreement key ──
+		// Legacy uses `currentNote.agreement` (a fresh key pair) so the
+		// exchange note can decrypt the incoming receive. The agreeID becomes
+		// the exchange-note public key.
+		const newExchangeAgreementKey = await this.generateKey(10, true, true);
+		const eid = await this.generateKey(10);
+		await this.setPrivateKey(newExchangeAgreementKey, eid);
+		const exchangeAgreementPub = await this.getPublicKey(eid, true);
+
+		if (!currentNote) {
+			this.errorMessage("No exchange note to receive interest.");
+			return { handled: false, reason: "INTERESTPAY:no-exchange-note" };
+		}
+		currentNote.agreement = exchangeAgreementKey;
+
+		// ── Build the block ──
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "INTERESTPAY";
+		building.transValue = details.transValue;
+
+		// Delete any prior agreement entry — legacy did the same before
+		// adding the new one.
+		if (building.agreements && building.agreements[agreement.agreeID]) {
+			delete building.agreements[agreement.agreeID];
+		}
+
+		// ── Step 4: change agreeID to the exchange-note key ──
+		agreement.agreeID = exchangeAgreementPub;
+		details.recipient = agreement.agreeID;
+
+		// ── Step 5: update loanValue, loanID ──
+		accountData.loanValue = parseFloat(accountData.loanValue) - parseFloat(details.transValue);
+		note.loanValue = accountData.loanValue;
+		accountData.loanID = building.blockID || "";
+		building.loanValue = parseFloat(accountData.loanValue).toFixed(2);
+		note.accountData = accountData;
+
+		// ── Step 6: recompute payTime ──
+		const period = agreement.payPeriod && agreement.payPeriod.length &&
+					   agreement.payPeriod.lastIndexOf("s") === agreement.payPeriod.length - 1
+			? agreement.payPeriod
+			: "1 weeks";
+		agreement.payTime = parseInt(this.currentTime()) +
+							parseInt(this.calculateTime(period));
+
+		// ── Step 7: attach the agreement ──
+		building.agreement = JSON.parse(JSON.stringify(agreement));
+		building.agreements[agreement.agreeID] = building.blockID || "";
+
+		// ── Step 8: exchange value top-up ──
+		if (!currentNote.exchangeValue) currentNote.exchangeValue = 0;
+		currentNote.exchangeValue = parseFloat(currentNote.exchangeValue) + parseFloat(details.transValue);
+
+		// If the exchange note is fiat-based, enforce the mother keys.
+		const motherKeys = await this.#generateMotherKeys();
+		const testType   = note.noteType.slice(0, note.noteType.lastIndexOf("CRD"));
+		if (motherKeys.noteAddresses[testType] &&
+			currentNote.exchangeKey &&
+			currentNote.exchangeKey !== motherKeys.noteAddresses[testType]) {
+			const mid = await this.generateKey(10);
+			await this.setPrivateKey(motherKeys.noteAddresses[testType], mid);
+			currentNote.exchangeID   = await this.getPublicKey(mid);
+			currentNote.exchangeKey  = await this.getPrivateKey(mid);
+			const bid = await this.generateKey(10);
+			await this.setPrivateKey(motherKeys.budgetIDS[testType], bid);
+			currentNote.budgetID     = await this.getPublicKey(bid);
+		}
+
+		// ── Step 9: attach the updated exchange note ──
+		building.exchangeNote = JSON.parse(JSON.stringify(currentNote));
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// CANCELLED
+	// Faithful port of the cancel branch of the
+	// `details.transType == "AGREEMENTSIGN" || details.transType == "CANCELLED"`
+	// block.
+	//
+	// Behaviour:
+	//   1. Find the agreement in note.agreements.
+	//   2. Sign the sender with note.unfulfilled[senderID].
+	//   3. Remove the agreement from note.agreements.
+	//   4. Set building.transValue = agreement.value.
+	//   5. Encrypt the agreement for the sender.
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleCancelled(ctx) {
+		const { note, details, response, formerBlock } = ctx;
+
+		if (!response || !this.#transSend.includes(response.transType) && response.transType !== "SPLIT") {
+			this.errorMessage("Can't Cancel an Agreement without a valid send block!");
+			return { handled: false, reason: "CANCELLED:no-send" };
+		}
+
+		// ── Step 1: find the agreement ──
+		let found = null;
+		let foundIndex = -1;
+		const agrees = (note.agreements || []).slice();
+		for (let i = 0; i < agrees.length; i++) {
+			const a = agrees[i];
+			if (!a || !a.key) continue;
+			const [privKey, signKey] = a.key.split("----");
+			const id = await this.generateKey(10);
+			await this.setPrivateKey(privKey, id);
+			const raw = await this.#decrypt(response.recipient, id);
+			if (this.isJsonable(raw)) {
+				found = JSON.parse(raw);
+				foundIndex = i;
+				break;
+			}
+			const id2 = await this.generateKey(10);
+			await this.setPrivateKey(signKey, id2);
+			const raw2 = await this.#decrypt(response.recipient, id2);
+			if (this.isJsonable(raw2)) {
+				found = JSON.parse(raw2);
+				foundIndex = i;
+				break;
+			}
+		}
+
+		if (!found) {
+			this.errorMessage("CANCELLED: agreement not found on this note.");
+			return { handled: false, reason: "CANCELLED:not-found" };
+		}
+
+		const agreement = JSON.parse(JSON.stringify(found));
+
+		// ── Step 2: sign the sender ──
+		const senderBlockKey = note.unfulfilled && note.unfulfilled[agreement.senderID];
+		if (senderBlockKey) {
+			const sid = await this.generateKey(10);
+			await this.setPrivateKey(senderBlockKey, sid);
+			agreement.senderSign = await this.Sign(senderBlockKey, agreement.senderID);
+			agreement.senderKey  = await this.getPublicKey(sid, true);
+			delete note.unfulfilled[agreement.senderID];
+		}
+
+		// ── Step 3: remove the agreement ──
+		note.agreements.splice(foundIndex, 1);
+
+		// ── Step 4: build the block ──
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "CANCELLED";
+		building.transValue = agreement.value;
+		building.noteType   = note.noteType;
+
+		// ── Step 5: encrypt for the sender ──
+		const encFor = response.blockKey;
+		const idr = await this.generateKey(10);
+		await this.setPublicKey(encFor, idr);
+		const encKey = await this.getPublicKey(idr, true);
+		building.recipient = this.encrypt(JSON.stringify(agreement), encKey);
+
+		building.agreement  = JSON.parse(JSON.stringify(agreement));
+		building.agreements[agreement.agreeID] = building.blockID || "";
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// AGREEMENTSIGN
+	// Faithful port of the `details.transType == "AGREEMENTSIGN" ||
+	// details.transType == "CANCELLED"` block inside the send tree.
+	//
+	// Behaviour (AGREEMENTSIGN branch):
+	//   1. Find the agreement in note.agreements by agreeID.
+	//   2. Retrieve note.unfulfilled[agreement.senderID] for the sender's
+	//      block key.
+	//   3. Sign agreement.senderID with that key → agreement.senderSign.
+	//   4. If #isExchangeMarketMining, verify the nonce with the server.
+	//   5. Remove the agreement from note.agreements.
+	//   6. Encrypt the agreement for the sender.
+	//   7. If response.transType === "AGREEMENTSIGN", morph to
+	//      AGREEMENTUPDATE; otherwise keep AGREEMENTSIGN.
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleAgreementSign(ctx) {
+		const { note, details, response, formerBlock } = ctx;
+
+		if (!response || (response.transType !== "AGREEMENTREQUEST" && response.transType !== "AGREEMENTSIGN")) {
+			this.errorMessage("Can't Sign an Agreement without a valid Agreement Request!");
+			return { handled: false, reason: "AGREEMENTSIGN:no-request" };
+		}
+
+		// ── Step 1: find the agreement ──
+		let found = null;
+		let foundIndex = -1;
+		const agrees = (note.agreements || []).slice();
+		for (let i = 0; i < agrees.length; i++) {
+			const a = agrees[i];
+			if (!a || !a.key) continue;
+			const [privKey, signKey] = a.key.split("----");
+			const id = await this.generateKey(10);
+			await this.setPrivateKey(privKey, id);
+			const raw = await this.#decrypt(response.recipient, id);
+			if (this.isJsonable(raw)) {
+				found = JSON.parse(raw);
+				foundIndex = i;
+				break;
+			}
+			// Second attempt with the signKey.
+			const id2 = await this.generateKey(10);
+			await this.setPrivateKey(signKey, id2);
+			const raw2 = await this.#decrypt(response.recipient, id2);
+			if (this.isJsonable(raw2)) {
+				found = JSON.parse(raw2);
+				foundIndex = i;
+				break;
+			}
+		}
+
+		if (!found) {
+			// ── Cancellation branch ──
+			if (this.alertDetails && !this.#isExchangeMarketMining) {
+				const shouldCancel = await this.createConfirm("Would you rather Cancel the Agreement?");
+				if (shouldCancel) {
+					details.transType = "CANCELLED";
+					// Re-enter via CANCELLED handler.
+					return this.#txHandleCancelled(ctx);
+				}
+			}
+			this.errorMessage("AGREEMENTSIGN: agreement not found on this note.");
+			return { handled: false, reason: "AGREEMENTSIGN:not-found" };
+		}
+
+		const agreement = JSON.parse(JSON.stringify(found));
+
+		// ── Step 2: sender's block key ──
+		const senderBlockKey = note.unfulfilled && note.unfulfilled[agreement.senderID];
+		if (!senderBlockKey) {
+			this.errorMessage("AGREEMENTSIGN: no unfulfilled entry for sender " + agreement.senderID);
+			return { handled: false, reason: "AGREEMENTSIGN:no-sender-key" };
+		}
+
+		// ── Step 3: sign the sender ──
+		const sid = await this.generateKey(10);
+		await this.setPrivateKey(senderBlockKey, sid);
+		agreement.senderSign = await this.Sign(senderBlockKey, agreement.senderID);
+		agreement.senderKey  = await this.getPublicKey(sid, true);
+
+		// ── Step 4: exchange-market nonce verification ──
+		if (this.#isExchangeMarketMining) {
+			// Legacy calls getData("verify_script_nonce", details.password, ...)
+			// when this.#isExchangeMarketMining is false and the note is the
+			// exchange note. In the migrated path this check happens in the
+			// caller (initiateExchange), not here. If you need it here, add it.
+		}
+
+		// ── Step 5: remove the agreement from the note ──
+		note.agreements.splice(foundIndex, 1);
+
+		// ── Step 6: build the block ──
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "AGREEMENTSIGN";
+		building.transValue = 0;
+		building.noteType   = note.noteType;
+
+		// Encrypt for the sender.
+		const encFor = response.blockKey;
+		const idr = await this.generateKey(10);
+		await this.setPublicKey(encFor, idr);
+		const encKey = await this.getPublicKey(idr, true);
+		agreement.privateKey = agreement.privateKey || undefined;
+		building.recipient = this.encrypt(JSON.stringify(agreement), encKey);
+		delete agreement.privateKey;
+
+		building.agreement  = JSON.parse(JSON.stringify(agreement));
+		building.agreements[agreement.agreeID] = building.blockID || "";
+
+		// ── Step 7: morph to AGREEMENTUPDATE if the response was AGREEMENTSIGN ──
+		if (response.transType === "AGREEMENTSIGN") {
+			building.transType  = "AGREEMENTUPDATE";
+			building.transValue = 0;
+			delete building.agreements[response.agreement && response.agreement.agreeID];
+		}
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// AGREEMENTREQUEST
+	// Faithful port of the `details.transType == "AGREEMENTREQUEST"` block
+	// inside the send tree.
+	//
+	// Behaviour:
+	//   1. Force details.recipient = agreement.agreeKey if mismatched.
+	//   2. Create a fresh receiver key if the caller didn't set one.
+	//   3. Sign agreement.recieverID = blockID with the receiver key.
+	//   4. Set blockRef = receiver pubkey; signRef = fresh random.
+	//   5. Encrypt the agreement for the recipient.
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleAgreementRequest(ctx) {
+		const { note, details, formerBlock } = ctx;
+
+		const agreement = JSON.parse(JSON.stringify(details.agreement));
+
+		// Step 1 — force the recipient to be the agreement's own agreeKey.
+		if (agreement.agreeKey !== details.recipient) {
+			this.errorMessage(
+				"Can't run an agreement request without using the ID as recipient. " +
+				"Script automatically reverting to the agreement ID"
+			);
+			details.recipient = agreement.agreeKey;
+		}
+
+		// Step 2 — receiver key.
+		const privKey = agreement.privateKey || await this.generateKey(25, true, true);
+
+		// Step 3 — sign the receiver identity.
+		agreement.recieverID  = building.blockID || ""; // filled in post-finalize below
+		agreement.recieverKey = await this.getPublicKeyFromPrivate(privKey);
+		agreement.recieverSign = await this.Sign(privKey, agreement.recieverID);
+		agreement.privateKey   = privKey;
+
+		// Note: recieverID depends on the final blockID. We defer the signature
+		// to post-finalize via __postSign on the receiver fields.
+		delete agreement.recieverSign;
+
+		// Step 4 — blockRef + signRef.
+		const bid = await this.generateKey(10);
+		await this.setPrivateKey(privKey, bid);
+		const pubKey = await this.getPublicKey(bid, true);
+
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "AGREEMENTREQUEST";
+		building.transValue = details.transValue || 0;
+		building.noteType   = note.noteType;
+		building.blockRef   = pubKey;
+		building.signRef    = await this.generateKey(20);
+
+		// Step 5 — encrypt for the recipient.
+		const idr = await this.generateKey(10);
+		await this.setPublicKey(details.recipient, idr);
+		const encKey = await this.getPublicKey(idr, true);
+		building.recipient = this.encrypt(JSON.stringify(agreement), encKey);
+
+		// Step 6 — attach the agreement so it can be verified.
+		building.agreement = JSON.parse(JSON.stringify(agreement));
+		delete building.agreement.privateKey;
+
+		// Step 7 — receiver sign happens post-finalize (needs blockID).
+		building.__postSign = [
+			{ field: "agreement.recieverID",   key: null, text: "__blockID", isSetter: true },
+			{ field: "agreement.recieverSign", key: privKey, text: "__blockID" },
+		];
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// AGREESEND (receive path)
+	// Faithful port of the receive-side handling of AGREESEND. This is what
+	// #handleAgreement / #checkAgreements / #payInterest feed into when a block
+	// with an agreement is processed by a *different* note than the one that
+	// created it.
+	//
+	// Behaviour:
+	//   1. Value = agreement.value (or the block's transValue).
+	//   2. Recipient = agreement.agreeKey / blockKey / note's own mother key.
+	//   3. Do not bill the note — the payer already did.
+	//   4. Record the reference ID/key from the agree block.
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleAgreeSendReceive(ctx) {
+		const { note, details, response, formerBlock } = ctx;
+
+		const agreement = details.agreement
+			? JSON.parse(JSON.stringify(details.agreement))
+			: (this.#agreeBlock && this.#agreeBlock.agreement)
+				? JSON.parse(JSON.stringify(this.#agreeBlock.agreement))
+				: null;
+
+		if (!agreement || !agreement.agreeID) {
+			return { handled: false, reason: "AGREESEND-receive:no-agreement" };
+		}
+
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "AGREESEND";
+		building.transValue = details.transValue || agreement.value;
+
+		// Reference from the agree block, if present.
+		if (this.#agreeBlock && this.#agreeBlock.blockID) {
+			building.referenceID  = this.#agreeBlock.blockID;
+			building.referenceKey = agreement.agreeID;
+		} else if (response && response.blockID) {
+			building.referenceID  = response.blockID;
+			building.referenceKey = agreement.agreeID;
+		}
+
+		// Recipient = the note's key that owns this agreement.
+		// Legacy uses `agreement.agreeKey` when it exists; otherwise it falls
+		// back to `response.blockKey` (the payer's blockKey) and finally to
+		// the note's own address.
+		let recipient = agreement.agreeKey;
+		if (!recipient && response && response.blockKey) recipient = response.blockKey;
+		if (!recipient) recipient = note.noteAddress;
+
+		// Encrypt the agreement for the recipient.
+		const id = await this.generateKey(10);
+		await this.setPublicKey(recipient, id);
+		const encKey = await this.getPublicKey(id, true);
+		building.recipient = this.encrypt(JSON.stringify(agreement), encKey);
+
+		building.agreement = this.hashed(JSON.stringify(agreement));
+
+		// Record that the note has now received this agreement's payment.
+		if (!note.unfulfilled || typeof note.unfulfilled !== "object") {
+			note.unfulfilled = {};
+		}
+		// Do NOT remove unfulfilled entry here — legacy leaves it until the
+		// agreement is signed / cancelled. Removing it too early breaks
+		// AGREEMENTSIGN.
+
+		return { handled: true, block: building };
+	}
+	
+	static async #getPublicKeyFromPrivate(privKey) {
+		const id = await this.generateKey(10);
+		await this.setPrivateKey(privKey, id);
+		return await this.getPublicKey(id, true);
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// PROFITRECIEVE
+	// Faithful port of the `details.transType == "PROFITRECIEVE"` branch.
+	//
+	// The next product block receives #shareValue. The handler:
+	//   1. Decrypts the agreement (needs note.noteSecret or a profitKey).
+	//   2. Attaches the productNote to the block.
+	//   3. Advances the block ID chain via #txFinalize.
+	//
+	// The profit chain advancement (#profitSharing) happens in #txCommit's
+	// (B) branch, which is a faithful port of the legacy tail.
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleProfitReceive(ctx) {
+		const { note, details, response, formerBlock } = ctx;
+
+		if (!response || response.transType !== "PROFITSHARING") {
+			this.errorMessage("PROFITRECIEVE requires a PROFITSHARING response.");
+			return { handled: false, reason: "PROFITRECIEVE:no-response" };
+		}
+
+		// ── Decrypt with each candidate key ──
+		let agreement = null;
+		if (details.recipient) {
+			const candidates = [];
+			if (note.noteSecret) candidates.push(note.noteSecret);
+			if (note.profitKeys) candidates.push(...note.profitKeys);
+
+			for (const priv of candidates) {
+				const id = await this.generateKey(10);
+				await this.setPrivateKey(priv, id);
+				const raw = await this.#decrypt(details.recipient, id);
+				if (this.isJsonable(raw)) {
+					agreement = JSON.parse(raw);
+					break;
+				}
+			}
+		}
+
+		if (!agreement) {
+			// Try the recipient's own block key.
+			const id = await this.generateKey(10);
+			await this.setPrivateKey(note.blockKey, id);
+			const raw = await this.#decrypt(details.recipient, id);
+			if (this.isJsonable(raw)) agreement = JSON.parse(raw);
+		}
+
+		if (!agreement) {
+			this.errorMessage("PROFITRECIEVE: could not decrypt the agreement.");
+			return { handled: false, reason: "PROFITRECIEVE:decrypt-failed" };
+		}
+
+		// ── Build the block ──
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "PROFITRECIEVE";
+		building.transValue = this.#shareValue || details.transValue;
+		building.productID  = details.productID;
+		building.agreement  = JSON.parse(JSON.stringify(agreement));
+
+		// ── Reference to the sharing block ──
+		building.referenceID  = response.blockID;
+		building.referenceKey = agreement.agreeID;
+
+		// ── Attach product note if present ──
+		if (response.productNote) {
+			building.productNote = JSON.parse(JSON.stringify(response.productNote));
+		}
+
+		// ── Recipient = sender's blockKey ──
+		if (response.blockKey) {
+			const idr = await this.generateKey(10);
+			await this.setPublicKey(response.blockKey, idr);
+			const encKey = await this.getPublicKey(idr, true);
+			building.recipient = this.encrypt(JSON.stringify(agreement), encKey);
+		}
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// PROFITSHARING
+	// Faithful port of the `details.transType == "PROFITSHARING"` branch.
+	//
+	// The exchange note (or any note paying a product tithe) sends the
+	// #shareValue to the next product block in the chain. The recipient is
+	// the next block's `profitKey`.
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleProfitSharing(ctx) {
+		const { note, details, formerBlock } = ctx;
+
+		if (!this.#shareValue) {
+			this.errorMessage("No share value to send for PROFITSHARING.");
+			return { handled: false, reason: "PROFITSHARING:no-share" };
+		}
+
+		const next = await this.getTransBlock(1, { productBlockID: details.productID });
+		if (!next.length || !next[0].profitKey) {
+			// No next block in the chain — the note keeps the share.
+			this.errorMessage("No next product block to send profit to.");
+			return { handled: false, reason: "PROFITSHARING:no-next" };
+		}
+
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "PROFITSHARING";
+		building.transValue = this.#shareValue;
+		building.productID  = details.productID;
+
+		// ── Encrypt the agreement for the next block's profitKey ──
+		const idr = await this.generateKey(10);
+		await this.setPublicKey(next[0].profitKey, idr);
+		const encKey = await this.getPublicKey(idr, true);
+		building.recipient = this.encrypt(JSON.stringify(details.agreement), encKey);
+
+		building.agreement = JSON.parse(JSON.stringify(details.agreement));
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// PRODUCTSUB
+	// Faithful port of the `details.transType == "PRODUCTSUB"` branch.
+	//
+	// Same as BUYPRODUCT for the pricing/unit/note side. Adds subscription
+	// bookkeeping:
+	//   - note.noteSubs[productID] = { subsID, nextSub, subUnit, value, productID }
+	//   - agreement.productConfig.subUnit / subConfig
+	//   - newBlock.expiry = nextSub
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleProductSub(ctx) {
+		const { note, details, formerBlock } = ctx;
+
+		// ── Resolve product block (identical to BUYPRODUCT) ──
+		this.productID = details.productID;
+		this.transTime = this.currentTime().toString() + " <=";
+		let productBlock = await this.getTransBlock(1, { productID: details.productID });
+		if (!productBlock.length) {
+			this.errorMessage("Product you seek to buy was not found on the Transactional database of Scriptbill. Please check the Product ID and Try again!!!");
+			return { handled: false, reason: "PRODUCTSUB:no-product" };
+		}
+		productBlock = await this.getCurrentBlock(productBlock);
+		if (!productBlock || !productBlock.agreement || !productBlock.agreement.productConfig) {
+			this.errorMessage("Product block has no productConfig — cannot subscribe.");
+			return { handled: false, reason: "PRODUCTSUB:bad-product" };
+		}
+
+		let agreement = JSON.parse(JSON.stringify(productBlock.agreement));
+		const productConfig = agreement.productConfig;
+
+		// ── Resolve product note ──
+		const stockID = productConfig.stockID;
+		let productNote = await this.getCurrentExchangeNote(stockID);
+		if (!productNote && productBlock.productNote) {
+			productNote = JSON.parse(JSON.stringify(productBlock.productNote));
+		}
+		if (!productNote || !productNote.exchangeID) {
+			this.errorMessage("Fraudulent Product Block or Product Identity Detected!");
+			return { handled: false, reason: "PRODUCTSUB:no-product-note" };
+		}
+
+		// ── Credit-path (same as BUYPRODUCT) ──
+		const noteVal    = parseFloat(note.noteValue);
+		const requestVal = parseFloat(details.transValue);
+		if (requestVal > noteVal && !this.#isExchangeMarketMining) {
+			return await this.#txHandleBuyProduct(ctx);  // shares the fallback
+		}
+
+		// ── Subscription bookkeeping ──
+		if (!note.noteSubs || typeof note.noteSubs !== "object") note.noteSubs = {};
+
+		const subUnit = Math.round(agreement.value / parseFloat(details.transValue));
+		agreement.productConfig.units -= 1;
+
+		const subConfig = details.subConfig || JSON.parse(JSON.stringify(this.defaultSub));
+		subConfig.value     = details.transValue;
+		subConfig.productID = details.productID;
+		subConfig.subUnit   = agreement.productConfig.subUnit || subUnit;
+
+		const subTime = this.calculateTime(subConfig.subSpread || "1 weeks");
+		subConfig.nextSub = parseInt(this.currentTime()) + parseInt(subTime);
+		const lastSub = agreement.value % parseFloat(details.transValue);
+		subConfig.lastSub = lastSub === 0 ? details.transValue : lastSub;
+		subConfig.subsID  = productBlock.productBlockID || "";
+
+		note.noteSubs[details.productID] = subConfig;
+		agreement.productConfig.subUnit   = subConfig.subUnit;
+		agreement.productConfig.subConfig = subConfig;
+
+		// ── Build the block ──
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "PRODUCTSUB";
+		building.transValue = details.transValue;
+		building.productID  = details.productID;
+		building.agreement  = agreement;
+		building.expiry     = subConfig.nextSub;
+
+		// ── Bill the note ──
+		note.noteValue = parseFloat(note.noteValue) - parseFloat(details.transValue);
+
+		// ── Product note mutation ──
+		if (!productNote.exchangeValue) productNote.exchangeValue = 0;
+		productNote.exchangeValue = parseFloat(productNote.exchangeValue) + parseFloat(details.transValue);
+		if (productNote.demandValue) {
+			productNote.demandValue = parseFloat(productNote.demandValue) - parseFloat(details.transValue);
+		}
+		building.productNote = JSON.parse(JSON.stringify(productNote));
+		this.productNote     = JSON.parse(JSON.stringify(productNote));
+
+		// ── Tithe split ──
+		const shareRate = (productConfig.shareRate && productConfig.shareRate >= 0.2)
+			? parseFloat(productConfig.shareRate) : 0.2;
+		const tithe = parseFloat(details.transValue) * shareRate;
+		this.#shareValue = tithe / 2;
+
+		// ── Recipient encryption ──
+		const idr = await this.generateKey(10);
+		await this.setPublicKey(details.recipient, idr);
+		const encKey = await this.getPublicKey(idr, true);
+		building.recipient = this.encrypt(JSON.stringify(agreement), encKey);
+
+		this.#productBlock = JSON.parse(JSON.stringify(productBlock));
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// BUYPRODUCT
+	// Faithful port of the `details.transType == "BUYPRODUCT"` branch (send tree).
+	//
+	// Behaviour (happy path):
+	//   1. details.productID must resolve to a current product block via
+	//      getTransBlock + getCurrentBlock.
+	//   2. That block's agreement.productConfig supplies the product config.
+	//   3. productNote = current exchange note for productConfig.stockID.
+	//   4. Deduct a unit from agreement.productConfig.units.
+	//   5. Generate a fresh agreement key (agreeKey) and stash it on the note.
+	//   6. Encrypt the agreement for details.recipient.
+	//   7. Bill the note: note.noteValue -= details.transValue.
+	//   8. Update productNote.exchangeValue += details.transValue.
+	//
+	// Credit-path fallback (when details.transValue > note.noteValue):
+	//   Auto-mint a loan:
+	//   - rankCredit based on the note's rankCode
+	//   - accountData.loanValue += (details.transValue - note.noteValue)
+	//   - newBlock.loanValue = accountData.loanValue
+	//   - newBlock.transType becomes PRODUCTSUB if it caps the purchase
+	//
+	// Requires: details.productID, details.agreement.productConfig,
+	//           details.recipient, current exchange note resolvable.
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleBuyProduct(ctx) {
+		const { note, details, formerBlock } = ctx;
+
+		// ── Resolve the current product block ──
+		this.productID = details.productID;
+		this.transTime = this.currentTime().toString() + " <=";
+		let productBlock = await this.getTransBlock(1, { productID: details.productID });
+		if (!productBlock.length) {
+			this.errorMessage("Product you seek to buy was not found on the Transactional database of Scriptbill. Please check the Product ID and Try again!!!");
+			return { handled: false, reason: "BUYPRODUCT:no-product" };
+		}
+		productBlock = await this.getCurrentBlock(productBlock);
+		if (!productBlock || !productBlock.agreement || !productBlock.agreement.productConfig) {
+			this.errorMessage("Product block has no productConfig — cannot buy.");
+			return { handled: false, reason: "BUYPRODUCT:bad-product" };
+		}
+
+		const agreement = JSON.parse(JSON.stringify(productBlock.agreement));
+		const productConfig = agreement.productConfig;
+
+		if (productConfig.units <= 0) {
+			this.errorMessage("Product Not Available Right Now. You can Check Back a Little While to Purchase the Product Again.");
+			return { handled: false, reason: "BUYPRODUCT:out-of-stock" };
+		}
+
+		// ── Resolve the product note (exchange note for stockID) ──
+		const stockID = productConfig.stockID;
+		let productNote = await this.getCurrentExchangeNote(stockID);
+		if (!productNote && productBlock.productNote) {
+			productNote = JSON.parse(JSON.stringify(productBlock.productNote));
+		}
+		if (!productNote || !productNote.exchangeID) {
+			this.errorMessage("Fraudulent Product Block or Product Identity Detected! Please try again with a different Product ID");
+			return { handled: false, reason: "BUYPRODUCT:no-product-note" };
+		}
+
+		// ── Credit-path check ──
+		const noteVal = parseFloat(note.noteValue);
+		const requestVal = parseFloat(details.transValue);
+		if (requestVal > noteVal && !this.#isExchangeMarketMining) {
+			// Legacy auto-mints a loan on the note to cover the difference.
+			// Compute rank credit limit.
+			let userRank = this.block && this.block.rankCode ? this.block.rankCode : null;
+			let rankCredit = 100;
+			if (note.walletRank && userRank) {
+				const decrypted = this.decrypt(userRank, this.hashed(note.walletRank));
+				const rank = this.#scriptbillRanks[decrypted];
+				if (rank && rank.code === decrypted) rankCredit = rank.credit_level;
+			}
+
+			this.account = await this.getAccountData() || {};
+			if (!this.account.loanValue) {
+				if (this.account[note.noteAddress] && this.account[note.noteAddress].loanValue) {
+					this.account.loanValue = parseFloat(this.account[note.noteAddress].loanValue);
+				} else if (note.loanValue) {
+					this.account.loanValue = parseFloat(note.loanValue);
+				} else {
+					this.account.loanValue = 0;
+				}
+			}
+
+			let remCredit = noteVal - requestVal;
+			let available = noteVal + rankCredit - this.account.loanValue;
+			if (available <= 0) {
+				this.errorMessage("Your Transaction Could Not Be Completed Because Your Note Value Is Not enough and You Have Reached Your Maximum Credit Level. Buy more Scriptbill Bonds To Get A Higher Credit Level.");
+				return { handled: false, reason: "BUYPRODUCT:over-credit" };
+			}
+
+			if (requestVal > available) {
+				details.transValue = available;
+				details.transType  = "PRODUCTSUB";
+				// NOTE: legacy morphs here. We keep the morph inside the same
+				// handler to preserve budget/product sequencing.
+			}
+
+			// Loan bookkeeping.
+			if (
+				(this.account.loanID && this.account.loanID !== "v/ylMo3bvINarUq89+AZBg==") ||
+				(note.accountData && note.accountData.loanID)
+			) {
+				this.blockID = this.account.loanID || note.accountData.loanID;
+				const loanBlock = await this.getTransBlock(1, { blockID: this.blockID });
+				if (loanBlock[0] && loanBlock[0].loanValue) {
+					this.account.loanValue = loanBlock[0].loanValue;
+				} else {
+					this.errorMessage("Fraudulent Loan Account Detected");
+					return { handled: false, reason: "BUYPRODUCT:fraud-loan" };
+				}
+			}
+			this.account.loanValue += parseFloat(remCredit);
+			this.account.loanID     = building.blockID || "";
+
+			if (!note.accountData) note.accountData = {};
+			note.accountData.loanID    = this.account.loanID;
+			note.accountData.loanValue = this.account.loanValue;
+
+			const trivKey = this.hashed(note.walletID);
+			localStorage[trivKey] = JSON.stringify(this.account);
+			note.loanValue = (note.loanValue || 0) + parseFloat(details.transValue);
+		}
+
+		// ── Unit deduction ──
+		agreement.productConfig.units -= 1;
+		if (details.agreement && details.agreement.purchaseURL) {
+			agreement.purchaseURL = details.agreement.purchaseURL;
+		}
+
+		// ── Fresh agreeKey on the note ──
+		const agreeKey = await this.generateKey(10, true);
+		const aid = await this.generateKey(10);
+		await this.setPrivateKey(agreeKey, aid);
+		agreement.agreeKey = await this.getPublicKey(aid);
+		if (!note.agreements || typeof note.agreements !== "object") note.agreements = [];
+		note.agreements.push({ key: agreeKey, agreeID: agreement.agreeID });
+
+		// ── Build the block ──
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = details.transType;   // BUYPRODUCT or PRODUCTSUB (morphed)
+		building.transValue = details.transValue;
+		building.productID  = details.productID;
+		building.agreement  = JSON.parse(JSON.stringify(agreement));
+
+		// ── Bill the note ──
+		note.noteValue = parseFloat(note.noteValue) - parseFloat(details.transValue);
+
+		// ── Product note mutation ──
+		if (!productNote.exchangeValue) productNote.exchangeValue = 0;
+		productNote.exchangeValue = parseFloat(productNote.exchangeValue) + parseFloat(details.transValue);
+		building.productNote = JSON.parse(JSON.stringify(productNote));
+		this.productNote     = JSON.parse(JSON.stringify(productNote));
+
+		// ── Tithe split for the eventual PROFITSHARING ──
+		const shareRate = (productConfig.shareRate && productConfig.shareRate >= 0.2)
+			? parseFloat(productConfig.shareRate) : 0.2;
+		const tithe = parseFloat(details.transValue) * shareRate;
+		this.#shareValue = tithe / 2;
+
+		// ── Recipient encryption ──
+		const idr = await this.generateKey(10);
+		await this.setPublicKey(details.recipient, idr);
+		const encKey = await this.getPublicKey(idr, true);
+		building.recipient = this.encrypt(JSON.stringify(agreement), encKey);
+
+		// Products need the productID on the block so #txFinalize's product
+		// block ID advance runs.
+		this.#productBlock = JSON.parse(JSON.stringify(productBlock));
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// AGREESEND (creation path)
+	// Faithful port of the `details.transType == "AGREESEND"` block inside the
+	// send tree, restricted to the "the note is emitting a payment" case.
+	//
+	// Behaviour:
+	//   1. Agreement must be registered on this.#note.agreements or
+	//      this.#agreeBlock.agreements. Otherwise bail.
+	//   2. If this.#agreeBlock is set: set referenceID / referenceKey,
+	//      skip the note-value billing (the auto-execute path pays out of
+	//      the note anyway; legacy does it via #agreeBlock).
+	//   3. Otherwise: bill note.noteValue -= details.transValue.
+	//   4. Encrypt the agreement for the recipient using a fresh key.
+	//   5. Set newBlock.agreement = this.hashed(agreement).
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleAgreeSendCreate(ctx) {
+		const { note, details, formerBlock } = ctx;
+		const agreement = JSON.parse(JSON.stringify(details.agreement));
+
+		if (!agreement.agreeID) {
+			return { handled: false, reason: "AGREESEND:no-agreeID" };
+		}
+
+		// Ownership check.
+		const currentAgreements = (note.agreements || []).map((a) => a && a.agreeID);
+		const blockAgreements   = (ctx.formerBlock && ctx.formerBlock.agreements) || {};
+		const inCurrent =
+			currentAgreements.includes(agreement.agreeID) ||
+			Object.keys(blockAgreements).includes(agreement.agreeID) ||
+			(this.#agreeBlock && this.#agreeBlock.agreements &&
+			 Object.keys(this.#agreeBlock.agreements).includes(agreement.agreeID));
+
+		if (!inCurrent) {
+			this.errorMessage(
+				"AGREESEND: agreement " + agreement.agreeID +
+				" is not registered on this note."
+			);
+			return { handled: false, reason: "AGREESEND:not-registered" };
+		}
+
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "AGREESEND";
+		building.transValue = details.transValue;
+
+		// ── Auto-execute path (via #agreeBlock) ──
+		if (this.#agreeBlock) {
+			building.referenceID  = this.#agreeBlock.blockID;
+			building.referenceKey = agreement.agreeID;
+		} else {
+			// Regular creation path — bill the note.
+			note.noteValue = parseFloat(note.noteValue) - parseFloat(details.transValue);
+		}
+
+		// ── Encrypt the agreement for the recipient ──
+		const id = await this.generateKey(10);
+		await this.setPublicKey(agreement.agreeKey, id);
+		const encKey = await this.getPublicKey(id, true);
+		building.recipient = this.encrypt(JSON.stringify(agreement), encKey);
+
+		// ── Hash the agreement ──
+		building.agreement = this.hashed(JSON.stringify(agreement));
+
+		// Ensure the note records the agreement's block-key (needed by
+		// AGREEMENTSIGN later).
+		if (!note.unfulfilled || typeof note.unfulfilled !== "object") {
+			note.unfulfilled = {};
+		}
+		if (!note.unfulfilled[agreement.agreeID]) {
+			// Legacy stores the blockKey here; the note's blockKey is rotated in
+			// #txFinalize, so we use a fresh key produced here.
+			const blockKey = await this.generateKey(30, true, true);
+			const bid = await this.generateKey(10);
+			await this.setPrivateKey(blockKey, bid);
+			note.unfulfilled[agreement.agreeID] = blockKey;
+		}
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// SOLDSTOCK (CRD only; response to BUYSTOCK)
+	// Faithful port of the SOLDSTOCK branch.
+	//
+	// Preconditions:
+	//   - note.noteType includes "CRD"
+	//   - response.transType === "BUYSTOCK"
+	//   - the note has a business budget that can fulfill the sale
+	//
+	// Behaviour:
+	//   1. Decrypt response.recipient using note.noteBudgets (or noteSecret).
+	//   2. Resolve budgetBlock via getCurrentBudgetBlock(response.budgetID).
+	//   3. Set newBlock.productNote (from budgetBlock.productNote) and bump its
+	//      exchangeValue by response.transValue.
+	//   4. Do not decrement note.noteValue — the buyer's note did that.
+	// ──────────────────────────────────────────────────────────────────────────
+	/*static async #txHandleSoldStock(ctx) {
+		const { note, details, response } = ctx;
+
+		if (!note.noteType || !note.noteType.includes("CRD")) {
+			return { handled: false, reason: "SOLDSTOCK:not-credit-note" };
+		}
+		if (!response || response.transType !== "BUYSTOCK") {
+			return { handled: false, reason: "SOLDSTOCK:no-buy-response" };
+		}
+
+		// ── Step 1: decrypt the agreement from the BUYSTOCK response ──
+		let agreement = null;
+		if (!this.#isExchangeMarketMining && note.noteBudgets) {
+			for (let i = 0; i < note.noteBudgets.length; i++) {
+				const id = await this.generateKey(10);
+				await this.setPrivateKey(note.noteBudgets[i], id);
+				const raw = await this.#decrypt(response.recipient, id);
+				if (this.isJsonable(raw)) {
+					agreement = JSON.parse(raw);
+					break;
+				}
+			}
+		}
+		if (!agreement && note.noteSecret) {
+			const id = await this.generateKey(10);
+			await this.setPrivateKey(note.noteSecret, id);
+			const raw = await this.#decrypt(response.recipient, id);
+			if (this.isJsonable(raw)) agreement = JSON.parse(raw);
+		}
+		if (!agreement) {
+			this.errorMessage("SOLDSTOCK: could not decrypt the buyer's agreement.");
+			return { handled: false, reason: "SOLDSTOCK:decrypt-failed" };
+		}
+
+		// ── Step 2: resolve budget block ──
+		const budgetBlock = await this.getCurrentBudgetBlock(response.budgetID);
+		if (!budgetBlock || !budgetBlock.agreement) {
+			this.errorMessage("SOLDSTOCK: no budget block for " + response.budgetID);
+			return { handled: false, reason: "SOLDSTOCK:no-budget-block" };
+		}
+		const budget = JSON.parse(JSON.stringify(budgetBlock.agreement));
+		if (budget.budgetType !== "business") {
+			this.errorMessage("SOLDSTOCK: budget is not a business budget.");
+			return { handled: false, reason: "SOLDSTOCK:not-business" };
+		}
+
+		// ── Step 3: build the block ──
+		const building = JSON.parse(JSON.stringify(this.defaultBlock));
+		building.transType  = "SOLDSTOCK";
+		building.transValue = response.transValue;
+		building.budgetID   = response.budgetID;
+
+		// ── Step 4: productNote mutation ──
+		if (budgetBlock.productNote) {
+			const productNote = JSON.parse(JSON.stringify(budgetBlock.productNote));
+			if (!productNote.exchangeValue) productNote.exchangeValue = 0;
+			productNote.exchangeValue =
+				parseFloat(productNote.exchangeValue) + parseFloat(response.transValue);
+			productNote.transType = "SOLDSTOCK";
+			productNote.blockID   = building.blockID || "";
+			building.productNote  = productNote;
+		}
+
+		// ── Step 5: attach the buyer's agreement ──
+		building.agreement = JSON.parse(JSON.stringify(agreement));
+
+		return { handled: true, block: building };
+	}
+	*/
+	
+	static async #txHandleSoldBond(ctx) {
+		const { note, details, response, formerBlock } = ctx;
+
+		if (!note.noteType || !note.noteType.includes("CRD")) {
+			return { handled: false, reason: "SOLDBOND:not-credit-note" };
+		}
+		if (!response || response.transType !== "BUYBOND") {
+			return { handled: false, reason: "SOLDBOND:no-buy-response" };
+		}
+		if (!note.budgetID) {
+			this.errorMessage("SOLDBOND: note must own a budget.");
+			return { handled: false, reason: "SOLDBOND:no-budget-id" };
+		}
+
+		let agreement = null;
+		const did = await this.generateKey(10);
+		await this.setPrivateKey(note.noteSecret, did);
+		const raw = await this.#decrypt(response.recipient, did);
+		if (this.isJsonable(raw)) agreement = JSON.parse(raw);
+		if (!agreement) {
+			this.errorMessage("SOLDBOND: could not decrypt the buyer's agreement.");
+			return { handled: false, reason: "SOLDBOND:decrypt-failed" };
+		}
+
+		const bid = await this.generateKey(10);
+		await this.setPrivateKey(note.budgetID, bid);
+		const budgetPub = await this.getPublicKey(bid);
+		const budgetBlock = await this.getCurrentBudgetBlock(budgetPub);
+		if (!budgetBlock || !budgetBlock.agreement) {
+			this.errorMessage("SOLDBOND: budget block not found.");
+			return { handled: false, reason: "SOLDBOND:no-budget-block" };
+		}
+		const budget = budgetBlock.agreement;
+		if (budget.budgetType !== "governmental") {
+			this.errorMessage("Can't sell Bond without a governmental budget!");
+			return { handled: false, reason: "SOLDBOND:not-governmental" };
+		}
+
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "SOLDBOND";
+		building.transValue = response.transValue;
+		building.budgetID   = budget.budgetID;
+
+		// Bump the exchange note's exchangeValue.
+		const exchangeNote = await this.getCurrentExchangeNote(note.noteType);
+		if (exchangeNote && exchangeNote.exchangeID) {
+			const ex = JSON.parse(JSON.stringify(exchangeNote));
+			if (!ex.exchangeValue) ex.exchangeValue = 0;
+			ex.exchangeValue = parseFloat(ex.exchangeValue) + parseFloat(response.transValue);
+			ex.transType = "SOLDBOND";
+			ex.blockID   = building.blockID || "";
+			building.exchangeNote = ex;
+		}
+
+		// Bill the seller's note.
+		note.noteValue = parseFloat(note.noteValue) + parseFloat(response.transValue);
+
+		// Secrets for QUOTEBOND.
+		const bondValue = parseFloat(response.transValue) || 0;
+		const secretAgreement = {
+			agreeID      : budget.agreement ? budget.agreement.agreeID : await this.generateKey(15, true),
+			budgetID     : budget.budgetID,
+			budgetKey    : budgetBlock.budgetKey || note.budgetKey,
+			value        : bondValue,
+			agreeType    : "BOND",
+			stockID      : budget.stockID,
+			transValue   : response.transValue,
+			transTime    : this.currentTime(),
+			senderID     : response.blockID,
+			senderKey    : response.blockKey,
+			interestRate : this.interestRate,
+			interestType : this.interestType,
+		};
+
+		const encKey = await this.generateKey(10);
+		await this.setPublicKey(response.blockKey, encKey);
+		building.recipient = this.encrypt(JSON.stringify(secretAgreement), await this.getPublicKey(encKey, true));
+
+		building.agreement = JSON.parse(JSON.stringify(budget));
+
+		return { handled: true, block: building };
+	}
+	// ──────────────────────────────────────────────────────────────────────────
+	// BUYBOND (CRD only)
+	// Faithful port of the `details.transType == "BUYBOND"` branch.
+	//
+	// Same preconditions as BUYSTOCK. Differences:
+	//   - The budget is not required to be a business budget.
+	//   - The recipient is currentNote.budgetID unless a SELLBOND response
+	//     is present, in which case it's response.agreement.agreeKey.
+	//   - exchangeNote.exchangeValue is bumped (bond purchases add to the
+	//     market's supply, not its demand).
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleBuyBond(ctx) {
+		const { note, details, currentNote, response, formerBlock } = ctx;
+
+		if (!note.noteType || !note.noteType.includes("CRD")) {
+			return { handled: false, reason: "BUYBOND:not-credit-note" };
+		}
+		if (!details.budgetID) {
+			return { handled: false, reason: "BUYBOND:no-budget" };
+		}
+
+		const budgetBlock = await this.getCurrentBudgetBlock(details.budgetID);
+		if (!budgetBlock || !budgetBlock.agreement) {
+			this.errorMessage("Budget Block not found for BUYBOND: " + details.budgetID);
+			return { handled: false, reason: "BUYBOND:no-budget-block" };
+		}
+		const budget = JSON.parse(JSON.stringify(budgetBlock.agreement));
+
+		// Cross-credit conversion.
+		if (budget.budgetCredit !== note.noteType) {
+			const exValues = await this.getExchangeValue(budget.budgetCredit, note.noteType);
+			details.transValue = parseFloat(details.transValue) * parseFloat(exValues[1]);
+		}
+
+		if (parseFloat(note.noteValue) < parseFloat(details.transValue)) {
+			this.errorMessage(
+				"You " + this.walletID + " Do Not Have Sufficient Credit to Buy this Bond With ID: " +
+				budget.stockID + "."
+			);
+			return { handled: false, reason: "BUYBOND:insufficient" };
+		}
+
+		if (!currentNote) {
+			this.errorMessage("Exchange Note not found while processing the request");
+			return { handled: false, reason: "BUYBOND:no-exchange-note" };
+		}
+
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "BUYBOND";
+		building.transValue = details.transValue;
+		building.budgetID   = details.budgetID;
+
+		// Recipient selection.
+		if (response && response.transType === "SELLBOND" &&
+			details.transValue === response.transValue &&
+			response.agreement && response.agreement.agreeKey) {
+			details.recipient = response.agreement.agreeKey;
+		} else if (details.recipient && details.recipient !== currentNote.exchangeID) {
+			// legacy leaves the recipient alone
+		} else {
+			try {
+				details.recipient = currentNote.budgetID;
+			} catch (e) {
+				this.errorMessage("Exchange Market Do Not Exist");
+				return { handled: false, reason: "BUYBOND:no-exchange-budget" };
+			}
+		}
+
+		// Exchange note supply bump.
+		if (!currentNote.exchangeValue) currentNote.exchangeValue = 0;
+		currentNote.exchangeValue =
+			parseFloat(currentNote.exchangeValue) + parseFloat(details.transValue);
+		building.exchangeNote = JSON.parse(JSON.stringify(currentNote));
+
+		if (budget.agreement) {
+			building.agreement = JSON.parse(JSON.stringify(budget.agreement));
+		}
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// BUYSTOCK (CRD only)
+	// Faithful port of the `details.transType == "BUYSTOCK"` branch.
+	//
+	// Preconditions:
+	//   - note.noteType includes "CRD"
+	//   - details.budgetID resolves to a current budget block
+	//   - details.recipient != currentNote.exchangeID (per legacy)
+	//   - note.noteValue >= details.transValue
+	//
+	// Behaviour:
+	//   1. Resolve budgetBlock via getCurrentBudgetBlock(details.budgetID).
+	//   2. If the budget credit differs from the note credit, convert
+	//      details.transValue via getExchangeValue.
+	//   3. If note.noteValue < details.transValue, bail.
+	//   4. If budget.agreement.budgetType === "business" and there is a
+	//      productNote, set newBlock.productNote.
+	//   5. Set details.recipient = currentNote.noteAddress (or
+	//      response.blockKey if a SELLBOND response is present).
+	//   6. Bump newBlock.productNote.exchangeValue += details.transValue.
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleBuyStock(ctx) {
+		const { note, details, currentNote, formerBlock } = ctx;
+
+		if (!note.noteType || !note.noteType.includes("CRD")) {
+			return { handled: false, reason: "BUYSTOCK:not-credit-note" };
+		}
+		if (!details.budgetID) {
+			return { handled: false, reason: "BUYSTOCK:no-budget" };
+		}
+
+		// ── Step 1: resolve the budget block ──
+		const budgetBlock = await this.getCurrentBudgetBlock(details.budgetID);
+		if (!budgetBlock) {
+			this.errorMessage(
+				"You " + this.walletID + " are Trying to Invest on a Budget That Does Not Exist. " +
+				"You Can As Well Contact The Company or Organization That Gave You This ID " +
+				details.budgetID + " To Confirm And Try Again!!!"
+			);
+			return { handled: false, reason: "BUYSTOCK:no-budget-block" };
+		}
+		if (!budgetBlock.agreement) {
+			this.errorMessage(
+				"You " + this.walletID + " are Trying to Invest on a Budget That Does Not Have a Valid Budget Data. " +
+				"You Can As Well Contact The Company That Gave You This ID " +
+				details.budgetID + " To Confirm And Try Again!!!"
+			);
+			return { handled: false, reason: "BUYSTOCK:no-budget-agreement" };
+		}
+
+		const budget = JSON.parse(JSON.stringify(budgetBlock.agreement));
+
+		// ── Step 2: cross-credit conversion ──
+		if (budget.budgetCredit !== note.noteType) {
+			const exValues = await this.getExchangeValue(budget.budgetCredit, note.noteType);
+			details.transValue = parseFloat(details.transValue) * parseFloat(exValues[1]);
+		}
+
+		// ── Step 3: note-value check ──
+		if (parseFloat(note.noteValue) < parseFloat(details.transValue)) {
+			this.errorMessage(
+				"You " + this.walletID + " Do Not Have Sufficient Credit to Buy this Stock With ID: " +
+				budget.stockID + "."
+			);
+			return { handled: false, reason: "BUYSTOCK:insufficient" };
+		}
+
+		// ── Build the block ──
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "BUYSTOCK";
+		building.transValue = details.transValue;
+		building.budgetID   = details.budgetID;
+
+		// ── Step 4: business product note ──
+		if (budget.agreement && budget.agreement.budgetType === "business" && budgetBlock.productNote) {
+			building.productNote = JSON.parse(JSON.stringify(budgetBlock.productNote));
+		}
+
+		// ── Step 5: recipient ──
+		if (!currentNote) {
+			this.errorMessage("Exchange Note not found while processing the request");
+			return { handled: false, reason: "BUYSTOCK:no-exchange-note" };
+		}
+		if (details.recipient && details.recipient !== currentNote.exchangeID) {
+			// legacy leaves the recipient alone if it's not the exchange note
+		}
+		if (!details.recipient || details.recipient === currentNote.exchangeID) {
+			details.recipient = currentNote.noteAddress || currentNote.exchangeID;
+		}
+
+		// ── Step 6: product note exchange value bump ──
+		if (budget.agreement.budgetType === "business" && budgetBlock.productNote) {
+			const productNote = JSON.parse(JSON.stringify(budgetBlock.productNote));
+			if (!productNote.exchangeValue) productNote.exchangeValue = 0;
+			productNote.exchangeValue =
+				parseFloat(productNote.exchangeValue) + parseFloat(details.transValue);
+			building.productNote = productNote;
+		}
+
+		// ── Exchange note demand/exchange accounting (legacy) ──
+		if (!currentNote.demandValue) currentNote.demandValue = 0;
+		if (currentNote.exchangeValue >= details.transValue) {
+			currentNote.exchangeValue = parseFloat(currentNote.exchangeValue) - parseFloat(details.transValue);
+		} else {
+			currentNote.demandValue =
+				parseFloat(currentNote.demandValue) + parseFloat(details.transValue);
+		}
+		building.exchangeNote = JSON.parse(JSON.stringify(currentNote));
+
+		// ── Attach the agreement from budgetBlock ──
+		if (budget.agreement) {
+			building.agreement = JSON.parse(JSON.stringify(budget.agreement));
+		}
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// #txFinalize — extracted from the postamble of generateScriptbillTransactionBlock.
+	// Takes a "building" block (from a handler) and the mutable note, applies
+	// the shared signing/hash/expiry steps, and returns the finalized block.
+	// The caller is responsible for storing it and sharing it.
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txFinalize(ctx, building) {
+		let { note, details, currentNote, formerBlock } = ctx;
+
+		ctx.prevBlockKey = note.blockKey;
+
+		let newBlock = JSON.parse(JSON.stringify(building));
+
+		// ─────────────────────────────────────────────────────────────────
+		// (A) Restore defaults, sync type/value/noteType/creditType/server.
+		// ─────────────────────────────────────────────────────────────────
+		if (!newBlock.noteValue) newBlock.noteValue = note.noteValue;
+		if (!newBlock.noteID)    newBlock.noteID    = note.noteID;
+		if (!newBlock.transType) newBlock.transType = details.transType;
+		if (details.recipient) this.#Reipient = details.recipient;
+
+		if (newBlock.transType == "UPDATE" || newBlock.transType == "CREATE") {
+			newBlock.transValue = 0;
+		} else if (details.transValue != undefined) {
+			newBlock.transValue = details.transValue;
+		}
+
+		if (details.transType && note.transType != details.transType) {
+			note.transType = details.transType;
+		}
+		if (newBlock.noteType != note.noteType) newBlock.noteType = note.noteType;
+		if (!newBlock.creditType || newBlock.creditType != note.creditType) {
+			newBlock.creditType = note.creditType;
+		}
+
+		if (this.#note.supabaseUrl && this.#note.supabaseKey) {
+			newBlock.noteServer = `${this.#note.supabaseUrl} - ${this.#note.supabaseKey}`;
+		}
+
+		newBlock.version   = this.#version;
+		newBlock.transTime = this.currentTime();
+
+		note.transType = newBlock.transType;
+		note.transTime = newBlock.transTime;
+
+		if (newBlock.transType == "UPDATE") newBlock.transValue = 0;
+
+		if (!newBlock.signRef) newBlock.signRef = await this.generateKey(20);
+
+		// ─────────────────────────────────────────────────────────────────
+		// (B) SALT / FORMULAR ASSIGNMENT.
+		//     transSalt/transFormular → this block's pair.
+		//     lastSalt/lastFormular   → parent block's pair ("" on CREATE).
+		// ─────────────────────────────────────────────────────────────────
+		newBlock.transSalt     = note.noteSalt;
+		newBlock.transFormular = note.noteFormular;
+
+		if (formerBlock && formerBlock.blockID) {
+			newBlock.lastSalt     = formerBlock.transSalt     ?? "";
+			newBlock.lastFormular = formerBlock.transFormular ?? "";
+		} else {
+			newBlock.lastSalt     = "";
+			newBlock.lastFormular = "";
+		}
+
+		newBlock.defaultKey = this.#odogwu;
+
+		const salt         = newBlock.transSalt;
+		const formular     = newBlock.transFormular;
+		const parentSalt     = newBlock.lastSalt;
+		const parentFormular = newBlock.lastFormular;
+
+		// ─────────────────────────────────────────────────────────────────
+		// (C) formerHash / formerHashB.
+		//     Computed with the PARENT's salt/formular, because the verifier
+		//     reproduces them from the parent block's stored transSalt pair.
+		// ─────────────────────────────────────────────────────────────────
+		// Note hash (pre-rotation, no sign/hash fields).
+		{
+			const realNote = JSON.parse(JSON.stringify(note));
+			delete realNote.noteSign;
+			delete realNote.noteHash;
+			delete realNote.transHash;
+			let formerHash = this.hashed(JSON.stringify(realNote), parentSalt, parentFormular);
+			if (this.#noteHASH && this.#noteHASH !== formerHash) formerHash = this.#noteHASH;
+			ctx.formerHash = formerHash;
+		}
+
+		// Former block hash (defaultBlock-shaped only).
+		{
+			const formerBlockCopy = JSON.parse(JSON.stringify(formerBlock || {}));
+			[
+				"exchangeNote", "data", "productNote",
+				"exBlockID", "exFormerBlockID", "exNextBlockID",
+				"productBlockID", "productFormerBlockID", "productNextBlockID",
+				"transHash", "blockHash", "blockSign", "witnesses", "noteSign",
+			].forEach((k) => delete formerBlockCopy[k]);
+			const KEYS = Object.keys(this.defaultBlock);
+			for (const k in formerBlockCopy) if (!KEYS.includes(k)) delete formerBlockCopy[k];
+			ctx.formerHashB = this.hashed(JSON.stringify(formerBlockCopy), parentSalt, parentFormular);
+		}
+
+		const formerHash  = ctx.formerHash;
+		const formerHashB = ctx.formerHashB;
+
+		// ─────────────────────────────────────────────────────────────────
+		// (D) Block-ID computation.
+		//     All IDs salted with THIS block's pair.
+		// ─────────────────────────────────────────────────────────────────
+		if (formerBlock && formerBlock.blockID) {
+			// ── UPDATE chain. ──
+			const trivKey = this.hashed(note.walletID, salt, formular);
+			const walletBlock = await this.getCurrentWalletBlock(newBlock);
+
+			newBlock.formerWalletHASH = this.hashed(walletBlock.walletHASH, salt, formular);
+			newBlock.walletHASH       = await this.calculateNextBlockID(note, newBlock.walletHASH, 1, true);
+			newBlock.nextWalletHASH   = this.hashed(
+				await this.calculateNextBlockID(note, newBlock.walletHASH, 1, true),
+				salt, formular
+			);
+
+			if (!this.autoExecute) {
+				newBlock.formerBlockID = this.hashed(formerBlock.blockID, salt, formular);
+				if (formerBlock.nextBlockID != "AUTOEXECUTE") {
+					if (!formerBlock.splitID || note.blockID != formerBlock.splitID) {
+						newBlock.blockID     = await this.calculateNextBlockID(note, formerBlock.blockID);
+						newBlock.nextBlockID = this.hashed(
+							await this.calculateNextBlockID(note, formerBlock.blockID),
+							salt, formular
+						);
+					} else {
+						newBlock.formerBlockID = this.hashed(formerBlock.splitID, salt, formular);
+						newBlock.blockID       = await this.calculateNextBlockID(note, formerBlock.splitID);
+						newBlock.nextBlockID   = this.hashed(
+							await this.calculateNextBlockID(note, newBlock.blockID),
+							salt, formular
+						);
+					}
+				} else {
+					this.sit = "Calculating for " + details.transType;
+					newBlock.blockID      = await this.calculateNextBlockID(note, formerBlock.blockID);
+					newBlock.nextBlockID  = this.hashed(
+						await this.calculateNextBlockID(note, newBlock.blockID),
+						salt, formular
+					);
+				}
+			} else {
+				newBlock.blockID       = await this.calculateNextBlockID(note, details.blockID);
+				newBlock.formerBlockID = this.hashed(details.blockID, salt, formular);
+				newBlock.nextBlockID   = "AUTOEXECUTE";
+			}
+
+			// Exchange block IDs.
+			this.exchangeBlocks = null;
+			const currentBlock = await this.getCurrentExchangeBlock(newBlock);
+			newBlock.exFormerBlockID = currentBlock.exBlockID;
+			newBlock.exBlockID       = await this.calculateNextBlockID(currentBlock.exchangeNote, newBlock.exBlockID);
+			newBlock.exNextBlockID   = await this.calculateNextBlockID(currentBlock.exchangeNote, newBlock.exBlockID);
+
+			// Rank code.
+			let rankStore;
+			const trivKey2 = this.hashed(note.walletID, salt, formular);
+			if (this.l[trivKey2]) {
+				rankStore = JSON.parse(this.isJsonable(this.l[trivKey2]) ? this.l[trivKey2] : "{}");
+			} else {
+				rankStore = { value: note.noteValue, loanValue: 0 };
+				rankStore[note.noteAddress] = { value: note.noteValue };
+			}
+			if (typeof rankStore.loanValue != "number") rankStore.loanValue = 0;
+			if (typeof rankStore.value     != "number") rankStore.value     = 0;
+
+			const rankCodes = Object.keys(this.#scriptbillRanks);
+			let rank  = rankCodes[0];
+			let value = parseFloat(note.noteValue);
+
+			if (rankStore) {
+				value = rankStore.value ? rankStore.value : value;
+				if (!rankStore[note.noteAddress]) rankStore[note.noteAddress] = {};
+				if (rankStore[note.noteAddress].value && rankStore[note.noteAddress].value < note.noteValue) {
+					value += (note.noteValue - rankStore[note.noteAddress].value);
+					rankStore[note.noteAddress].value = note.noteValue;
+					rankStore.value = value;
+				} else if (rankStore[note.noteAddress].value && rankStore[note.noteAddress].value > note.noteValue) {
+					value -= (rankStore[note.noteAddress].value - note.noteValue);
+					rankStore[note.noteAddress].value = note.noteValue;
+					rankStore.value = value;
+				} else if (!rankStore[note.noteAddress].value) {
+					rankStore[note.noteAddress].value = note.noteValue;
+					if (rankStore.value) {
+						rankStore.value += parseFloat(note.noteValue);
+						value = rankStore.value;
+					}
+				}
+			}
+			if (!rankStore.value) {
+				rankStore.value = note.noteValue;
+				value = rankStore.value;
+			}
+
+			if (rankStore.loanValue && parseFloat(rankStore.loanValue) != parseFloat(note.loanValue)) {
+				note.loanValue = rankStore.loanValue;
+			} else if (!rankStore.loanValue && note.loanValue) {
+				rankStore.loanValue = note.loanValue;
+			}
+			if (this.block && this.block.loanValue && this.block.loanValue < rankStore.loanValue) {
+				rankStore.loanValue = this.block.loanValue;
+			}
+
+			value = parseFloat(value) - parseFloat(rankStore.loanValue);
+			if (note.noteType != "SBCRD") {
+				const ex = await this.getExchangeValue("SBCRD", note.noteType);
+				value = value / ex[0];
+			}
+			if (this.#scriptbillRanks[rank].max < value) {
+				const index = rankCodes.indexOf(rank);
+				for (let rnk = index; rnk < rankCodes.length; rnk++) {
+					rank = rankCodes[rnk];
+					if (this.#scriptbillRanks[rank].max > value) break;
+				}
+			}
+
+			newBlock.rankCode = this.encrypt(rank, this.hashed(note.walletRank, salt, formular));
+			rankStore.rank = rank;
+			rankStore.rankCode = rank;
+			this.l[trivKey2] = JSON.stringify(rankStore);
+
+		} else {
+			// ── CREATE chain. ──
+			// Salt/formular guaranteed non-empty by #txHandleCreate.
+			this.seed = this.hashed(this.currentTime(), salt, formular);
+
+			newBlock.formerBlockID = "";
+			newBlock.blockID       = await this.calculateNextBlockID(note, this.seed);
+			newBlock.nextBlockID   = this.hashed(
+				await this.calculateNextBlockID(note, newBlock.blockID),
+				salt, formular
+			);
+
+			newBlock.formerWalletHASH = this.hashed("", salt, formular);
+			newBlock.walletHASH       = await this.calculateNextBlockID(note, newBlock.walletHASH, 1, true);
+			newBlock.nextWalletHASH   = this.hashed(
+				await this.calculateNextBlockID(note, newBlock.walletHASH, 1, true),
+				salt, formular
+			);
+		}
+
+		note.blockID = newBlock.blockID;
+
+		// ─────────────────────────────────────────────────────────────────
+		// (E) PRODUCT-BLOCK IDs.
+		// ─────────────────────────────────────────────────────────────────
+		if (
+			(newBlock.productID && newBlock.productNote && newBlock.productNote.exchangeID) ||
+			this.#productBlock
+		) {
+			if (!this.#productBlock) this.#productBlock = JSON.parse(JSON.stringify(newBlock));
+			this.#productBlock = await this.getCurrentProductBlock("", this.#productBlock);
+
+			newBlock.productFormerBlockID = this.hashed(this.#productBlock.productBlockID, salt, formular);
+			newBlock.productBlockID       = await this.calculateNextBlockID(this.#productBlock.productNote, newBlock.productBlockID);
+			newBlock.productNextBlockID   = this.hashed(
+				await this.calculateNextBlockID(this.#productBlock.productNote, newBlock.productBlockID),
+				salt, formular
+			);
+		}
+
+		// ─────────────────────────────────────────────────────────────────
+		// (F) POST-COMPUTE HOOKS (budgetItems fixup, __postSign, recieverID).
+		// ─────────────────────────────────────────────────────────────────
+		if (newBlock.__fixBudgetItems) {
+			const idx = newBlock.__fixBudgetItems.budgetIndexInItems;
+			if (newBlock.agreement && Array.isArray(newBlock.agreement.budgetItems)) {
+				newBlock.agreement.budgetItems[idx] = newBlock.blockID;
+			}
+			delete newBlock.__fixBudgetItems;
+		}
+		if (newBlock.__postSign) {
+			const ops = Array.isArray(newBlock.__postSign) ? newBlock.__postSign : [newBlock.__postSign];
+			for (const op of ops) {
+				const { field, key, text, isSetter } = op;
+				const signInput = text === "__blockID" ? newBlock.blockID : text;
+				const parts  = field.split(".");
+				let   target = newBlock;
+				for (let i = 0; i < parts.length - 1; i++) target = target[parts[i]];
+				if (isSetter) target[parts[parts.length - 1]] = signInput;
+				else          target[parts[parts.length - 1]] = await this.Sign(key, signInput);
+			}
+			delete newBlock.__postSign;
+		}
+		if (newBlock.__fixAgreementRecieverID) {
+			const { agreeID } = newBlock.__fixAgreementRecieverID;
+			if (newBlock.agreement && newBlock.agreement.agreeID === agreeID) {
+				newBlock.agreement.recieverID = newBlock.blockID;
+			}
+			delete newBlock.__fixAgreementRecieverID;
+		}
+
+		// ─────────────────────────────────────────────────────────────────
+		// (G) Signing section: noteSign, blockKey rotation, LOAN, walletSign,
+		//     expiry, noteType reconciliation, transNote, scriptSign.
+		// ─────────────────────────────────────────────────────────────────
+		let signTxt = newBlock.blockID;
+		let signKey = this.#isExchangeMarketMining ? currentNote.blockKey : note.blockKey;
+		newBlock.noteSign = await this.Sign(signKey, signTxt);
+
+		note.blockKey = await this.generateKey(30, true, true);
+		let id = await this.generateKey(10);
+		await this.setPrivateKey(note.blockKey, id);
+		newBlock.blockKey = await this.getPublicKey(id, true);
+
+		if (newBlock.tranType == "LOAN") {
+			newBlock.agreement.recieverSign = await this.Sign(note.blockKey, newBlock.blockID);
+			newBlock.agreement.recieverID   = signTxt;
+			newBlock.agreement.recieverKey  = newBlock.blockKey;
+			newBlock.agreements[newBlock.agreement.agreeID] = newBlock.blockID;
+		}
+
+		signTxt = note.walletID;
+		signKey = note.blockKey;
+		newBlock.walletSign = await this.Sign(signKey, signTxt);
+
+		if (newBlock.transType != "PRODUCTSUB") {
+			newBlock.expiry = parseInt(this.currentTime()) + parseInt(this.calculateTime("2 weeks"));
+		}
+
+		if (newBlock.noteType != note.noteType) {
+			newBlock.noteType = note.noteType;
+			if (newBlock.exchangeNote && newBlock.exchangeNote.noteType != note.noteType) {
+				newBlock.exchangeNote.noteType = note.noteType;
+			}
+		}
+
+		if (details.note) newBlock.transNote = details.note;
+		else if (newBlock.transNote) newBlock.transNote = "";
+
+		if (this.scriptKey) {
+			const id2 = await this.generateKey(10);
+			await this.setPrivateKey(this.scriptKey, id2);
+			newBlock.scriptSign = await this.Sign(this.scriptKey, newBlock.blockID);
+			newBlock.scriptKey  = await this.getPublicKey(id2, true);
+		}
+
+		// ─────────────────────────────────────────────────────────────────
+		// (H) Agreement hashes.
+		// ─────────────────────────────────────────────────────────────────
+		newBlock.lastAgreeHash = ctx.formerAgreeHash ?? "";
+		{
+			const s = JSON.stringify(newBlock.agreements);
+			const agreeHASH = this.hashed(s, salt, formular);
+			newBlock.agreeHash = agreeHASH.slice(0, 6) + agreeHASH.slice(agreeHASH.length - 7);
+		}
+
+		if (!newBlock.totalHASH) newBlock.totalHASH = "";
+		{
+			const s = (formerHashB ?? "") + newBlock.totalHASH;
+			newBlock.totalHASH = this.hashed(s, parentSalt, parentFormular);
+		}
+		if (!newBlock.realHash) newBlock.realHash = "";
+		{
+			const s = (formerHash ?? "") + newBlock.realHash;
+			newBlock.realHash = this.hashed(s, parentSalt, parentFormular);
+		}
+		newBlock.lastBlockHash = (formerHashB ?? "").slice(Math.round((formerHashB ?? "").length / 2));
+		newBlock.lastNoteHash  = (formerHash  ?? "").slice(Math.round((formerHash  ?? "").length / 2));
+
+		// ─────────────────────────────────────────────────────────────────
+		// (I) Exchange-note reconciliation.
+		// ─────────────────────────────────────────────────────────────────
+		if (this.#isExchangeMarketMining) {
+			currentNote = JSON.parse(JSON.stringify(note));
+			currentNote.blockKey = note.blockKey;
+			currentNote.blockID  = newBlock.blockID;
+		}
+		if (this.#fiatCurrencies[note.noteType.slice(0, note.noteType.lastIndexOf("CRD"))] && !this.#isQuotedNote) {
+			const motherKeys = await this.#generateMotherKeys();
+			if (currentNote.noteSecret != motherKeys.noteAddresses[newBlock.noteType]) {
+				currentNote.noteSecret = motherKeys.noteAddresses[newBlock.noteType];
+				const id3 = await this.generateKey(10);
+				await this.setPrivateKey(currentNote.noteSecret, id3);
+				currentNote.noteAddress = await this.getPublicKey(id3);
+				if (newBlock.exchangeNote.exchangeID != currentNote.noteAddress) {
+					newBlock.exchangeNote.exchangeID  = currentNote.noteAddress;
+					newBlock.exchangeNote.exchangeKey = currentNote.noteSecret;
+				}
+				if (!currentNote.withdrawAccount || Object.keys(currentNote.withdrawAccount).length < 1) {
+					currentNote.withdrawAccount = {
+						accountType: "BTC",
+						accountDetails: await this.getScriptbankAccounts(),
+					};
+				}
+			}
+			if (currentNote.noteType != newBlock.noteType) currentNote.noteType = newBlock.noteType;
+
+			const noteAdd = currentNote.noteAddress;
+			const secret  = currentNote.noteSecret;
+			delete currentNote.noteAddress;
+			delete currentNote.noteSecret;
+			newBlock.exchangeNote = JSON.parse(JSON.stringify(currentNote));
+			newBlock.exchangeNote.exchangeID  = noteAdd;
+			newBlock.exchangeNote.exchangeKey = secret;
+			currentNote.noteAddress = noteAdd;
+			currentNote.noteSecret  = secret;
+		}
+		if (currentNote && currentNote.exchangeID && currentNote.noteType == note.noteType &&
+			!this.#isQuotedNote && !newBlock.exchangeNote) {
+			newBlock.exchangeNote = JSON.parse(JSON.stringify(currentNote));
+		}
+		if (!newBlock.exchangeNote || !newBlock.exchangeNote.exchangeKey) {
+			if (newBlock.noteType && this.l[newBlock.noteType + "ExchangeNote"]) {
+				newBlock.exchangeNote = JSON.parse(this.l[newBlock.noteType + "ExchangeNote"]);
+			}
+		}
+
+		if (this.#isExchangeMarketMining || this.#isExchangeDeposit) newBlock.isExchangeMarketMining = 1;
+		else newBlock.isExchangeMarketMining = 0;
+
+		// ─────────────────────────────────────────────────────────────────
+		// (J) Hash the note and block.
+		//     noteHash / transHash / blockHash / blockSign / noteSign all use
+		//     THIS block's salt/formular.
+		// ─────────────────────────────────────────────────────────────────
+		delete note.noteHash;
+		delete note.transHash;
+		delete note.noteSign;
+
+		const bleckID = note.blockID;
+		if (newBlock.transType == "UPDATE" && newBlock.transValue > 0) newBlock.transValue = 0;
+
+		const noteHash = this.hashed(JSON.stringify(note), salt, formular);
+		this.#noteHASH = noteHash;
+		newBlock.noteHash = noteHash.slice(0, noteHash.length / 2);
+
+		// Gas (uses this.newBlock as its fallback, so set it before charging).
+		this.newBlock = JSON.parse(JSON.stringify(newBlock));
+		newBlock = await this.chargeGasFee(newBlock);
+
+		// BLOCK snapshot for #txCommit / #profitSharing.
+		const BLOCK = JSON.parse(JSON.stringify(newBlock));
+		ctx.BLOCK = BLOCK;
+
+		note.blockID = bleckID;
+
+		// FIX: rotate the note's salt/formular AFTER the block's hashes are
+		// sealed. The CREATE block carries S₀; the next block will carry S₁.
+		note.noteSalt     = await this.generateKey(256);
+		note.noteFormular = this.generateRandomNumberAsString(32);
+
+		// Strip fields the trans-hash contract excludes.
+		delete BLOCK.exchangeNote;
+		delete BLOCK.data;
+		delete BLOCK.productNote;
+		delete BLOCK.exBlockID;
+		delete BLOCK.exFormerBlockID;
+		delete BLOCK.exNextBlockID;
+		delete BLOCK.productBlockID;
+		delete BLOCK.productFormerBlockID;
+		delete BLOCK.productNextBlockID;
+		delete BLOCK.transHash;
+		delete BLOCK.blockHash;
+		delete BLOCK.blockSign;
+		delete BLOCK.witnesses;
+		delete BLOCK.blockHash;
+		delete BLOCK.noteSign;
+
+		const KEYS = Object.keys(this.defaultBlock);
+		for (const blockID in BLOCK) if (!KEYS.includes(blockID)) delete BLOCK[blockID];
+
+		const transHash = this.hashed(JSON.stringify(BLOCK), salt, formular);
+		newBlock.transHash = transHash.slice(0, transHash.length / 2);
+		note.transHash     = transHash.slice(transHash.length / 2);
+		newBlock.blockHash = this.hashed(transHash, salt, formular);
+
+		newBlock.blockSign = await this.Sign(note.blockKey, newBlock.blockHash);
+		note.noteHash = noteHash.slice(noteHash.length / 2);
+		note.noteSign = await this.Sign(note.blockKey, this.hashed(noteHash, salt, formular));
+
+		// ─────────────────────────────────────────────────────────────────
+		// (K) Quoted-note download (QUOTESTOCK / QUOTEBOND).
+		// ─────────────────────────────────────────────────────────────────
+		if (this.#isQuotedNote && this.#quoteCurrentNote) {
+			const quoted = this.#quoteCurrentNote;
+			quoted.transTime = note.transTime;
+			quoted.noteHash  = note.noteHash;
+			quoted.blockKey  = note.blockKey;
+			quoted.blockHash = note.blockHash;
+
+			if (!this.#password) this.#password = await this.#getPassword();
+			const pass        = this.hashed(this.#password);
+			const quotedStr   = JSON.stringify(quoted);
+			this.noteEncrypt  = this.encrypt(quotedStr, pass);
+			const noteEncrypt = await this.binarilize();
+			this.download(noteEncrypt, quoted.noteAddress.toString() + ".script", "text/plain");
+
+			this.#currentNote = JSON.parse(JSON.stringify(newBlock.exchangeNote));
+			this.#isQuotedNote = false;
+			this.#quoteCurrentNote = null;
+		}
+
+		// ─────────────────────────────────────────────────────────────────
+		// (L) Legacy exchange-note receive fixup.
+		// ─────────────────────────────────────────────────────────────────
+		if (
+			this.#isExchangeMarketMining && newBlock.exchangeNote &&
+			newBlock.exchangeNote.exchangeID == note.noteAddress &&
+			newBlock.exchangeNote.noteType == note.noteType &&
+			this.#transRecieve.includes(details.transType)
+		) {
+			newBlock.exchangeNote = JSON.parse(JSON.stringify(note));
+			newBlock.exchangeNote.noteValue      = parseFloat(newBlock.exchangeNote.noteValue);
+			newBlock.exchangeNote.noteValue     -= parseFloat(newBlock.transValue);
+			newBlock.exchangeNote.exchangeValue  = parseFloat(newBlock.exchangeNote.exchangeValue);
+			newBlock.exchangeNote.exchangeValue -= parseFloat(newBlock.transValue);
+			delete newBlock.exchangeNote.noteAddress;
+			delete newBlock.exchangeNote.noteSecret;
+		}
+
+		// ─────────────────────────────────────────────────────────────────
+		// (M) Commit visible state back onto this.*
+		// ─────────────────────────────────────────────────────────────────
+		this.successMessage("Transaction Created. Checking Trans Type: " + newBlock.transType);
+		this.response      = JSON.parse(JSON.stringify(newBlock));
+		this.#note         = JSON.parse(JSON.stringify(note));
+		this.#currentNote  = JSON.parse(JSON.stringify(currentNote));
+
+		if (note.blockID == newBlock.blockID) {
+			this.l.currentBlock = JSON.stringify(newBlock);
+		}
+
+		return newBlock;
+	}
+	// ──────────────────────────────────────────────────────────────────────────
+	// #txFingerprintHarness — legacy vs migrated, same inputs, byte-for-byte.
+	//
+	// Two snapshots are taken before each run: one for legacy, one for migrated.
+	// Both start from the SAME snapshot (baseSnap) so any state the handler
+	// mutates is reset for the next run.
+	//
+	// All comparison fields are hashed-block fields — fields whose presence in
+	// `transHash` or `blockHash` would change the signature if they differ.
+	// Non-hashed fields (transTime, expiry, recipient for empty-name) are still
+	// compared for diagnostic visibility but are marked as "soft" — a soft diff
+	// on a field that ISN'T in the hash means the handler's internal state
+	// diverged but the block hash is still valid. Soft diffs are usually
+	// fixture noise, hard diffs are always handler bugs.
+	// ──────────────────────────────────────────────────────────────────────────
+
+	static #txFingerprintFields() {
+		// Fields that participate in transHash / blockHash / blockSign.
+		// A hard diff on any of these means the handler's output block is
+		// cryptographically different from legacy's.
+		return {
+			hard: [
+				"blockID", "formerBlockID", "nextBlockID",
+				"noteHash", "transHash", "blockHash", "blockSign", "noteSign",
+				"walletSign", "walletHASH", "formerWalletHASH", "nextWalletHASH",
+				"noteValue", "noteID", "noteType", "creditType",
+				"transType", "transValue",
+				"defaultKey", "transSalt", "transFormular",
+				"lastBlockHash", "lastNoteHash", "lastAgreeHash", "agreeHash",
+				"totalHASH", "realHash", "rankCode",
+				"exBlockID", "exFormerBlockID", "exNextBlockID",
+				"productBlockID", "productFormerBlockID", "productNextBlockID",
+				"budgetID", "productID", "referenceID", "referenceKey",
+				"splitID", "nextSplitID",
+			],
+			soft: [
+				"transTime", "expiry", "recipient", "blockRef", "signRef",
+				"isExchangeMarketMining", "scriptSign", "scriptKey",
+			],
+		};
+	}
+	
+	//y verifyFingerprint only.
+	// ──────────────────────────────────────────────────────────────────────────
+	static #txSnapshotState() {
+		return {
+			shareValue:               this.#shareValue,
+			isExchangeMarketMining:   this.#isExchangeMarketMining,
+			isExchangeDeposit:        this.#isExchangeDeposit,
+			agreeBlock:               this.#agreeBlock,
+			productBlock:             this.#productBlock ? JSON.parse(JSON.stringify(this.#productBlock)) : null,
+			currentNote:              this.#currentNote ? JSON.parse(JSON.stringify(this.#currentNote)) : null,
+			splitNote:                this.#splitNote ? JSON.parse(JSON.stringify(this.#splitNote)) : null,
+			mergeNoted:               this.mergeNoted ? JSON.parse(JSON.stringify(this.mergeNoted)) : null,
+			setPass:                  this.#set_pass,
+			passwordKey:              this.#passwordKey,
+			note:                     this.#note ? JSON.parse(JSON.stringify(this.#note)) : null,
+			response:                 this.response ? JSON.parse(JSON.stringify(this.response)) : null,
+			formerBlock:              this.formerBlock ? JSON.parse(JSON.stringify(this.formerBlock)) : null,
+			returnBlock:              this.returnBlock ? JSON.parse(JSON.stringify(this.returnBlock)) : null,
+			returnNote:               this.returnNote ? JSON.parse(JSON.stringify(this.returnNote)) : null,
+			block:                    this.block ? JSON.parse(JSON.stringify(this.block)) : null,
+		};
+	}
+
+	static #txRestoreState(snap) {
+		this.#shareValue               = snap.shareValue;
+		this.#isExchangeMarketMining   = snap.isExchangeMarketMining;
+		this.#isExchangeDeposit        = snap.isExchangeDeposit;
+		this.#agreeBlock               = snap.agreeBlock;
+		this.#productBlock             = snap.productBlock ? JSON.parse(JSON.stringify(snap.productBlock)) : null;
+		this.#currentNote              = snap.currentNote ? JSON.parse(JSON.stringify(snap.currentNote)) : null;
+		this.#splitNote                = snap.splitNote ? JSON.parse(JSON.stringify(snap.splitNote)) : null;
+		this.mergeNoted                = snap.mergeNoted ? JSON.parse(JSON.stringify(snap.mergeNoted)) : null;
+		this.#set_pass                 = snap.setPass;
+		this.#passwordKey              = snap.passwordKey;
+		this.#note                     = snap.note ? JSON.parse(JSON.stringify(snap.note)) : null;
+		this.response                  = snap.response ? JSON.parse(JSON.stringify(snap.response)) : null;
+		this.formerBlock               = snap.formerBlock ? JSON.parse(JSON.stringify(snap.formerBlock)) : null;
+		this.returnBlock               = snap.returnBlock ? JSON.parse(JSON.stringify(snap.returnBlock)) : null;
+		this.returnNote                = snap.returnNote ? JSON.parse(JSON.stringify(snap.returnNote)) : null;
+		this.block                     = snap.block ? JSON.parse(JSON.stringify(snap.block)) : null;
+	}
+
+
+	static async verifyFingerprint(opts) {
+		const {
+			type,
+			details,
+			note = null,
+			response = null,
+			setup = null,
+		} = opts;
+
+		const fields  = this.#txFingerprintFields();
+		const results = {
+			type,
+			legacyError: null,
+			migratedError: null,
+			legacyBlock: null,
+			migratedBlock: null,
+			hardDiffs: [],
+			softDiffs: [],
+			agreementDiff: false,
+			agreementsDiff: false,
+			passed: false,
+		};
+		
+		// Inside verifyFingerprint, after results = { ... }:
+		results.matchedRejection = false;
+		results.rejectionReason  = null;
+
+		const baseSnap = this.#txSnapshotState();
+
+		// ── Legacy run ──
+		try {
+			this.#txRestoreState(baseSnap);
+			if (setup) await setup(this);
+			const d = JSON.parse(JSON.stringify(details));
+			const n = note ? JSON.parse(JSON.stringify(note)) : null;
+			const r = response ? JSON.parse(JSON.stringify(response)) : null;
+			results.legacyBlock = await this.#generateScriptbillTransactionBlockLegacy(d, n, r);
+			results.legacyBlock = results.legacyBlock
+				? JSON.parse(JSON.stringify(results.legacyBlock))
+				: null;
+		} catch (e) {
+			results.legacyError = e.toString();
+		}
+
+		// ── Migrated run ──
+		try {
+			this.#txRestoreState(baseSnap);
+			if (setup) await setup(this);
+			const was = this.#txMigrated.has(type);
+			this.#txMigrated.add(type);
+			try {
+				const d = JSON.parse(JSON.stringify(details));
+				const n = note ? JSON.parse(JSON.stringify(note)) : null;
+				const r = response ? JSON.parse(JSON.stringify(response)) : null;
+				results.migratedBlock = await this.generateScriptbillTransactionBlock(d, n, r);
+				results.migratedBlock = results.migratedBlock
+					? JSON.parse(JSON.stringify(results.migratedBlock))
+					: null;
+			} finally {
+				if (!was) this.#txMigrated.delete(type);
+			}
+		} catch (e) {
+			results.migratedError = e.toString();
+		}
+
+		// ── Compare ──
+		if (results.legacyBlock && results.migratedBlock) {
+			for (const f of fields.hard) {
+				const lv = results.legacyBlock[f];
+				const hv = results.migratedBlock[f];
+				if (JSON.stringify(lv) !== JSON.stringify(hv)) {
+					results.hardDiffs.push({ field: f, legacy: lv, migrated: hv });
+				}
+			}
+			for (const f of fields.soft) {
+				const lv = results.legacyBlock[f];
+				const hv = results.migratedBlock[f];
+				if (JSON.stringify(lv) !== JSON.stringify(hv)) {
+					results.softDiffs.push({ field: f, legacy: lv, migrated: hv });
+				}
+			}
+			results.agreementDiff = JSON.stringify(
+				results.legacyBlock.agreement
+			) !== JSON.stringify(results.migratedBlock.agreement);
+			results.agreementsDiff = JSON.stringify(
+				results.legacyBlock.agreements
+			) !== JSON.stringify(results.migratedBlock.agreements);
+		}
+
+		// Replace the old `results.passed = ...` block with this:
+
+		if (!results.legacyBlock && !results.migratedBlock &&
+			!results.legacyError && !results.migratedError) {
+			// Both sides rejected without throwing. This IS a match — the handler
+			// and legacy agree on the guard. Surface the reason for visibility.
+			results.matchedRejection = true;
+			const msgs = this.s.eMessages ? JSON.parse(this.s.eMessages) : {};
+			const keys = Object.keys(msgs).sort();
+			results.rejectionReason = keys.length ? msgs[keys[keys.length - 1]] : null;
+		}
+
+		results.passed = !!(
+			!results.legacyError &&
+			!results.migratedError &&
+			results.legacyBlock && results.migratedBlock &&
+			results.hardDiffs.length === 0 &&
+			!results.agreementDiff &&
+			!results.agreementsDiff
+		);
+
+		this.#txRestoreState(baseSnap);
+		return results;
+	}
+
+	static printFingerprint(r) {
+		console.log(`\n══ fingerprint: ${r.type} ══`);
+		if (r.legacyError)   console.error("  LEGACY ERROR:  ", r.legacyError);
+		if (r.migratedError) console.error("  MIGRATED ERROR:", r.migratedError);
+
+		if (r.hardDiffs.length) {
+			console.warn("  HARD DIFFS (hash-breaking):");
+			for (const d of r.hardDiffs) {
+				console.warn(`    ${d.field}`);
+				console.warn(`      legacy:   ${JSON.stringify(d.legacy).slice(0, 100)}`);
+				console.warn(`      migrated: ${JSON.stringify(d.migrated).slice(0, 100)}`);
+			}
+		} else {
+			console.log("  HARD DIFFS: none");
+		}
+
+		if (r.softDiffs.length) {
+			console.log("  SOFT DIFFS (hash-neutral):");
+			for (const d of r.softDiffs) {
+				console.log(`    ${d.field}: ${JSON.stringify(d.legacy).slice(0,60)} vs ${JSON.stringify(d.migrated).slice(0,60)}`);
+			}
+		} else {
+			console.log("  SOFT DIFFS: none");
+		}
+		
+		if (r.matchedRejection) {
+			console.warn(`  both paths rejected identically: "${r.rejectionReason}"`);
+			console.warn("  ▶ MATCHED REJECTION (protocol precondition not met — not a handler failure)");
+			return;
+		}
+
+		console.log("  agreement diff: ",  r.agreementDiff  ? "YES" : "no");
+		console.log("  agreements diff:", r.agreementsDiff ? "YES" : "no");
+		console.log("  ▶", r.passed ? "PASS" : "FAIL");
+		console.log("Check R", r);
+	}
+	
+	static async #txGenerate(details, note, response) {
+		// ── 1. Prepare the context (same object graph throughout) ──
+		const ctx = await this.#txPrepare(details, note, response);
+		if (!ctx) return false;
+
+		// ── 2. Compute former-block hashes (identical to legacy preamble) ──
+		const realNote = JSON.parse(JSON.stringify(ctx.note));
+		delete realNote.noteSign;
+		delete realNote.noteHash;
+		delete realNote.transHash;
+		let formerHash = this.hashed(JSON.stringify(realNote));
+		if (this.#noteHASH && this.#noteHASH !== formerHash) formerHash = this.#noteHASH;
+
+		const formerBlockCopy = JSON.parse(JSON.stringify(ctx.formerBlock || {}));
+		[
+			"exchangeNote","data","productNote","exBlockID","exFormerBlockID","exNextBlockID",
+			"productBlockID","productFormerBlockID","productNextBlockID",
+			"transHash","blockHash","blockSign","witnesses","noteSign",
+		].forEach((k) => delete formerBlockCopy[k]);
+		const KEYS = Object.keys(this.defaultBlock);
+		for (const k in formerBlockCopy) if (!KEYS.includes(k)) delete formerBlockCopy[k];
+		const formerHashB = this.hashed(JSON.stringify(formerBlockCopy));
+
+		ctx.formerHash  = formerHash;
+		ctx.formerHashB = formerHashB;
+
+		// ── 3. Dispatch. Handler mutates ctx in place, returns {handled, block} ──
+		const result = await this.#txDispatch(ctx);
+		if (!result || !result.handled) {
+			if (result && result.reason) this.successMessage("tx fallback: " + result.reason);
+			return this.#generateScriptbillTransactionBlockLegacy(details, note, response);
+		}
+
+		// ── 4. Finalize. Reads ctx.note / ctx.currentNote directly.
+		//         The handler's in-place mutations are already visible here
+		//         because ctx has never been rebound. ──
+		console.log("check result:", result );
+		const block = await this.#txFinalize(ctx, result.block);
+		if (!block) return false;
+
+		// ── 5. Commit. Persist + save note + optional follow-up. ──
+		return this.#txCommit(ctx, result, block);
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// ADDITEM
+	// Requires: this.#budgetSecret, note.noteBudgets includes it.
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleAddItem(ctx) {
+		const { note, details, formerBlock } = ctx;
+
+		if (!note.noteBudgets || !note.noteBudgets.includes(this.#budgetSecret)) {
+			this.errorMessage("Budget note found on note, Please check the budget ID supplied and try again");
+			return { handled: false, reason: "ADDITEM:not-owner" };
+		}
+
+		// Normalize agreement from defaults.
+		if (
+			!details.agreement || !details.agreement.itemName ||
+			!details.agreement.itemValue || !details.agreement.itemProduct ||
+			!details.agreement.itemID
+		) {
+			details.agreement = JSON.parse(JSON.stringify(this.defaultItem));
+		}
+
+		let value = parseFloat(details.agreement.itemValue);
+		if (details.agreement.itemCredit !== note.noteType) {
+			const exValue = await this.getExchangeValue(details.agreement.itemCredit, note.noteType);
+			value = value * exValue[0];
+		}
+
+		const id = await this.generateKey(10);
+		await this.setPrivateKey(this.#budgetSecret, id);
+		let budgetBlock = await this.getCurrentBudgetBlock(await this.getPublicKey(id));
+		let isBusiness = true;
+
+		if (!budgetBlock || !budgetBlock.agreement) {
+			budgetBlock = await this.getCurrentBudgetBlock(await this.getPublicKey(id, true));
+			if (!budgetBlock || !budgetBlock.agreement) {
+				this.errorMessage("No Budget found associated with this item");
+				return { handled: false, reason: "ADDITEM:no-budget" };
+			}
+			isBusiness = false;
+		}
+
+		const budget = JSON.parse(JSON.stringify(budgetBlock.agreement));
+		if (!budget.budgetItems || typeof budget.budgetItems !== "object") {
+			budget.budgetItems = [];
+		}
+		budget.budgetItems.push("__PLACEHOLDER__"); // will be replaced in postSign hook
+
+		budget.item = JSON.parse(JSON.stringify(details.agreement));
+		budget.item.itemID = await this.generateKey(20);
+		budget.value = parseFloat(budget.value) + parseFloat(details.agreement.itemValue);
+
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType    = "ADDITEM";
+		building.agreement    = budget;
+		building.transValue   = details.agreement.itemValue;
+		building.referenceID  = budget.item.itemID;
+		building.referenceKey = budget.budgetID;
+
+		// Sign the budget block with the appropriate key.
+		const signKey = (isBusiness && note.budgetKey) ? note.budgetKey : this.#budgetSecret;
+		const sid = await this.generateKey(10);
+		await this.setPrivateKey(signKey, sid);
+		building.budgetKey  = await this.getPublicKey(sid, true);
+		building.__postSign = {
+			field: "budgetSign",
+			key: signKey,
+			text: "__blockID",
+		};
+
+		// The budgetItems array needs the *new* block ID, which isn't known until
+		// finalize. Mark it for the post-finalize fixup.
+		building.__fixBudgetItems = {
+			budgetIndexInItems: budget.budgetItems.length - 1,
+		};
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// UPDATEBUDGET
+	// Requires: this.#budgetSecret, note.noteBudgets includes it.
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleUpdateBudget(ctx) {
+		const { note, details, formerBlock } = ctx;
+
+		if (!note.noteBudgets || !note.noteBudgets.includes(this.#budgetSecret)) {
+			this.errorMessage("No budget found to be updated");
+			return { handled: false, reason: "UPDATEBUDGET:not-owner" };
+		}
+
+		const id = await this.generateKey(10);
+		await this.setPrivateKey(this.#budgetSecret, id);
+		const budgetBlock = await this.getCurrentBudgetBlock(await this.getPublicKey(id));
+
+		if (!budgetBlock || !budgetBlock.agreement) {
+			this.errorMessage("No Budget found to be updated");
+			return { handled: false, reason: "UPDATEBUDGET:not-found" };
+		}
+
+		let agreement;
+		if (!details.agreement || !details.agreement.budgetID || !details.agreement.budgetItems) {
+			agreement = JSON.parse(JSON.stringify(budgetBlock.agreement));
+		} else {
+			agreement = JSON.parse(JSON.stringify(details.agreement));
+			// Preserve immutable fields from the existing budget.
+			agreement.budgetItems = budgetBlock.agreement.budgetItems;
+			agreement.stockID     = budgetBlock.agreement.stockID;
+		}
+
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "UPDATEBUDGET";
+		building.agreement  = agreement;
+		building.transValue = 0;   // UPDATEBUDGET is a non-value transaction
+
+		// Sign the budget block with budgetKey (business) or #budgetSecret.
+		const signKey = note.budgetKey || this.#budgetSecret;
+		const sid = await this.generateKey(10);
+		await this.setPrivateKey(signKey, sid);
+		building.budgetKey  = await this.getPublicKey(sid, true);
+		building.__postSign = {
+			field: "budgetSign",
+			key: signKey,
+			text: "__blockID",
+		};
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// CREATEBUDGET
+	// Requires: details.agreement.budgetType, this.#budgetSecret.
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleCreateBudget(ctx) {
+		const { note, details, formerBlock } = ctx;
+
+		if (!this.#budgetSecret) {
+			this.errorMessage("Please re-try to generate your budget with a budget secret key.");
+			return { handled: false, reason: "CREATEBUDGET:no-secret" };
+		}
+
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType = "CREATEBUDGET";
+		building.agreement = JSON.parse(JSON.stringify(details.agreement));
+
+		const budgetType = details.agreement.budgetType;
+		const testType   = note.noteType.slice(0, note.noteType.lastIndexOf("CRD"));
+
+		let exchangeNote = null;
+		let productNote  = null;
+
+		// ── business ──
+		if (budgetType === "business") {
+			productNote = JSON.parse(JSON.stringify(this.defaultBlock.exchangeNote));
+			productNote.noteSecret = await this.generateKey(40, true);
+			let id = await this.generateKey(10);
+			await this.setPrivateKey(productNote.noteSecret, id);
+			productNote.noteAddress  = await this.getPublicKey(id);
+			productNote.exchangeID   = await this.getPublicKey(id);
+			productNote.exchangeKey  = await this.getPrivateKey(id);
+			productNote.noteType     = details.agreement.stockID;
+			productNote.creditType   = note.noteType;
+			productNote.rankPref     = "business";
+			productNote.walletID     = note.walletID;
+			productNote.stockID      = details.agreement.stockID;
+			productNote.stockValue   = 0;
+			productNote.bondValue    = 0;
+
+			id = await this.generateKey(10);
+			await this.setPrivateKey(this.#budgetSecret, id);
+			productNote.budgetID = await this.getPublicKey(id);
+			building.budgetID    = productNote.budgetID;
+			details.budgetID     = productNote.budgetID;
+			details.agreement.budgetID = productNote.budgetID;
+			building.productNote = productNote;
+
+			if (!note.budgetID) {
+				note.budgetID = this.#budgetSecret;
+			} else {
+				this.errorMessage(
+					"Can't create a new business from an existing business note. " +
+					"Use another note to create this business instead."
+				);
+				return { handled: false, reason: "CREATEBUDGET:business-exists" };
+			}
+
+			note.budgetKey = await this.generateKey(10, true, true);
+			id = await this.generateKey(10);
+			await this.setPrivateKey(note.budgetKey, id);
+			building.budgetKey  = await this.getPublicKey(id, true);
+			building.budgetSign = await this.Sign(note.budgetKey, building.blockID || "");
+			building.__postSign = {
+				field: "budgetSign",
+				key: note.budgetKey,
+				text: "__blockID",
+			};
+		}
+		// ── governmental ──
+		else if (budgetType === "governmental") {
+			if (!details.agreement.stockID ||
+				(details.agreement.stockID.length - details.agreement.stockID.lastIndexOf("CRD")) === 3) {
+				this.errorMessage(
+					"Governmental Budget must have a properly configured stockID, with a CRD -prefix, " +
+					"Yours was formatted like this: " +
+					(details.agreement.stockID ? details.agreement.stockID : "none was found!")
+				);
+				return { handled: false, reason: "CREATEBUDGET:bad-stockID" };
+			}
+
+			building.noteType = details.agreement.stockID;
+			this.noteTypeS = building.noteType;
+
+			// If a budget block already exists for this stockID, don't duplicate.
+			const existing = await this.getTransBlock(1, { noteTypeS: building.noteType, noteType: building.noteType });
+			if (existing.length && existing[0].budgetID) {
+				const budgetData = await this.getCurrentBudgetBlock(existing[0].budgetID);
+				if (budgetData) {
+					this.errorMessage("Budget Already Exists");
+					return { handled: false, reason: "CREATEBUDGET:exists" };
+				}
+			}
+
+			const motherKeys = await this.#generateMotherKeys();
+			let privKey = motherKeys.noteAddresses[building.noteType]
+				|| await this.generateKey(40, true);
+			let id = await this.generateKey(10);
+			await this.setPrivateKey(privKey, id);
+
+			exchangeNote = JSON.parse(JSON.stringify(this.defaultScriptbill));
+			exchangeNote.exchangeID  = await this.getPublicKey(id);
+			exchangeNote.exchangeKey = privKey;
+			exchangeNote.noteType    = building.noteType;
+
+			if (motherKeys[building.noteType]) {
+				id = await this.generateKey(10);
+				await this.setPrivateKey(motherKeys[building.noteType], id);
+				exchangeNote.motherKey = await this.getPublicKey(id);
+				exchangeNote.creditType = building.noteType.slice(0, building.noteType.lastIndexOf("CRD"));
+			} else {
+				exchangeNote.motherKey  = note.noteAddress;
+				exchangeNote.noteValue  = note.noteValue;
+				exchangeNote.creditType = note.noteType;
+			}
+
+			if (note.withdrawAccount && !this.withdrawAccount) {
+				exchangeNote.withdrawAccount = note.withdrawAccount;
+			} else if (this.withdrawAccount) {
+				exchangeNote.withdrawAccount = this.withdrawAccount;
+			}
+
+			// Attach the budget ID, respecting mother keys when applicable.
+			if (details.agreement.stockID && motherKeys.budgetIDS[details.agreement.stockID]) {
+				note.budgetID = motherKeys.budgetIDS[details.agreement.stockID];
+			} else if (details.agreement.stockID) {
+				note.budgetID = this.#budgetSecret;
+			}
+			id = await this.generateKey(10);
+			await this.setPrivateKey(this.#budgetSecret, id);
+			exchangeNote.budgetID     = await this.getPublicKey(id);
+			details.agreement.budgetID = exchangeNote.budgetID;
+			exchangeNote.transTime    = this.currentTime();
+			exchangeNote.stockID      = exchangeNote.noteType.slice(0, exchangeNote.noteType.lastIndexOf("CRD")) + "BND";
+
+			details.budgetID = exchangeNote.budgetID;
+			building.budgetID = details.budgetID;
+
+			note.budgetKey = await this.generateKey(10, true, true);
+			id = await this.generateKey(10);
+			await this.setPrivateKey(note.budgetKey, id);
+			building.budgetKey = await this.getPublicKey(id, true);
+			building.__postSign = {
+				field: "budgetSign",
+				key: note.budgetKey,
+				text: "__blockID",
+			};
+		}
+		// ── personal / family ──
+		else {
+			// Legacy behaves like business in terms of storage but without the
+			// productNote exchange-market setup. We mirror that path.
+			if (!building.budgetID) {
+				const id = await this.generateKey(10);
+				await this.setPrivateKey(this.#budgetSecret, id);
+				building.budgetID = await this.getPublicKey(id);
+			}
+			note.budgetKey = await this.generateKey(10, true, true);
+			const id = await this.generateKey(10);
+			await this.setPrivateKey(note.budgetKey, id);
+			building.budgetKey  = await this.getPublicKey(id, true);
+			building.__postSign = {
+				field: "budgetSign",
+				key: note.budgetKey,
+				text: "__blockID",
+			};
+		}
+
+		// Ensure budgetSign exists even if the branch above didn't sign.
+		if (!building.budgetSign) {
+			const id = await this.generateKey(10);
+			await this.setPrivateKey(this.#budgetSecret, id);
+			building.budgetKey = await this.getPublicKey(id, true);
+			building.__postSign = {
+				field: "budgetSign",
+				key: this.#budgetSecret,
+				text: "__blockID",
+			};
+		}
+
+		building.budgetID = details.budgetID;
+		building.agreement = details.agreement;
+
+		if (!building.budgetRefs) building.budgetRefs = [];
+		building.budgetRefs.push(details.budgetID);
+
+		building.budgetCredit = details.agreement.budgetCredit || note.noteType;
+		building.expiry       = Infinity;
+		building.transType    = "CREATEBUDGET";
+		building.transValue   = details.transValue;
+		if (exchangeNote) building.exchangeNote = exchangeNote;
+
+		if (!note.noteBudgets || typeof note.noteBudgets !== "object") note.noteBudgets = [];
+		note.noteBudgets.push(this.#budgetSecret);
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// UPDATEPRODUCT
+	// Requires: details.productID, details.agreement.{value, units},
+	//           ctx.formerBlock (or note.noteProducts includes the key).
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleUpdateProduct(ctx) {
+		const { note, details, formerBlock } = ctx;
+
+		if (!details.productID) {
+			this.errorMessage("We couldn't find a product to update from the information provided!");
+			return { handled: false, reason: "UPDATEPRODUCT:no-productID" };
+		}
+		if (!details.agreement || !details.agreement.value || !details.agreement.units) {
+			this.errorMessage("Product Poorly Configured");
+			return { handled: false, reason: "UPDATEPRODUCT:bad-config" };
+		}
+
+		// Load the current product block.
+		this.productID = details.productID;
+		this.#productBlock = await this.getTransBlock(1, { productID: details.productID });
+		this.#productBlock = await this.getCurrentBlock(this.#productBlock);
+
+		if (
+			!this.#productBlock || !this.#productBlock.productID ||
+			!this.#productBlock.productNote || !this.#productBlock.agreement ||
+			!this.#productBlock.agreement.value
+		) {
+			this.errorMessage("Invalid Product Selected to be Updated. Please Check the Product ID Provided and Try again!");
+			return { handled: false, reason: "UPDATEPRODUCT:not-found" };
+		}
+
+		// Verify ownership.
+		if (!note.noteProducts || !note.noteProducts.length || typeof note.noteProducts !== "object") {
+			this.errorMessage("No Product Private Key on note to show you created this product.");
+			return { handled: false, reason: "UPDATEPRODUCT:no-products" };
+		}
+
+		let productKey = null;
+		for (const key of note.noteProducts) {
+			const id = await this.generateKey(10);
+			await this.setPrivateKey(key, id);
+			if (details.productID === await this.getPublicKey(id, true)) {
+				productKey = key;
+				break;
+			}
+		}
+		if (!productKey) {
+			this.errorMessage("No Product Private Key on note to show you created this product.");
+			return { handled: false, reason: "UPDATEPRODUCT:not-owner" };
+		}
+
+		const productNote = JSON.parse(JSON.stringify(this.#productBlock.productNote));
+		const totalNew = parseFloat(details.agreement.value) * parseFloat(details.agreement.units);
+		const totalOld = parseFloat(this.#productBlock.agreement.value) *
+						 parseFloat(this.#productBlock.agreement.units);
+		const added = totalNew - totalOld;
+
+		if (!productNote.demandValue) productNote.demandValue = 0;
+		productNote.demandValue = parseFloat(productNote.demandValue) + added;
+
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "UPDATEPRODUCT";
+		building.productID  = details.productID;
+		building.productNote = productNote;
+		building.agreement  = JSON.parse(JSON.stringify(details.agreement));
+		building.__postSign = {
+			field: "productSign",
+			key: productKey,
+			text: "__blockID",
+		};
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// CREATEPRODUCT
+	// Faithful port of the legacy `details.transType == 'CREATEPRODUCT'` branch.
+	// Requires: details.agreement.productConfig, note.budgetID (or
+	//           this.isScriptbankProduct).
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleCreateProduct(ctx) {
+		const { note, details, formerBlock } = ctx;
+
+		if (!details.agreement || !details.agreement.productConfig) {
+			return { handled: false, reason: "CREATEPRODUCT:no-productConfig" };
+		}
+
+		// Product key.
+		let productKey = await this.generateKey(20, true, true);
+		if (this.productKey) productKey = this.productKey;
+		const id = await this.generateKey(10);
+		await this.setPrivateKey(productKey, id);
+		const productID = await this.getPublicKey(id, true);
+
+		// Legacy: refuse to CREATE a product the note already holds.
+		if (note.noteProducts && note.noteProducts.includes(productKey)) {
+			this.errorMessage("You should be updating product instead of creating it");
+			details.transType = "UPDATEPRODUCT";
+			return { handled: false, reason: "CREATEPRODUCT:already-exists" };
+		}
+		if (!note.noteProducts || typeof note.noteProducts !== "object") note.noteProducts = [];
+		note.noteProducts.push(productKey);
+
+		// ── Budget resolution ──
+		let budgetID = note.budgetID;
+		let budget   = null;
+		if (budgetID) {
+			const bid = await this.generateKey(10);
+			await this.setPrivateKey(budgetID, bid);
+			const pubBudgetID = await this.getPublicKey(bid);
+			budget = await this.getCurrentBudgetBlock(pubBudgetID);
+		}
+
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType = "CREATEPRODUCT";
+		building.productID = productID;
+		building.productSign = await this.Sign(productKey, "placeholder-sign");
+		// ↑ The real signature must sign the block ID, which isn't known yet.
+		//   Legacy did the same: it signed `newBlock.blockID` — but `newBlock.blockID`
+		//   was the *previous* block's ID at that point. We match legacy's
+		//   exact timing by signing after we know the new blockID, which happens
+		//   in #txFinalize. To avoid changing the signature input, we defer the
+		//   signature via a `postSign` callback the finalize step will run.
+		building.__postSign = {
+			field: "productSign",
+			key: productKey,
+			text: "__blockID",
+		};
+
+		// ── Product note & budget attachment ──
+		if (this.isScriptbankProduct) {
+			// Scriptbank path — productNote is either supplied or generated.
+			if (typeof this.isScriptbankProduct === "object" && this.isScriptbankProduct.budgetID) {
+				building.budgetID = this.isScriptbankProduct.budgetID;
+				if (this.isScriptbankProduct.note && this.isScriptbankProduct.note.exchangeID) {
+					building.productNote = JSON.parse(JSON.stringify(this.isScriptbankProduct.note));
+				} else {
+					building.productNote = JSON.parse(JSON.stringify(this.defaultBlock.exchangeNote));
+					const priv = await this.generateKey(10, true);
+					const nid = await this.generateKey(10);
+					await this.setPrivateKey(priv, nid);
+					building.productNote.exchangeID = await this.getPublicKey(nid);
+					building.productNote.exchangeKey = priv;
+				}
+			} else {
+				building.budgetID = this.isScriptbankProduct;
+				building.productNote = JSON.parse(JSON.stringify(this.defaultBlock.exchangeNote));
+				const priv = await this.generateKey(10, true);
+				const nid = await this.generateKey(10);
+				await this.setPrivateKey(priv, nid);
+				building.productNote.exchangeID = await this.getPublicKey(nid);
+				building.productNote.exchangeKey = priv;
+			}
+		} else {
+			if (
+				!budgetID || !budget ||
+				!budget.productNote || !budget.agreement ||
+				budget.agreement.budgetType !== "business"
+			) {
+				this.errorMessage(
+					"Can't Create a Product In the Scriptbill Network Without a Valid Business Budget. " +
+					"Create a Business Budget First and Then Try Creating Your Product Again."
+				);
+				return { handled: false, reason: "CREATEPRODUCT:no-business-budget" };
+			}
+			building.budgetID = budgetID;
+			building.productNote = JSON.parse(JSON.stringify(budget.productNote));
+		}
+
+		// ── Product config ──
+		building.agreement = JSON.parse(JSON.stringify(details.agreement));
+		building.businessKey = note.BMKey || note.noteAddress;
+
+		// ── Demand-value update ──
+		if (!building.productNote.demandValue) building.productNote.demandValue = 0;
+		let units = parseInt(building.agreement.productConfig.units);
+		if (!units) units = 1;
+		const prodValue = parseFloat(building.agreement.productConfig.value) * units;
+		if (!isNaN(prodValue)) {
+			building.productNote.demandValue =
+				parseFloat(building.productNote.demandValue) + prodValue;
+		}
+
+		building.transValue = details.transValue;
+		building.transType  = "CREATEPRODUCT";
+
+		// Save the product block for #txFinalize's product-block-ID advance.
+		this.#productBlock = JSON.parse(JSON.stringify(building));
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// DEPOSIT
+	//
+	// Legacy: requires a WITHDRAW response block; bills via exchangeNote; can
+	// route to create a new exchange market if needed.
+	//
+	// New rule: always creates a valid DEPOSIT block. Billing (note.noteValue +=,
+	// exchangeNote mutation) happens only if getTransBlock finds a WITHDRAW
+	// with transValue >= details.transValue. Otherwise the block is created but
+	// the note's value does not change — it stays queued.
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txHandleDeposit(ctx) {
+		const { note, details, response, formerBlock } = ctx;
+
+		// ── Pairing check: find a WITHDRAW with transValue >= request ──
+		// Note: legacy accepts a WITHDRAW response to bypass this lookup. Keep
+		// that bypass — it's an optimization, not a behavioral change.
+		let counterpartWithdraws;
+		if (response && response.transType === "WITHDRAW") {
+			counterpartWithdraws = [response];
+		} else {
+			counterpartWithdraws = await this.getTransBlock(100, {
+				transType: "WITHDRAW",
+				transValue: details.transValue + " >=",
+			});
+		}
+		const pairedWithdraw = (Array.isArray(counterpartWithdraws) ? counterpartWithdraws : [])
+			.find((w) =>
+				w && w.blockID &&
+				w.transType === "WITHDRAW" &&
+				parseFloat(w.transValue) >= parseFloat(details.transValue)
+			);
+
+		// ── Build the block ──
+		const building = JSON.parse(JSON.stringify(formerBlock));
+		building.transType  = "DEPOSIT";
+		building.transValue = details.transValue;
+
+		// Agreement — matches legacy. Always attached so the block is complete.
+		let agreement = details.agreement;
+		if (!agreement || !agreement.agreeID) {
+			agreement = await this.createAgreement("", building);
+			if (!note.agreements || typeof note.agreements !== "object") note.agreements = [];
+			note.agreements.push({
+				agreeID: agreement.agreeID,
+				key:     agreement.privateKey,
+				signKey: agreement.senderSignKey,
+			});
+		}
+		agreement = JSON.parse(JSON.stringify(agreement));
+		if (!agreement.ExecTime) {
+			agreement.ExecTime = parseInt(this.currentTime()) +
+				parseInt(this.calculateTime("3 Days"));
+		}
+		if (!agreement.value || agreement.value != details.transValue) {
+			agreement.value = details.transValue;
+		}
+
+		const privKey = agreement.privateKey || await this.generateKey(30, true, true);
+		delete agreement.privateKey;
+		const id = await this.generateKey(10);
+		await this.setPrivateKey(privKey, id);
+
+		building.blockRef = await this.getPublicKey(id, true);
+		building.signRef  = pairedWithdraw
+			? await this.Sign(privKey, pairedWithdraw.signRef)
+			: await this.generateKey(20);
+
+		// Recipient: the withdrawal account if we found a matching withdraw;
+		// otherwise, address the block to the note itself (an "unclaimed"
+		// deposit — the counterpart withdraw, when it arrives, will be matched
+		// by blockRef/signRef/transValue via getTransBlock).
+		building.recipient = this.encrypt(
+			JSON.stringify(agreement),
+			pairedWithdraw ? pairedWithdraw.recipient : note.noteAddress
+		);
+		building.agreement = agreement;
+		building.agreements[agreement.agreeID] = building.blockID || "";
+
+		// ── Conditional billing ──
+		if (pairedWithdraw) {
+			// Legacy-equivalent billing.
+			if (response && response.transType === "WITHDRAW") {
+				building.exchangeNote = JSON.parse(JSON.stringify(response.exchangeNote || {}));
+				if (response.exchangeNote) {
+					building.exchangeNote = JSON.parse(JSON.stringify(response.exchangeNote));
+				}
+			} else if (this.#currentNote) {
+				building.exchangeNote = JSON.parse(JSON.stringify(this.#currentNote));
+			}
+
+			if (building.exchangeNote && building.exchangeNote.exchangeID) {
+				if (this.#fiatCurrencies[note.noteType.slice(0, note.noteType.lastIndexOf("CRD"))]) {
+					building.exchangeNote.noteServer =
+						`https://${note.noteType.slice(0, note.noteType.lastIndexOf("CRD"))}.` +
+						`${this.#default_scriptbill_server.substring(8)}`;
+				}
+				if (!building.exchangeNote.exchangeValue) building.exchangeNote.exchangeValue = 0;
+				if (!building.exchangeNote.demandValue)  building.exchangeNote.demandValue  = 0;
+
+				if (building.exchangeNote.exchangeValue >= details.transValue) {
+					building.exchangeNote.exchangeValue =
+						parseFloat(building.exchangeNote.exchangeValue) - parseFloat(details.transValue);
+				} else {
+					building.exchangeNote.demandValue =
+						parseFloat(building.exchangeNote.demandValue) + parseFloat(details.transValue);
+				}
+			}
+
+			note.noteValue = parseFloat(note.noteValue) + parseFloat(details.transValue);
+			this.successMessage("DEPOSIT billed — matched a WITHDRAW of value " +
+								pairedWithdraw.transValue);
+		} else {
+			// Unpaired: no billing, no exchange note mutation. The block is
+			// still complete and sharable; the note's value stays as-is.
+			this.successMessage(
+				"DEPOSIT block created without billing — no WITHDRAW of value " +
+				details.transValue + " or higher was found. " +
+				"The block will be billed once a matching WITHDRAW is registered."
+			);
+		}
+
+		// Referee passthrough (unchanged).
+		if (note.referee) {
+			const accd = await this.getAccountData();
+			const result = { loanValue: accd.loanValue };
+			building.referer = this.encrypt(JSON.stringify(result), note.referee);
+		}
+
+		// Preserve legacy's `isExchangeMarketMining` expectation for downstream.
+		if (this.#isExchangeDeposit) building.isExchangeMarketMining = 1;
+
+		return { handled: true, block: building };
+	}
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// #txRegistry_() — lazily build the matcher registry.
+	// Order matters: more specific first, generic last.
+	//
+	// Every entry is:
+	//   { type: "<transType>", matches: (ctx) => bool, handler: (ctx) => Promise<TxResult> }
+	//
+	// The dispatcher walks the list top-to-bottom and calls the first entry
+	// whose `matches(ctx)` returns true. `handler` must return
+	//   { handled: true,  block: <building block>, followup?: Function }
+	//   { handled: false, reason: string }   → falls through to legacy
+	//
+	// Deferred (not registered): SELLSTOCK, SELLBOND — they swap note identity
+	// mid-flight and need a "pre-signed block" contract extension in #txFinalize
+	// before they can be migrated. See the batch notes.
+	// ──────────────────────────────────────────────────────────────────────────
+	static #txRegistry_() {
+		if (this.#txRegistry) return this.#txRegistry;
+
+		const R = [];
+		const add = (entry) => R.push(entry);
+
+		// ════════════════════════════════════════════════════════════════════
+		// BATCH 1 — CREATE / UPDATE / SEND
+		// ════════════════════════════════════════════════════════════════════
+
+		// ── CREATE ──
+		add({
+			type: "CREATE",
+			matches: (c) => c.details.transType === "CREATE",
+			handler: (c) => this.#txHandleCreate(c),
+		});
+		
+		// ── RECIEVE (catch-all for every #transRecieve flavour) ──
+	// Also handles the RESPONSE-side flows for CONFIRM / AGREEMENTUPDATE /
+	// CANCELLED / RECIEVE / etc., all dispatched internally by
+	// #txHandleRecieve based on details.transType and response.transType.
+	//
+	// MUST be placed after the more specific receive handlers:
+	//   INVESTRECIEVE, VIEWADVERT, PUBLISHADVERT, STOCKRECIEVE,
+	//   BONDRECIEVE, PROFITRECIEVE, AGREEMENTSIGN.
+	add({
+		type: "RECIEVE",
+		matches: (c) => {
+			// Must have a response to receive *from*.
+			if (!c.response || !c.response.blockID) return false;
+
+			// The response must be a send-type block (or SPLIT) — that's the
+			// precondition #txHandleRecieve's internal guard checks.
+			const responseIsSend =
+				this.#transSend.includes(c.response.transType) ||
+				c.response.transType === "SPLIT";
+			if (!responseIsSend) return false;
+
+			// The request must be a receive-type block, or a MERGE.
+			const detailsIsReceive =
+				this.#transRecieve.includes(c.details.transType) ||
+				c.details.transType === "MERGE";
+			if (!detailsIsReceive) return false;
+
+			return true;
+		},
+		handler: (c) => this.#txHandleRecieve(c),
+	});
+		
+		// ── CANCEL (any note; retracts a send it authored) ──
+		add({
+			type: "CANCEL",
+			matches: (c) =>
+				c.details.transType === "CANCEL" &&
+				!!c.details.blockRef &&
+				(!!c.details.cancelKey || !!this.cancelKey),
+			handler: (c) => this.#txHandleCancel(c),
+		});
+
+		// ── AGREEMENTRECIEVE (any note; closes an agreement once handshake completes) ──
+		add({
+			type: "AGREEMENTRECIEVE",
+			matches: (c) =>
+				c.details.transType === "AGREEMENTRECIEVE" &&
+				c.response &&
+				(c.response.transType === "AGREEMENTSIGN" || c.response.transType === "AGREEMENTREQUEST") &&
+				!!c.response.blockRef,
+			handler: (c) => this.#txHandleAgreementReceive(c),
+		});
+
+		// ── UPDATE (legacy-delegated) ──
+		add({
+			type: "UPDATE",
+			matches: (c) => c.details.transType === "UPDATE",
+			handler: (c) => this.#txHandleUpdate(c),
+		});
+
+		// ── SEND: to exchange note (auto-receive in the tail) ──
+		add({
+			type: "SEND",
+			matches: (c) =>
+				!this.#isExchangeMarketMining &&
+				c.currentNote && c.currentNote.noteAddress &&
+				c.currentNote.noteAddress === c.details.recipient,
+			handler: (c) => this.#txHandleSendAutoReceive(c),
+		});
+
+		// ── SEND: simple ──
+		add({
+			type: "SEND",
+			matches: (c) =>
+				!this.#isExchangeMarketMining &&
+				!c.details.productID &&
+				c.details.transType !== "ADVERT" &&
+				Number(c.note.loanValue || 0) <= Number(c.note.noteValue || 0) &&
+				Number(c.details.transValue || 0) <= Number(c.note.noteValue || 0),
+			handler: (c) => this.#txHandleSendSimple(c),
+		});
+
+		// ── SEND: catch-all ──
+		add({
+			type: "SEND",
+			matches: () => true,
+			handler: () => ({ handled: false, reason: "SEND:catch-all" }),
+		});
+
+		// ════════════════════════════════════════════════════════════════════
+		// BATCH 1.5 — WITHDRAW / DEPOSIT
+		// ════════════════════════════════════════════════════════════════════
+
+		// ── WITHDRAW ──
+		add({
+			type: "WITHDRAW",
+			matches: (c) => c.details.transType === "WITHDRAW" && c.details.withdrawAccount,
+			handler: (c) => this.#txHandleWithdraw(c),
+		});
+
+		// ── DEPOSIT ──
+		add({
+			type: "DEPOSIT",
+			matches: (c) => c.details.transType === "DEPOSIT",
+			handler: (c) => this.#txHandleDeposit(c),
+		});
+
+		// ════════════════════════════════════════════════════════════════════
+		// BATCH 2 — Budget family (CRD / personal only)
+		// ════════════════════════════════════════════════════════════════════
+
+		// ── CREATEPRODUCT ──
+		add({
+			type: "CREATEPRODUCT",
+			matches: (c) =>
+				c.details.transType === "CREATEPRODUCT" &&
+				c.details.agreement &&
+				c.details.agreement.productConfig,
+			handler: (c) => this.#txHandleCreateProduct(c),
+		});
+
+		// ── UPDATEPRODUCT ──
+		add({
+			type: "UPDATEPRODUCT",
+			matches: (c) =>
+				c.details.transType === "UPDATEPRODUCT" &&
+				c.details.productID &&
+				c.details.agreement,
+			handler: (c) => this.#txHandleUpdateProduct(c),
+		});
+
+		// ── CREATEBUDGET ──
+		add({
+			type: "CREATEBUDGET",
+			matches: (c) =>
+				c.details.transType === "CREATEBUDGET" &&
+				c.details.agreement &&
+				c.details.agreement.budgetType,
+			handler: (c) => this.#txHandleCreateBudget(c),
+		});
+
+		// ── UPDATEBUDGET ──
+		add({
+			type: "UPDATEBUDGET",
+			matches: (c) =>
+				c.details.transType === "UPDATEBUDGET" &&
+				c.details.agreement &&
+				this.#budgetSecret,
+			handler: (c) => this.#txHandleUpdateBudget(c),
+		});
+
+		// ── ADDITEM ──
+		add({
+			type: "ADDITEM",
+			matches: (c) =>
+				c.details.transType === "ADDITEM" &&
+				c.details.agreement &&
+				this.#budgetSecret,
+			handler: (c) => this.#txHandleAddItem(c),
+		});
+
+		// ── UPDATEITEM ──
+		add({
+			type: "UPDATEITEM",
+			matches: (c) =>
+				c.details.transType === "UPDATEITEM" &&
+				c.details.agreement &&
+				this.#budgetSecret,
+			handler: (c) => this.#txHandleUpdateItem(c),
+		});
+
+		// ── CANCELITEM ──
+		add({
+			type: "CANCELITEM",
+			matches: (c) =>
+				c.details.transType === "CANCELITEM" &&
+				c.details.agreement &&
+				this.#budgetSecret,
+			handler: (c) => this.#txHandleCancelItem(c),
+		});
+
+		// ════════════════════════════════════════════════════════════════════
+		// BATCH 3 — Loan family
+		// ════════════════════════════════════════════════════════════════════
+
+		// ── LOAN ──
+		add({
+			type: "LOAN",
+			matches: (c) => c.details.transType === "LOAN",
+			handler: (c) => this.#txHandleUpdateLoan(c),
+		});
+
+		// ── INTERESTPAY (send-path) ──
+		add({
+			type: "INTERESTPAY",
+			matches: (c) =>
+				c.details.transType === "INTERESTPAY" &&
+				c.details.agreement &&
+				c.details.agreement.agreeID,
+			handler: (c) => this.#txHandleInterestPay(c),
+		});
+
+		// ── INTERESTPAY (update-path) ──
+		add({
+			type: "INTERESTPAY",
+			matches: (c) => c.details.transType === "INTERESTPAY",
+			handler: (c) => this.#txHandleUpdateInterestPay(c),
+		});
+
+		// ════════════════════════════════════════════════════════════════════
+		// BATCH 4 — Agreement cipher family
+		// (AGREEMENTUPDATE has no matcher — it's a morph of AGREEMENTSIGN)
+		// ════════════════════════════════════════════════════════════════════
+
+		// ── AGREESEND (creation path) ──
+		add({
+			type: "AGREESEND",
+			matches: (c) =>
+				c.details.transType === "AGREESEND" &&
+				!this.#agreeBlock &&
+				c.details.agreement &&
+				c.details.agreement.agreeID &&
+				!(c.formerBlock && c.formerBlock.agreements &&
+				  c.formerBlock.agreements[c.details.agreement.agreeID] &&
+				  !c.details.agreement.privateKey),
+			handler: (c) => this.#txHandleAgreeSendCreate(c),
+		});
+
+		// ── AGREESEND (receive path) ──
+		add({
+			type: "AGREESEND",
+			matches: (c) =>
+				c.details.transType === "AGREESEND" &&
+				(
+					this.#agreeBlock ||
+					(c.details.agreement &&
+					 c.details.agreement.agreeID &&
+					 (!c.details.agreement.privateKey ||
+					  this.#transRecieve.includes(c.details.transType)))
+				),
+			handler: (c) => this.#txHandleAgreeSendReceive(c),
+		});
+
+		// ── AGREESEND catch-all ──
+		add({
+			type: "AGREESEND",
+			matches: () => true,
+			handler: () => ({ handled: false, reason: "AGREESEND:catch-all" }),
+		});
+
+		// ── AGREEMENTREQUEST ──
+		add({
+			type: "AGREEMENTREQUEST",
+			matches: (c) =>
+				c.details.transType === "AGREEMENTREQUEST" &&
+				c.details.agreement &&
+				c.details.agreement.agreeKey,
+			handler: (c) => this.#txHandleAgreementRequest(c),
+		});
+
+		// ── AGREEMENTSIGN (also produces AGREEMENTUPDATE when response.transType
+		//    === "AGREEMENTSIGN") ──
+		add({
+			type: "AGREEMENTSIGN",
+			matches: (c) => c.details.transType === "AGREEMENTSIGN",
+			handler: (c) => this.#txHandleAgreementSign(c),
+		});
+
+		// ── CANCELLED ──
+		add({
+			type: "CANCELLED",
+			matches: (c) => c.details.transType === "CANCELLED",
+			handler: (c) => this.#txHandleCancelled(c),
+		});
+
+		// ════════════════════════════════════════════════════════════════════
+		// BATCH 5 — Product purchase + profit sharing
+		// ════════════════════════════════════════════════════════════════════
+
+		// ── BUYPRODUCT ──
+		add({
+			type: "BUYPRODUCT",
+			matches: (c) =>
+				c.details.transType === "BUYPRODUCT" &&
+				c.details.productID &&
+				c.details.agreement &&
+				c.details.agreement.productConfig,
+			handler: (c) => this.#txHandleBuyProduct(c),
+		});
+
+		// ── PRODUCTSUB ──
+		add({
+			type: "PRODUCTSUB",
+			matches: (c) =>
+				c.details.transType === "PRODUCTSUB" &&
+				c.details.productID &&
+				c.details.agreement &&
+				c.details.agreement.productConfig,
+			handler: (c) => this.#txHandleProductSub(c),
+		});
+
+		// ── PROFITSHARING ──
+		add({
+			type: "PROFITSHARING",
+			matches: (c) =>
+				c.details.transType === "PROFITSHARING" &&
+				c.details.productID &&
+				c.details.agreement,
+			handler: (c) => this.#txHandleProfitSharing(c),
+		});
+
+		// ── PROFITRECIEVE ──
+		add({
+			type: "PROFITRECIEVE",
+			matches: (c) =>
+				c.details.transType === "PROFITRECIEVE" &&
+				c.details.productID &&
+				c.details.agreement,
+			handler: (c) => this.#txHandleProfitReceive(c),
+		});
+
+		// ════════════════════════════════════════════════════════════════════
+		// BATCH 6 — Stock / bond purchase, sell (deferred), quote
+		// ════════════════════════════════════════════════════════════════════
+
+		// ── BUYSTOCK (CRD only) ──
+		add({
+			type: "BUYSTOCK",
+			matches: (c) =>
+				c.details.transType === "BUYSTOCK" &&
+				c.note.noteType && c.note.noteType.includes("CRD") &&
+				c.details.budgetID,
+			handler: (c) => this.#txHandleBuyStock(c),
+		});
+
+		// ── BUYBOND (CRD only) ──
+		add({
+			type: "BUYBOND",
+			matches: (c) =>
+				c.details.transType === "BUYBOND" &&
+				c.note.noteType && c.note.noteType.includes("CRD") &&
+				c.details.budgetID,
+			handler: (c) => this.#txHandleBuyBond(c),
+		});
+
+		// ── SOLDSTOCK (CRD only; response to BUYSTOCK) ──
+		add({
+			type: "SOLDSTOCK",
+			matches: (c) =>
+				c.details.transType === "SOLDSTOCK" &&
+				c.note.noteType && c.note.noteType.includes("CRD") &&
+				c.response && c.response.transType === "BUYSTOCK",
+			handler: (c) => this.#txHandleSoldStock(c),
+		});
+
+		// ── SOLDBOND (CRD only; response to BUYBOND) ──
+		add({
+			type: "SOLDBOND",
+			matches: (c) =>
+				c.details.transType === "SOLDBOND" &&
+				c.note.noteType && c.note.noteType.includes("CRD") &&
+				c.response && c.response.transType === "BUYBOND",
+			handler: (c) => this.#txHandleSoldBond(c),
+		});
+
+		// ── QUOTESTOCK (CRD only; response to SOLDSTOCK) ──
+		add({
+			type: "QUOTESTOCK",
+			matches: (c) =>
+				c.details.transType === "QUOTESTOCK" &&
+				c.note.noteType && c.note.noteType.includes("CRD") &&
+				c.response && c.response.transType === "SOLDSTOCK",
+			handler: (c) => this.#txHandleQuoteStock(c),
+		});
+
+		// ── QUOTEBOND (CRD only; response to SOLDBOND) ──
+		add({
+			type: "QUOTEBOND",
+			matches: (c) =>
+				c.details.transType === "QUOTEBOND" &&
+				c.note.noteType && c.note.noteType.includes("CRD") &&
+				c.response && c.response.transType === "SOLDBOND",
+			handler: (c) => this.#txHandleQuoteBond(c),
+		});
+		
+		// ── SELLSTOCK (STK or CRD note with note.budgetID) ──
+		add({
+			type: "SELLSTOCK",
+			matches: (c) =>
+				c.details.transType === "SELLSTOCK" &&
+				c.note.budgetID &&
+				(c.note.noteType.includes("STK") || c.note.noteType.includes("CRD")),
+			handler: (c) => this.#txHandleSellStock(c),
+		});
+
+		// ── SELLBOND (BND or CRD note with note.budgetID) ──
+		add({
+			type: "SELLBOND",
+			matches: (c) =>
+				c.details.transType === "SELLBOND" &&
+				c.note.budgetID &&
+				(c.note.noteType.includes("BND") || c.note.noteType.includes("CRD")),
+			handler: (c) => this.#txHandleSellBond(c),
+		});
+
+		// ── SOLDSTOCK (CRD note; response to BUYSTOCK) ──
+		add({
+			type: "SOLDSTOCK",
+			matches: (c) =>
+				c.details.transType === "SOLDSTOCK" &&
+				c.note.noteType && c.note.noteType.includes("CRD") &&
+				c.response && c.response.transType === "BUYSTOCK",
+			handler: (c) => this.#txHandleSoldStock(c),
+		});
+
+		// ── SOLDBOND (CRD note; response to BUYBOND) ──
+		add({
+			type: "SOLDBOND",
+			matches: (c) =>
+				c.details.transType === "SOLDBOND" &&
+				c.note.noteType && c.note.noteType.includes("CRD") &&
+				c.response && c.response.transType === "BUYBOND",
+			handler: (c) => this.#txHandleSoldBond(c),
+		});
+
+		// ── QUOTESTOCK (CRD note; response to SOLDSTOCK) ──
+		add({
+			type: "QUOTESTOCK",
+			matches: (c) =>
+				c.details.transType === "QUOTESTOCK" &&
+				c.note.noteType && c.note.noteType.includes("CRD") &&
+				c.response && c.response.transType === "SOLDSTOCK",
+			handler: (c) => this.#txHandleQuoteStock(c),
+		});
+
+		// ── QUOTEBOND (CRD note; response to SOLDBOND) ──
+		add({
+			type: "QUOTEBOND",
+			matches: (c) =>
+				c.details.transType === "QUOTEBOND" &&
+				c.note.noteType && c.note.noteType.includes("CRD") &&
+				c.response && c.response.transType === "SOLDBOND",
+			handler: (c) => this.#txHandleQuoteBond(c),
+		});
+
+		// ── STOCKPAY (CRD note; budget owner) ──
+		add({
+			type: "STOCKPAY",
+			matches: (c) =>
+				c.details.transType === "STOCKPAY" &&
+				c.note.noteType && c.note.noteType.includes("CRD") &&
+				c.note.budgetID,
+			handler: (c) => this.#txHandleStockPay(c),
+		});
+
+		// ── BONDPAY (CRD note; exchange market) ──
+		add({
+			type: "BONDPAY",
+			matches: (c) =>
+				c.details.transType === "BONDPAY" &&
+				c.note.noteType && c.note.noteType.includes("CRD") &&
+				c.note.budgetID,
+			handler: (c) => this.#txHandleBondPay(c),
+		});
+
+		// ── STOCKRECIEVE (STK note; response to STOCKPAY) ──
+		add({
+			type: "STOCKRECIEVE",
+			matches: (c) =>
+				c.details.transType === "STOCKRECIEVE" &&
+				c.note.noteType && c.note.noteType.includes("STK") &&
+				c.response && c.response.transType === "STOCKPAY",
+			handler: (c) => this.#txHandleStockReceive(c),
+		});
+
+		// ── BONDRECIEVE (BND note; response to BONDPAY) ──
+		add({
+			type: "BONDRECIEVE",
+			matches: (c) =>
+				c.details.transType === "BONDRECIEVE" &&
+				c.note.noteType && c.note.noteType.includes("BND") &&
+				c.response && c.response.transType === "BONDPAY",
+			handler: (c) => this.#txHandleBondReceive(c),
+		});
+
+		// ── SELLSTOCK (STK only) — DEFERRED ──
+		// Legacy's SELLSTOCK branch swaps note identity mid-flight: it rebuilds
+		// newBlock from `response`, discarding the block #txFinalize signed.
+		// Migrating it requires a "pre-signed block" contract extension in
+		// #txFinalize (so it doesn't re-sign). Deferred until that contract
+		// is in place. Falls through to legacy for now.
+		//
+		// add({
+		//     type: "SELLSTOCK",
+		//     matches: (c) =>
+		//         c.details.transType === "SELLSTOCK" &&
+		//         c.note.noteType && c.note.noteType.includes("STK"),
+		//     handler: (c) => this.#txHandleSellStock(c),
+		// });
+
+		// ── SELLBOND (BND only) — DEFERRED ──
+		// Same note-identity swap as SELLSTOCK. Deferred for the same reason.
+		//
+		// add({
+		//     type: "SELLBOND",
+		//     matches: (c) =>
+		//         c.details.transType === "SELLBOND" &&
+		//         c.note.noteType && c.note.noteType.includes("BND"),
+		//     handler: (c) => this.#txHandleSellBond(c),
+		// });
+
+		// ── QUOTE (CRD only; morph of AGREEMENTREQUEST) ──
+		// Legacy has no distinct `details.transType === "QUOTE"` branch.
+		// QUOTE is produced by handleSubscriptions via a reassignment of
+		// details.transType from AGREEMENTREQUEST to QUOTE. Route it through
+		// the same handler.
+		add({
+			type: "QUOTE",
+			matches: (c) => c.details.transType === "QUOTE" && c.details.agreement,
+			handler: (c) => this.#txHandleAgreementRequest(c),
+		});
+
+		// ════════════════════════════════════════════════════════════════════
+		// Registered but not yet handled — kept here so the registry reflects
+		// the full set of migrated transTypes. Any transType not in #txMigrated
+		// is routed to legacy by #txGenerate before #txDispatch is called, so
+		// these entries are effectively unreachable until #txMigrated grows.
+		// ════════════════════════════════════════════════════════════════════
+		//
+		// Batches still pending (see the batch notes):
+		//   Batch 6b — SELLSTOCK / SELLBOND         (deferred)
+		//   Batch 7  — STOCKPAY / BONDPAY / STOCKRECIEVE / BONDRECIEVE
+		//   Batch 8  — ADVERT / VIEWADVERT / PUBLISHADVERT
+		//   Batch 9  — SPLIT / MERGE
+		//   Batch 10 — EXCHANGE
+		//   Batch 11 — BUSINESS / SUGGESTITEM / SUGGESTBUDGET / EXECUTEBUDGET
+		//   Batch 12 — CREDIT / GETCREDIT
+		//   Batch 13 — BARGAIN / APPEAL
+		//   Batch 14 — INVEST
+		//
+		// Each will add its own `add({...})` block above this line.
+		
+		// ── BUSINESS (BM note referencing ADDITEM/UPDATEITEM) ──
+		add({
+			type: "BUSINESS",
+			matches: (c) =>
+				c.details.transType === "BUSINESS" &&
+				c.note.rankPref === "businessManager" &&
+				c.response &&
+				(c.response.transType === "ADDITEM" || c.response.transType === "UPDATEITEM"),
+			handler: (c) => this.#txHandleBusiness(c),
+		});
+
+		// ── VOTE (STK note referencing ADDITEM/UPDATEITEM) ──
+		add({
+			type: "VOTE",
+			matches: (c) =>
+				c.details.transType === "VOTE" &&
+				c.note.noteType && c.note.noteType.includes("STK") &&
+				c.note.budgetID &&
+				c.response &&
+				(c.response.transType === "ADDITEM" || c.response.transType === "UPDATEITEM"),
+			handler: (c) => this.#txHandleVote(c),
+		});
+
+		// ── UNVOTE ──
+		add({
+			type: "UNVOTE",
+			matches: (c) =>
+				c.details.transType === "UNVOTE" &&
+				c.note.noteType && c.note.noteType.includes("STK") &&
+				c.note.budgetID &&
+				c.response &&
+				(c.response.transType === "ADDITEM" || c.response.transType === "UPDATEITEM"),
+			handler: (c) => this.#txHandleUnvote(c),
+		});
+
+		// ── SUGGESTITEM (STK note; like ADDITEM but for STK) ──
+		add({
+			type: "SUGGESTITEM",
+			matches: (c) =>
+				c.details.transType === "SUGGESTITEM" &&
+				c.note.noteType && c.note.noteType.includes("STK") &&
+				c.note.budgetID &&
+				c.details.agreement,
+			handler: (c) => this.#txHandleSuggestItem(c),
+		});
+
+		// ── SUGGESTBUDGET (STK note; like CREATEBUDGET but for STK) ──
+		add({
+			type: "SUGGESTBUDGET",
+			matches: (c) =>
+				c.details.transType === "SUGGESTBUDGET" &&
+				c.note.noteType && c.note.noteType.includes("STK") &&
+				c.details.agreement &&
+				c.details.agreement.budgetType,
+			handler: (c) => this.#txHandleSuggestBudget(c),
+		});
+
+		// ── EXECUTEBUDGET (references SUGGESTBUDGET) ──
+		add({
+			type: "EXECUTEBUDGET",
+			matches: (c) =>
+				c.details.transType === "EXECUTEBUDGET" &&
+				c.details.agreement &&
+				c.details.agreement.budgetID &&
+				c.response && c.response.transType === "SUGGESTBUDGET",
+			handler: (c) => this.#txHandleExecuteBudget(c),
+		});
+		
+		// ── ADVERT (CRD; create an advert) ──
+		add({
+			type: "ADVERT",
+			matches: (c) =>
+				c.details.transType === "ADVERT" &&
+				c.details.agreement &&
+				c.details.agreement.advertID &&
+				c.note.noteType && c.note.noteType.includes("CRD"),
+			handler: (c) => this.#txHandleAdvert(c),
+		});
+
+		// ── VIEWADVERT (CRD; viewer receives share of the advert value) ──
+		add({
+			type: "VIEWADVERT",
+			matches: (c) =>
+				c.details.transType === "VIEWADVERT" &&
+				c.response && c.response.transType === "ADVERT",
+			handler: (c) => this.#txHandleViewAdvert(c),
+		});
+
+		// ── PUBLISHADVERT (CRD; publisher receives share) ──
+		add({
+			type: "PUBLISHADVERT",
+			matches: (c) =>
+				c.details.transType === "PUBLISHADVERT" &&
+				c.response && c.response.transType === "ADVERT",
+			handler: (c) => this.#txHandlePublishAdvert(c),
+		});
+		
+		// ── SPLIT (any note; creates a child note) ──
+		add({
+			type: "SPLIT",
+			matches: (c) => c.details.transType === "SPLIT" && !!this.#splitNote,
+			handler: (c) => this.#txHandleSplit(c),
+		});
+
+		// ── MERGE (any note; absorbs a child note) ──
+		add({
+			type: "MERGE",
+			matches: (c) =>
+				c.details.transType === "MERGE" &&
+				!!(this.mergeNoted && this.mergeNoted.noteValue),
+			handler: (c) => this.#txHandleMerge(c),
+		});
+		
+		// ── EXCHANGE (CRD; buy/sell credit between two markets) ──
+		add({
+			type: "EXCHANGE",
+			matches: (c) =>
+				c.details.transType === "EXCHANGE" &&
+				c.details.sellCredit &&
+				c.details.buyCredit &&
+				c.details.buyMarket &&
+				c.details.sellMarket,
+			handler: (c) => this.#txHandleExchange(c),
+		});
+		
+		// ── CREDIT (CRD; create a child credit) ──
+		add({
+			type: "CREDIT",
+			matches: (c) =>
+				c.details.transType === "CREDIT" &&
+				(!c.response || c.response.transType !== "GETCREDIT") &&
+				c.details.recipient,
+			handler: (c) => this.#txHandleCredit(c),
+		});
+
+		// ── GETCREDIT (CRD; redeem a child credit) ──
+		add({
+			type: "GETCREDIT",
+			matches: (c) =>
+				c.details.transType === "GETCREDIT" &&
+				c.response && c.response.transType === "CREDIT",
+			handler: (c) => this.#txHandleGetCredit(c),
+		});
+		
+		// ── INVEST (BM note; mining decision triggered by a qualifying ADDITEM) ──
+		// ── INVEST (business-budget CRD note; qualifying items) ──
+		add({
+			type: "INVEST",
+			matches: (c) =>
+				c.details.transType === "INVEST" &&
+				c.note.noteType && c.note.noteType.includes("CRD") &&
+				c.note.budgetID &&
+				c.note.rankPref !== "businessManager",
+			handler: (c) => this.#txHandleInvest(c),
+		});
+
+		// ── INVESTRECIEVE (same CRD note; response to INVEST) ──
+		add({
+			type: "INVESTRECIEVE",
+			matches: (c) =>
+				c.details.transType === "INVESTRECIEVE" &&
+				c.note.noteType && c.note.noteType.includes("CRD") &&
+				c.response && c.response.transType === "INVEST",
+			handler: (c) => this.#txHandleInvestReceive(c),
+		});
+
+		this.#txRegistry = R;
+		return R;
+	}
+	
+	
+	// ──────────────────────────────────────────────────────────────────────────
+	// #txDispatch — pick a handler for this ctx. First match wins.
+	// Validates the declared `requires` fields so partial migrations fail loudly.
+	// ──────────────────────────────────────────────────────────────────────────
+	static async #txDispatch(ctx) {
+		const R = this.#txRegistry_();
+		for (const entry of R) {
+			if (!entry.matches(ctx)) continue;
+			let result;
+			try {
+				result = await entry.handler(ctx);
+			} catch (e) {
+				console.error("tx handler threw:", entry.type, e);
+				this.errorMessage(e.toString());
+				return { handled: false, reason: "threw:" + e };
+			}
+			if (!result || !result.handled) return result;
+
+			// Validate declared requirements.
+			const requires = result.requires || [];
+			const stateMap = {
+				agreeBlock:  this.#agreeBlock,
+				productBlock: this.#productBlock,
+				splitNote:   this.#splitNote,
+				response:    this.response,
+			};
+			for (const key of requires) {
+				if (stateMap[key] === undefined || stateMap[key] === null || stateMap[key] === false) {
+					return { handled: false, reason: "requires-missing:" + key };
+				}
+			}
+			return result;
+		}
+		return { handled: false, reason: "no-match" };
+	}
+	
+	
+	static async generateScriptbillTransactionBlock(details = false, note = false, response = false) {
+		if (details && details.transType && this.#txMigrated.has(details.transType)) {
+			return this.#txGenerate(details, note, response);
+		}
+		return this.#generateScriptbillTransactionBlockLegacy(details, note, response);
+	}
+	
 	
 	static timeToString( time = 1000, date = false ){
 		time = parseInt( time );
@@ -25691,104 +34901,6 @@ static Base64 = {
 			}
 		});		
 	}
-	static async #updateNote( note, details ){
-		try {			
-			
-			if( ! note || ! note.noteAddress || ! this.#note || ! this.#note.noteAddress == note.noteAddress || ! details || ! details.transType == "UPDATE" ) return;
-			
-			if( this.rankPref ){
-				note.rankPref = this.rankPref;
-				delete this.rankPref;
-			}
-
-			if(this.accessToken){
-				note.accessToken = this.accessToken;
-				delete this.accessToken;
-			}
-
-			if(this.supabaseUrl){
-				note.supabaseUrl = this.supabaseUrl;
-				delete this.supabaseUrl;
-			}
-
-			if(this.supabaseKey){
-				note.supabaseKey = this.supabaseKey
-				delete this.supabaseKey;
-;			}
-			
-			if( this.verifyID ){
-				note.verifyID 	= this.verifyID;
-				delete this.verifyID;
-			}
-			
-			if( this.noteTypeU ){
-				note.noteType = this.noteTypeU;
-				delete this.noteTypeU;
-			}
-			if( this.BMKEY ){
-				note.BMKey = this.BMKEY;
-				delete this.BMKEY;
-			}
-			if( this.noteServer ){
-				note.noteServer = this.noteServer;
-				delete this.noteServer;
-			}
-			if( this.#version ){
-				note.version = this.#version;
-			}
-			
-			if( this.loanValue ){
-				note.loanValue = this.loanValue;
-				delete this.loanValue;
-			}
-			
-			if( this.noteSecret ){
-				note.noteSecret = this.noteSecret;
-				delete this.noteSecret;
-			}
-			
-			if( this.rankValue ){
-				note.rankValue = this.rankValue;
-				delete this.rankValue;
-			}
-
-			if( this.refRewarded ){
-				note.refRewarded = this.refRewarded;
-				delete this.refRewarded;
-			}
-			
-			if( this.refRewardedAgain ){
-				note.refRewardedAgain = this.refRewardedAgain;
-				delete this.refRewardedAgain;
-			}
-
-			if( this.walletAccepted ){
-				note.walletAccepted = this.walletAccepted;
-				delete this.walletAccepted;
-			}
-
-			if( Object.keys(this.updated).length > 0 ){
-				for(let key in this.updated ){
-					note[key]	= this.updated[key];
-					delete this.updated[key];
-				}
-			}
-			
-			if( this.accountData ){
-				if( typeof this.accountData == 'object' )
-					this.accountData 	= JSON.stringify( this.accountData );
-				
-				note.accountData = this.accountData;
-				delete this.accountData;
-			}
-			
-			return note;
-		} catch(e){
-			this.errorMessage(e.toString());
-			console.error(e);
-		}
-		
-	}
 	
 	static async getCurrentExchangeBlock( exchangeBlock = null ){
 		//console.log("getCurrentExchangeBlock running " + this.funcUp[ this.funcUp.length]);
@@ -25841,7 +34953,7 @@ static Base64 = {
 			for( x = 0; x < this.#note.agreements.length; x++ ){
 				privKey = this.#note.agreements[x];
 				var id 				= await this.generateKey(10);
-				await this.setPrivateKey( privKey.key.split('----'), id );
+				await this.setPrivateKey( privKey.key.split('----')[0], id );
 				agreement = await this.#decrypt( response.blockRef, id );
 				if( ! this.isJsonable( agreement ) ) continue;
 				
@@ -25864,13 +34976,11 @@ static Base64 = {
 		
 	}
 	
-	static async chargeGasFee(){
+	static async chargeGasFee(newBlock){
 		//console.log("chargeGasFee running " + this.funcUp[ this.funcUp.length]);
 		this.funcUp[ this.funcUp.length] = "chargeGasFee";
-		if( ! this.newBlock || this.newBlock.noteType == "SBCRD" || this.newBlock.noteType == "SBSTK" || this.newBlock.noteType == "SBBND") return this.newBlock;
-		try {
-			let newBlock 	= JSON.parse( JSON.stringify( this.newBlock ));
-			
+		if( ! newBlock || newBlock.noteType == "SBCRD" || newBlock.noteType == "SBSTK" || newBlock.noteType == "SBBND") return newBlock;
+		try {			
 			let bytes = JSON.stringify( newBlock ).length;
 			
 			if( ! newBlock.GAS )
@@ -27210,6 +36320,90 @@ static Base64 = {
 		}
 	}
 	
+	static async setChannelListener(key, event, func, noteType = "") {
+		if (!noteType) {
+			this.#note = await this.#getCurrentNote();
+			if (this.#note) noteType = this.#note.noteType;
+			else return null;
+		}
+		const exchangeNote = await this.getCurrentExchangeNote(noteType);
+		if (!exchangeNote || !exchangeNote.noteServer) return null;
+
+		const client    = this.createClient(false, exchangeNote.noteServer, exchangeNote.noteKey);
+		const exChannel = client.channel(key);
+
+		exChannel.on("broadcast", { event }, (payload) => {
+			// func does the channel cleanup
+			func(payload.payload.text, exChannel);
+		});
+
+		await new Promise((resolve, reject) => {
+			exChannel.subscribe((status, err) => {
+				if (status === "SUBSCRIBED") resolve();
+				else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") reject(err || status);
+			});
+		});
+
+		return exChannel;   // ← so caller can clean up
+	}
+	
+	static async getChannelData(key, event, data, expire = 15000, noteType = "") {
+		if (!noteType) {
+			this.#note = await this.#getCurrentNote();
+			if (this.#note) noteType = this.#note.noteType;
+			else return null;
+		}
+		const exchangeNote = await this.getCurrentExchangeNote(noteType);
+		if (!exchangeNote || !exchangeNote.noteServer) return null;
+
+		const client    = this.createClient(false, exchangeNote.noteServer, exchangeNote.noteKey);
+		const exChannel = client.channel(key);
+
+		const requestID = await this.generateKey(10);
+		const payloadText = JSON.stringify({ data, requestID });
+
+		return new Promise((resolve, reject) => {
+			const timer = setTimeout(() => {
+				try { exChannel.unsubscribe(); } catch (_) {}
+				reject(new Error("Couldn't get response from server"));
+			}, expire);
+
+			exChannel.on("broadcast", { event: `${event}_response` }, (payload) => {
+				let incoming;
+				const raw = payload?.payload?.text ?? payload?.payload;
+				try { incoming = JSON.parse(raw); } catch (_) { incoming = raw; }
+				if (!incoming || incoming.requestID !== requestID) return;
+				clearTimeout(timer);
+				try { exChannel.unsubscribe(); } catch (_) {}
+				resolve(incoming.data ?? incoming);
+			});
+
+			exChannel.subscribe(async (status, err) => {
+				if (status === "SUBSCRIBED") {
+					try {
+						const sendResult = await exChannel.send({
+							type: "broadcast",
+							event,
+							payload: { text: payloadText },
+						});
+						if (sendResult !== "ok") {
+							clearTimeout(timer);
+							try { await exChannel.unsubscribe(); } catch (_) {}
+							reject(new Error("send failed: " + sendResult));
+						}
+					} catch (e) {
+						clearTimeout(timer);
+						try { await exChannel.unsubscribe(); } catch (_) {}
+						reject(e);
+					}
+				} else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+					clearTimeout(timer);
+					reject(err || status);
+				}
+			});
+		});
+	}
+	
 	static async getData( key, data, url = "", type = "GET", limit = 100 ){
 		//console.log("getData running " + this.funcUp[ this.funcUp.length] );
 		let funcUp  = this.funcUp[ this.funcUp.length];
@@ -27361,7 +36555,7 @@ static Base64 = {
 		
 	//Scriptbill function is recursive, ensures that the block is gotten, even though it'this.s not stored on the server.
 	//Scriptbill way, the function allows the note to get data from the server that holds it.
-	static async getTransBlock( limit = 500, config = {} ){
+	static async getTransBlock( limit = 500, config = {}, join = "AND" ){
 		//console.log("getTransBlock running " + this.funcUp[ this.funcUp.length - 1], config );
 		this.funcUp[ this.funcUp.length] = "getTransBlock";
 
@@ -27373,8 +36567,8 @@ static Base64 = {
 		/* if( ! this.#note || ! this.blockID || ! this.productBlockID || ! this.walletHASH || ! this.transType || ! this.noteTypeS || ! this.productID || ! this.sellCredit || ! this.buyCredit || ! this.budgetID || ! this.blockRef || ! this.exBlockID ) return false; */
 		
 				
-		this.blocks = [];
-		this.blockIDs = [];
+		let trans_blocks = [];
+		let trans_ids = [];
 		let blocks, blockIDs;
 		let searched 	= [];
 		
@@ -27403,23 +36597,21 @@ static Base64 = {
 					this.getDataPersistently('blockRef', config.blockRef ).then( blocks =>{
 						setTimeout(()=>{
 							resolve(blocks);
-						},1000);
+						},3000);
 					});
 				});
 				blocks 		= await blocks;
 				blockIDs 	= [];
 				
-				if( this.blocks.length < limit && blocks ){
-					this.blocks = this.blocks.concat( blocks );
+				if( trans_blocks.length < limit && blocks && blocks.length && typeof blocks == "object" ){
+					trans_blocks = trans_blocks.concat( blocks );
 					
-					if( blocks && blocks.length && typeof blocks == "object" ){
-						blocks.forEach( block =>{
-							blockIDs.push( block.blockID );
-						});
-					}
+					blocks.forEach( block =>{
+						blockIDs.push( block.blockID );
+					});
 				}
 				
-				if( this.blocks.length < limit ){ 
+				if( trans_blocks.length < limit ){ 
 				
 					blocks 		= await this.getData("blockRef", config.blockRef, this.server ? this.server : "", "socket");
 					
@@ -27427,15 +36619,15 @@ static Base64 = {
 						blocks.forEach( block =>{
 							if( ! blockIDs.includes( block.blockID )){
 								blockIDs.push( block.blockID );
-								this.blocks.push( block );
+								trans_blocks.push( block );
 							}
 						});
 					}
 				
 				}
 				
-				if( this.blockIDs.length < limit && blockIDs.length )
-					this.blockIDs = this.blockIDs.concat( blockIDs );
+				if( trans_ids.length < limit && blockIDs.length )
+					trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
 				
 				delete this.blockRef;
 				searched.push("blockRef");
@@ -27444,19 +36636,20 @@ static Base64 = {
 				if( ! config.noteType )
 					config.noteType 	= this.noteTypeS; 
 				
-				if( searched.length ){
-					if( this.blocks.length ){
+				if( searched.length && join == "AND" ){//filtering stage.
+					if( trans_blocks.length ){
 						if( typeof config.noteType != "object" )
 							config.noteType 	= [ config.noteType ];
+						
 						config.noteType.forEach( (noteType)=>{
-							this.blocks = this.blocks.filter( (block)=>{
+							trans_blocks = trans_blocks.filter( (block)=>{
 								if( typeof block == "string" && this.isJsonable( block ) )
 									block 		= JSON.parse( block );
 								
 								if( typeof block == "string" && ! this.isJsonable( block ) )
 									return false;
 								
-								return block.noteType == noteType;
+								return block.noteType == noteType && trans_ids.includes( block.blockID );
 								
 								
 							});
@@ -27469,22 +36662,20 @@ static Base64 = {
 						this.getDataPersistently('noteType', config.noteType ).then( blocks =>{
 							setTimeout(()=>{
 								resolve(blocks);
-							},1000);
+							},3000);
 						});
 					});
 					blocks 		= await blocks;
 					blockIDs 	= [];
 										
-					if( this.blocks.length < limit && blocks ) {
-						this.blocks = this.blocks.concat( blocks );
-						if( blocks && blocks.length && typeof blocks == "object" ){
-							blocks.forEach( block =>{
-								blockIDs.push( block.blockID );
-							});
-						}
+					if( trans_blocks.length < limit && blocks && blocks.length && typeof blocks == "object" ) {
+						trans_blocks = trans_blocks.concat( blocks );
+						blocks.forEach( block =>{
+							blockIDs.push( block.blockID );
+						});
 					}
 					
-					if( this.blocks.length < limit ){ 
+					if( trans_blocks.length < limit ){ 
 					
 						blocks 	= await this.getData("noteType", config.noteType, this.server ? this.server : "", "socket");
 						
@@ -27492,21 +36683,19 @@ static Base64 = {
 							blocks.forEach( block =>{
 								if( ! blockIDs.includes( block.blockID )){
 									blockIDs.push( block.blockID );
-									this.blocks.push( block );
+									trans_blocks.push( block );
 								}
 							});
 						}
 					
 					}
 								
-					if( this.blockIDs.length > 0 ){
-						this.blockIDs = this.blockIDs.filter( blockID =>{
-							return blockIDs.includes( blockID );
-						});
-					}
+					if( blockIDs.length )
+						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
 				}
 				
-				/* //console.log( "block IDs: " + JSON.stringify( this.blockIDs ) );
+				
+				/* //console.log( "block IDs: " + JSON.stringify( trans_ids ) );
 				await this.createAlert("check Block IDs" ); */
 							
 				delete this.noteTypeS;
@@ -27516,19 +36705,19 @@ static Base64 = {
 				if( ! config.transType )
 					config.transType 	= this.transType;
 				
-				if( searched.length ){
-					if( this.blocks.length ){
+				if( searched.length && join == "AND" ){
+					if( trans_blocks.length ){
 						if( typeof config.transType != "object" )
 							config.transType 	= [ config.transType ];
 						config.transType.forEach( (transType)=>{
-							this.blocks = this.blocks.filter( (block)=>{
+							trans_blocks = trans_blocks.filter( (block)=>{
 								if( typeof block == "string" && this.isJsonable( block ) )
 									block 		= JSON.parse( block );
 								
 								if( typeof block == "string" && ! this.isJsonable( block ) )
 									return false;
 								
-								return block.transType == transType;
+								return block.transType == transType && trans_ids.includes( block.blockID );
 								
 								
 							});
@@ -27542,22 +36731,20 @@ static Base64 = {
 							setTimeout(()=>{
 								//console.log("blocks 2",blocks, config.transType);
 								resolve(blocks);
-							},1000);
+							},3000);
 						});
 					});
 					blocks 		= await blocks;
 					blockIDs	= [];
 					
-					if( this.blocks.length < limit && blocks ) {
-						this.blocks = this.blocks.concat( blocks );
-						if( blocks && blocks.length && typeof blocks == "object" ){
-							blocks.forEach( block =>{
-								blockIDs.push( block.blockID );
-							});
-						}
+					if( trans_blocks.length < limit && blocks && blocks.length && typeof blocks == "object" ) {
+						trans_blocks = trans_blocks.concat( blocks );
+						blocks.forEach( block =>{
+							blockIDs.push( block.blockID );
+						});
 					}
 					//console.log( "check blocks", blocks );
-					if( this.blocks.length < limit ){ 
+					if( trans_blocks.length < limit ){ 
 					
 						blocks 	= await this.getData("transType", config.transType, this.server ? this.server : "", "socket");
 						//console.log( "check blocks", blocks );
@@ -27565,21 +36752,18 @@ static Base64 = {
 							blocks.forEach( block =>{
 								if( ! blockIDs.includes( block.blockID )){
 									blockIDs.push( block.blockID );
-									this.blocks.push( block );
+									trans_blocks.push( block );
 								}
 							});
 						}
 					
 					}
 								
-					if( this.blockIDs.length >= 0 ){
-						this.blockIDs = this.blockIDs.filter( blockID =>{
-							return blockIDs.includes( blockID );
-						});
-					}
+					if( blockIDs.length )
+						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
+					
 				}
-				
-				/* //console.log( "block IDs: " + JSON.stringify( this.blockIDs ) );	
+				/* //console.log( "block IDs: " + JSON.stringify( trans_ids ) );	
 				await this.createAlert("check Block IDs" ); */
 							
 				delete this.transType;
@@ -27590,19 +36774,19 @@ static Base64 = {
 				if( ! config.sellCredit )
 					config.sellCredit 	= this.sellCredit;
 				
-				if( searched.length ){
-					if( this.blocks.length ){
+				if( searched.length && join == "AND" ){
+					if( trans_blocks.length ){
 						if( typeof config.sellCredit != "object" )
 							config.sellCredit 	= [ config.sellCredit ];
 						config.sellCredit.forEach( (sellCredit)=>{
-							this.blocks = this.blocks.filter( (block)=>{
+							trans_blocks = trans_blocks.filter( (block)=>{
 								if( typeof block == "string" && this.isJsonable( block ) )
 									block 		= JSON.parse( block );
 								
 								if( typeof block == "string" && ! this.isJsonable( block ) )
 									return false;
 								
-								return block.noteType == sellCredit;
+								return block.noteType == sellCredit && trans_ids.includes( block.blockID );
 								
 								
 							});
@@ -27614,22 +36798,20 @@ static Base64 = {
 						this.getDataPersistently('noteType', config.sellCredit ).then( blocks =>{
 							setTimeout(()=>{
 								resolve(blocks);
-							},1000);
+							},3000);
 						});
 					});
 					blocks 		= await blocks;
 					blockIDs 	= [];
 					
-					if( this.blocks.length < limit && blocks ) {
-						this.blocks = this.blocks.concat( blocks );
-						if( blocks && blocks.length && typeof blocks == "object" ){
-							blocks.forEach( block =>{
-								blockIDs.push( block.blockID );
-							});
-						}
+					if( trans_blocks.length < limit && blocks && blocks.length && typeof blocks == "object" ) {
+						trans_blocks = trans_blocks.concat( blocks );
+						blocks.forEach( block =>{
+							blockIDs.push( block.blockID );
+						});
 					}
 					
-					if( this.blocks.length < limit ){ 
+					if( trans_blocks.length < limit ){ 
 					
 						blocks 	= await this.getData("noteType", config.sellCredit, this.server ? this.server : "", "socket");
 						
@@ -27637,20 +36819,17 @@ static Base64 = {
 							blocks.forEach( block =>{
 								if( ! blockIDs.includes( block.blockID )){
 									blockIDs.push( block.blockID );
-									this.blocks.push( block );
+									trans_blocks.push( block );
 								}
 							});
 						}
 					
 					}			
 								
-					if( this.blockIDs.length > 0 ){
-						this.blockIDs = this.blockIDs.filter( blockID =>{
-							return blockIDs.includes( blockID );
-						});
-					}
-				}
+					if( blockIDs.length )
+						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
 				
+				}
 				delete this.sellCredit;
 				searched.push("sellCredit");
 			}
@@ -27659,19 +36838,19 @@ static Base64 = {
 				if( ! config.buyCredit )
 					config.buyCredit 	= this.buyCredit;
 				
-				if( searched.length ){
-					if( this.blocks.length ){
+				if( searched.length && join == "AND"){
+					if( trans_blocks.length ){
 						if( typeof config.buyCredit != "object" )
 							config.buyCredit 	= [ config.buyCredit ];
 						config.buyCredit.forEach( (buyCredit)=>{
-							this.blocks = this.blocks.filter( (block)=>{
+							trans_blocks = trans_blocks.filter( (block)=>{
 								if( typeof block == "string" && this.isJsonable( block ) )
 									block 		= JSON.parse( block );
 								
 								if( typeof block == "string" && ! this.isJsonable( block ) )
 									return false;
 								
-								return block.noteType == buyCredit;
+								return block.noteType == buyCredit && trans_ids.includes( block.blockID );
 								
 								
 							});
@@ -27683,14 +36862,14 @@ static Base64 = {
 						this.getDataPersistently('noteType', config.buyCredit ).then( blocks =>{
 							setTimeout(()=>{
 								resolve(blocks);
-							},1000);
+							},3000);
 						});
 					});
 					blocks 		= await blocks;
 					blockIDs 	= [];
 					
-					if( this.blocks.length < limit && blocks ) {
-						this.blocks = this.blocks.concat( blocks );
+					if( trans_blocks.length < limit && blocks ) {
+						trans_blocks = trans_blocks.concat( blocks );
 						if( blocks && blocks.length && typeof blocks == "object" ){
 							blocks.forEach( block =>{
 								blockIDs.push( block.blockID );
@@ -27698,7 +36877,7 @@ static Base64 = {
 						}
 					}
 					
-					if( this.blocks.length < limit ){ 
+					if( trans_blocks.length < limit ){ 
 					
 						blocks 	= await this.getData("noteType", this.buyCredit, this.server ? this.server : "", "socket");
 						
@@ -27706,18 +36885,16 @@ static Base64 = {
 							blocks.forEach( block =>{
 								if( ! blockIDs.includes( block.blockID )){
 									blockIDs.push( block.blockID );
-									this.blocks.push( block );
+									trans_blocks.push( block );
 								}
 							});
 						}
 					
 					}
 					
-					if( this.blockIDs.length > 0 ){
-						this.blockIDs = this.blockIDs.filter( blockID =>{
-							return blockIDs.includes( blockID );
-						});
-					}
+					if( blockIDs.length )
+						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
+					
 				}
 
 				delete this.buyCredit;
@@ -27752,18 +36929,20 @@ static Base64 = {
 				else
 					typeCheck 	= "equal";
 				
-				if( searched.length ){
-					if( this.blocks.length ){
+				if( searched.length && join == "AND" ){
+					if( trans_blocks.length ){
 						if( typeof config.transValue != "object" )
 							config.transValue 	= [ config.transValue ];
 						
 						config.transValue.forEach( (transValue)=>{
-							this.blocks = this.blocks.filter( (block)=>{
+							trans_blocks = trans_blocks.filter( (block)=>{
 								if( typeof block == "string" && this.isJsonable( block ) )
 									block 		= JSON.parse( block );
 								
 								if( typeof block == "string" && ! this.isJsonable( block ) )
 									return false;
+								
+								if( ! trans_ids.includes( block.blockID ) ) return false;
 								
 								if( transCheck == "equal" )							
 									return block.transValue == transValue;
@@ -27790,14 +36969,14 @@ static Base64 = {
 						this.getDataPersistently('transValue', config.transValue, "transactions", typeCheck ).then( blocks =>{
 							setTimeout(()=>{
 								resolve(blocks);
-							},1000);
+							},3000);
 						});
 					});
 					blocks 		= await blocks;
 					blockIDs 	= [];
 					
-					if( this.blocks.length < limit && blocks ) {
-						this.blocks = this.blocks.concat( blocks );
+					if( trans_blocks.length < limit && blocks ) {
+						trans_blocks = trans_blocks.concat( blocks );
 						if( blocks && blocks.length && typeof blocks == "object" ){
 							blocks.forEach( block =>{
 								blockIDs.push( block.blockID );
@@ -27805,7 +36984,7 @@ static Base64 = {
 						}
 					}
 					
-					if( this.blocks.length < limit ){ 
+					if( trans_blocks.length < limit ){ 
 					
 						blocks = await this.getData(["transValue", "type"], [config.transValue, typeCheck ], this.server ? this.server : "", "socket");
 						
@@ -27813,21 +36992,18 @@ static Base64 = {
 							blocks.forEach( block =>{
 								if( ! blockIDs.includes( block.blockID )){
 									blockIDs.push( block.blockID );
-									this.blocks.push( block );
+									trans_blocks.push( block );
 								}
 							});
 						}
 					}
-				}
-							
+					
+				}	
 				delete this.transValue;
 				searched.push("transValue");
 							
-				if( this.blockIDs.length > 0 ){
-					this.blockIDs = this.blockIDs.filter( blockID =>{
-						return blockIDs.includes( blockID );
-					});
-				}
+				if( blockIDs.length )
+					trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
 				
 			}
 			if( config.noteValue || this.noteValue ){
@@ -27859,18 +37035,20 @@ static Base64 = {
 					typeCheck 	= "equal";
 				
 				
-				if( searched.length ){
-					if( this.blocks.length ){
+				if( searched.length && join == "AND"){
+					if( trans_blocks.length ){
 						if( typeof config.noteValue != "object" )
 							config.noteValue 	= [ config.noteValue ];
 						
 						config.noteValue.forEach( (noteValue)=>{
-							this.blocks = this.blocks.filter( (block)=>{
+							trans_blocks = trans_blocks.filter( (block)=>{
 								if( typeof block == "string" && this.isJsonable( block ) )
 									block 		= JSON.parse( block );
 								
 								if( typeof block == "string" && ! this.isJsonable( block ) )
 									return false;
+								
+								if( ! trans_ids.includes( block.blockID ) ) return false;
 								
 								if( transCheck == "equal" )							
 									return block.noteValue == noteValue;
@@ -27897,14 +37075,14 @@ static Base64 = {
 						this.getDataPersistently('noteValue', config.noteValue, "transactions", typeCheck ).then( blocks =>{
 							setTimeout(()=>{
 								resolve(blocks);
-							},1000);
+							},3000);
 						});
 					});
 					blocks 		= await blocks;
 					blockIDs 	= [];
 					
-					if( this.blocks.length < limit && blocks ) {
-						this.blocks = this.blocks.concat( blocks );				
+					if( trans_blocks.length < limit && blocks ) {
+						trans_blocks = trans_blocks.concat( blocks );				
 						if( blocks && blocks.length && typeof blocks == "object" ){
 							blocks.forEach( block =>{
 								blockIDs.push( block.blockID );
@@ -27912,7 +37090,7 @@ static Base64 = {
 						}
 					}
 					
-					if( this.blocks.length < limit ){ 
+					if( trans_blocks.length < limit ){ 
 					
 						blocks = await this.getData(["noteValue", "type"], [config.noteValue, typeCheck ], this.server ? this.server : "", "socket");
 						
@@ -27920,19 +37098,15 @@ static Base64 = {
 							blocks.forEach( block =>{
 								if( ! blockIDs.includes( block.blockID )){
 									blockIDs.push( block.blockID );
-									this.blocks.push( block );
+									trans_blocks.push( block );
 								}
 							});
 						}
 					}
-					if( this.blockIDs.length > 0 ){
-						this.blockIDs = this.blockIDs.filter( blockID =>{
-							return blockIDs.includes( blockID );
-						});
-					}
+					if( blockIDs.length )
+						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );				
+					
 				}
-				
-				
 				delete this.noteValue;
 				searched.push("noteValue");				
 				
@@ -27942,20 +37116,20 @@ static Base64 = {
 				if( ! config.signRef )
 					config.signRef 		= this.signRef;
 				
-				if( searched.length ){
-					if( this.blocks.length ){
+				if( searched.length && join == "AND"){
+					if( trans_blocks.length ){
 						if( typeof config.signRef != "object" )
 							config.signRef 	= [ config.signRef ];
 						
 						config.signRef.forEach( (signRef)=>{
-							this.blocks = this.blocks.filter( (block)=>{
+							trans_blocks = trans_blocks.filter( (block)=>{
 								if( typeof block == "string" && this.isJsonable( block ) )
 									block 		= JSON.parse( block );
 								
 								if( typeof block == "string" && ! this.isJsonable( block ) )
 									return false;
 								
-								return block.signRef == signRef;
+								return block.signRef == signRef && trans_ids.includes( block.blockID );
 								
 								
 							});
@@ -27967,14 +37141,14 @@ static Base64 = {
 						this.getDataPersistently('signRef', config.signRef ).then( blocks =>{
 							setTimeout(()=>{
 								resolve(blocks);
-							},1000);
+							},3000);
 						});
 					});
 					blocks 		= await blocks;
 					blockIDs 	= [];
 					
-					if( this.blocks.length < limit && blocks ) {
-						this.blocks = this.blocks.concat( blocks );
+					if( trans_blocks.length < limit && blocks ) {
+						trans_blocks = trans_blocks.concat( blocks );
 						if( blocks && blocks.length && typeof blocks == "object" ){
 							blocks.forEach( block =>{
 								blockIDs.push( block.blockID );
@@ -27982,7 +37156,7 @@ static Base64 = {
 						}
 					}
 					
-					if( this.blocks.length < limit ){ 
+					if( trans_blocks.length < limit ){ 
 					
 						blocks 	= await this.getData("signRef", config.signRef, this.server ? this.server : "", "socket");
 						
@@ -27990,19 +37164,16 @@ static Base64 = {
 							blocks.forEach( block =>{
 								if( ! blockIDs.includes( block.blockID )){
 									blockIDs.push( block.blockID );
-									this.blocks.push( block );
+									trans_blocks.push( block );
 								}
 							});
 						}
 					}
 								
-					if( this.blockIDs.length > 0 ){
-						this.blockIDs = this.blockIDs.filter( blockID =>{
-							return blockIDs.includes( blockID );
-						});
-					}
+					if( blockIDs.length )
+						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
+					
 				}
-				
 				delete this.signRef;
 				searched.push("signRef");
 			}
@@ -28011,36 +37182,36 @@ static Base64 = {
 				if( ! config.referenceID )
 					config.referenceID 		= this.referenceID;
 				
-				if( searched.length ){
-					if( this.blocks.length ){
+				if( searched.length && join == "AND" ){
+					if( trans_blocks.length ){
 						if( typeof config.referenceID != "object" )
 							config.referenceID 	= [ config.referenceID ];
 						
 						config.referenceID.forEach( (referenceID)=>{
-							this.blocks = this.blocks.filter( (block)=>{
+							trans_blocks = trans_blocks.filter( (block)=>{
 								if( typeof block == "string" && this.isJsonable( block ) )
 									block 		= JSON.parse( block );
 								
 								if( typeof block == "string" && ! this.isJsonable( block ) )
 									return false;
 								
-								return block.referenceID == referenceID;	
+								return block.referenceID == referenceID && trans_ids.includes( block.blockID );	
 							});
 						});					
 					}
-				} else {
+				} else { 
 					blocks 		= new Promise( (resolve, reject)=>{
 						this.getDataPersistently('referenceID', config.referenceID ).then( blocks =>{
 							setTimeout(()=>{
 								resolve(blocks);
-							},1000);
+							},3000);
 						});
 					});
 					blocks 		= await blocks;
 					blockIDs 	= [];
 					
-					if( this.blocks.length < limit && blocks ) {
-						this.blocks = this.blocks.concat( blocks );
+					if( trans_blocks.length < limit && blocks ) {
+						trans_blocks = trans_blocks.concat( blocks );
 						if( blocks && blocks.length && typeof blocks == "object" ){
 							blocks.forEach( block =>{
 								blockIDs.push( block.blockID );
@@ -28048,7 +37219,7 @@ static Base64 = {
 						}
 					}
 					
-					if( this.blocks.length < limit ){ 
+					if( trans_blocks.length < limit ){ 
 					
 						blocks 	= await this.getData("referenceID", config.referenceID, this.server ? this.server : "", "socket");
 						
@@ -28056,19 +37227,16 @@ static Base64 = {
 							blocks.forEach( block =>{
 								if( ! blockIDs.includes( block.blockID )){
 									blockIDs.push( block.blockID );
-									this.blocks.push( block );
+									trans_blocks.push( block );
 								}
 							});
 						}
 					}
 								
-					if( this.blockIDs.length > 0 ){
-						this.blockIDs = this.blockIDs.filter( blockID =>{
-							return blockIDs.includes( blockID );
-						});
-					}
+					if( blockIDs.length )
+						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
+					
 				}
-				
 				delete this.referenceID;
 				searched.push("referenceID");
 			}
@@ -28078,36 +37246,36 @@ static Base64 = {
 				if( ! config.referenceKey )
 					config.referenceKey 		= this.referenceKey;
 				
-				if( searched.length ){
-					if( this.blocks.length ){
+				if( searched.length && join == "AND" ){
+					if( trans_blocks.length ){
 						if( typeof config.referenceKey != "object" )
 							config.referenceKey 	= [ config.referenceKey ];
 						
 						config.referenceKey.forEach( (referenceKey)=>{
-							this.blocks = this.blocks.filter( (block)=>{
+							trans_blocks = trans_blocks.filter( (block)=>{
 								if( typeof block == "string" && this.isJsonable( block ) )
 									block 		= JSON.parse( block );
 								
 								if( typeof block == "string" && ! this.isJsonable( block ) )
 									return false;
 								
-								return block.referenceKey == referenceKey;	
+								return block.referenceKey == referenceKey && trans_ids.includes( block.blockID );	
 							});
 						});					
 					}
-				} else {
+				} else {	
 					blocks 		= new Promise( (resolve, reject)=>{
 						this.getDataPersistently('referenceKey', config.referenceKey ).then( blocks =>{
 							setTimeout(()=>{
 								resolve(blocks);
-							},1000);
+							},3000);
 						});
 					});
 					blocks = await blocks;
 					blockIDs 	= [];
 					
-					if( this.blocks.length < limit && blocks ) {
-						this.blocks = this.blocks.concat( blocks );
+					if( trans_blocks.length < limit && blocks ) {
+						trans_blocks = trans_blocks.concat( blocks );
 						if( blocks && blocks.length && typeof blocks == "object" ){
 							blocks.forEach( block =>{
 								blockIDs.push( block.blockID );
@@ -28115,7 +37283,7 @@ static Base64 = {
 						}
 					}
 					
-					if( this.blocks.length < limit ){ 
+					if( trans_blocks.length < limit ){ 
 					
 						blocks 	= await this.getData("referenceKey", config.referenceKey, this.server ? this.server : "", "socket");
 						
@@ -28123,19 +37291,16 @@ static Base64 = {
 							blocks.forEach( block =>{
 								if( ! blockIDs.includes( block.blockID )){
 									blockIDs.push( block.blockID );
-									this.blocks.push( block );
+									trans_blocks.push( block );
 								}
 							});
 						}
 					}
 								
-					if( this.blockIDs.length > 0 ){
-						this.blockIDs = this.blockIDs.filter( blockID =>{
-							return blockIDs.includes( blockID );
-						});
-					}
+					if( blockIDs.length )
+						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
+					
 				}
-				
 				delete this.referenceKey;
 				searched.push("referenceKey");
 			}
@@ -28145,36 +37310,36 @@ static Base64 = {
 				if( ! config.splitID )
 					config.splitID 		= this.splitID;
 				
-				if( searched.length ){
-					if( this.blocks.length ){
+				if( searched.length && join == "AND" ){
+					if( trans_blocks.length ){
 						if( typeof config.splitID != "object" )
 							config.splitID 	= [ config.splitID ];
 						
 						config.splitID.forEach( (splitID)=>{
-							this.blocks = this.blocks.filter( (block)=>{
+							trans_blocks = trans_blocks.filter( (block)=>{
 								if( typeof block == "string" && this.isJsonable( block ) )
 									block 		= JSON.parse( block );
 								
 								if( typeof block == "string" && ! this.isJsonable( block ) )
 									return false;
 								
-								return block.splitID == splitID;	
+								return block.splitID == splitID && trans_ids.includes( block.blockID );	
 							});
 						});					
 					}
-				} else {
+				} else { 
 					blocks 		= new Promise( (resolve, reject)=>{
 						this.getDataPersistently('splitID', config.splitID ).then( blocks =>{
 							setTimeout(()=>{
 								resolve(blocks);
-							},1000);
+							},3000);
 						});
 					});
 					blocks = await blocks;
 					blockIDs 	= [];
 					
-					if( this.blocks.length < limit && blocks ) {
-						this.blocks = this.blocks.concat( blocks );
+					if( trans_blocks.length < limit && blocks ) {
+						trans_blocks = trans_blocks.concat( blocks );
 						if( blocks && blocks.length && typeof blocks == "object" ){
 							blocks.forEach( block =>{
 								blockIDs.push( block.blockID );
@@ -28182,7 +37347,7 @@ static Base64 = {
 						}
 					}
 					
-					if( this.blocks.length < limit ){ 
+					if( trans_blocks.length < limit ){ 
 					
 						blocks 	= await this.getData("splitID", config.splitID, this.server ? this.server : "", "socket");
 						
@@ -28190,19 +37355,16 @@ static Base64 = {
 							blocks.forEach( block =>{
 								if( ! blockIDs.includes( block.blockID )){
 									blockIDs.push( block.blockID );
-									this.blocks.push( block );
+									trans_blocks.push( block );
 								}
 							});
 						}
 					}
 								
-					if( this.blockIDs.length > 0 ){
-						this.blockIDs = this.blockIDs.filter( blockID =>{
-							return blockIDs.includes( blockID );
-						});
-					}
+					if( blockIDs.length )
+						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
+					
 				}
-				
 				delete this.splitID;
 				searched.push("splitID");
 			}
@@ -28212,36 +37374,36 @@ static Base64 = {
 				if( ! config.nextSplitID )
 					config.nextSplitID 		= this.nextSplitID;
 				
-				if( searched.length ){
-					if( this.blocks.length ){
+				if( searched.length && join == "AND" ){
+					if( trans_blocks.length ){
 						if( typeof config.nextSplitID != "object" )
 							config.nextSplitID 	= [ config.nextSplitID ];
 						
 						config.nextSplitID.forEach( (nextSplitID)=>{
-							this.blocks = this.blocks.filter( (block)=>{
+							trans_blocks = trans_blocks.filter( (block)=>{
 								if( typeof block == "string" && this.isJsonable( block ) )
 									block 		= JSON.parse( block );
 								
 								if( typeof block == "string" && ! this.isJsonable( block ) )
 									return false;
 								
-								return block.nextSplitID == nextSplitID;	
+								return block.nextSplitID == nextSplitID && trans_ids.includes( block.blockID );	
 							});
 						});					
 					}
-				} else {
+				} else { 
 					blocks 		= new Promise( (resolve, reject)=>{
 						this.getDataPersistently('nextSplitID', config.nextSplitID ).then( blocks =>{
 							setTimeout(()=>{
 								resolve(blocks);
-							},1000);
+							},3000);
 						});
 					});
 					blocks = await blocks;
 					blockIDs 	= [];
 					
-					if( this.blocks.length < limit && blocks ) {
-						this.blocks = this.blocks.concat( blocks );
+					if( trans_blocks.length < limit && blocks ) {
+						trans_blocks = trans_blocks.concat( blocks );
 						if( blocks && blocks.length && typeof blocks == "object" ){
 							blocks.forEach( block =>{
 								blockIDs.push( block.blockID );
@@ -28249,7 +37411,7 @@ static Base64 = {
 						}
 					}
 					
-					if( this.blocks.length < limit ){ 
+					if( trans_blocks.length < limit ){ 
 					
 						blocks 	= await this.getData("splitID", config.splitID, this.server ? this.server : "", "socket");
 						
@@ -28257,19 +37419,16 @@ static Base64 = {
 							blocks.forEach( block =>{
 								if( ! blockIDs.includes( block.blockID )){
 									blockIDs.push( block.blockID );
-									this.blocks.push( block );
+									trans_blocks.push( block );
 								}
 							});
 						}
 					}
 								
-					if( this.blockIDs.length > 0 ){
-						this.blockIDs = this.blockIDs.filter( blockID =>{
-							return blockIDs.includes( blockID );
-						});
-					}
+					if( blockIDs.length )
+						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
+					
 				}
-				
 				delete this.splitID;
 				searched.push("splitID");
 			}
@@ -28278,42 +37437,42 @@ static Base64 = {
 				if( ! config.budgetID )
 					config.budgetID 	= this.budgetID;
 				
-				if( searched.length ){
-					if( this.blocks.length ){
+				if( searched.length  && join == "AND" ){
+					if( trans_blocks.length ){
 						if( typeof config.budgetID != "object" )
 							config.budgetID 	= [ config.budgetID ];
 						
-						//console.log( "check this block ", this.blocks );
+						//console.log( "check this block ", trans_blocks );
 						
 						config.budgetID.forEach( (budgetID)=>{
-							this.blocks = this.blocks.filter( (block)=>{
+							trans_blocks = trans_blocks.filter( (block)=>{
 								if( typeof block == "string" && this.isJsonable( block ) )
 									block 		= JSON.parse( block );
 								
 								if( typeof block == "string" && ! this.isJsonable( block ) )
 									return false;
 								
-								return block.budgetID == budgetID;				
+								return block.budgetID == budgetID && trans_ids.includes( block.blockID );				
 							});
 						});
 						
-						//console.log( "check this block after ", this.blocks );
+						//console.log( "check this block after ", trans_blocks );
 						
 					}
-				} else {
+				} else { 
 					//let note = JSON.parse( sessionStorage.currentNote );
 					//let block = await Scriptbill.getTransBlock(10, {budgetID:note.budgetID});
 					blocks 		= new Promise( (resolve, reject)=>{
 						this.getDataPersistently('budgetID', config.budgetID ).then( blocks =>{
 							setTimeout(()=>{
 								resolve(blocks);
-							},1000);
+							},3000);
 						});
 					});
 					blocks = await blocks;
 					blockIDs 	= [];
-					if( this.blocks.length < limit && blocks ) {
-						this.blocks = this.blocks.concat( blocks );
+					if( trans_blocks.length < limit && blocks ) {
+						trans_blocks = trans_blocks.concat( blocks );
 						if( blocks && blocks.length && typeof blocks == "object" ){
 							blocks.forEach( block =>{
 								blockIDs.push( block.blockID );
@@ -28321,7 +37480,7 @@ static Base64 = {
 						}
 					}
 					
-					if( this.blocks.length < limit ){ 
+					if( trans_blocks.length < limit ){ 
 					
 						blocks 	= await this.getData("budgetID", config.budgetID, this.server ? this.server : "", "socket");
 						
@@ -28329,19 +37488,16 @@ static Base64 = {
 							blocks.forEach( block =>{
 								if( ! blockIDs.includes( block.blockID )){
 									blockIDs.push( block.blockID );
-									this.blocks.push( block );
+									trans_blocks.push( block );
 								}
 							});
 						}
 					}			
 								
-					if( this.blockIDs.length > 0 ){
-						this.blockIDs = this.blockIDs.filter( blockID =>{
-							return blockIDs.includes( blockID );
-						});
-					}
+					if( blockIDs.length )
+						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
+					
 				}
-				
 				delete this.budgetID;
 				searched.push("budgetID");
 				
@@ -28351,39 +37507,39 @@ static Base64 = {
 				if( ! config.productID )
 					config.productID 	= this.productID;
 				
-				if( searched.length ){
-					if( this.blocks.length ){
+				if( searched.length && join == "AND" ){
+					if( trans_blocks.length ){
 						if( typeof config.productID != "object" )
 							config.productID 	= [ config.productID ];
 						
 						config.productID.forEach( (productID)=>{
-							this.blocks = this.blocks.filter( (block)=>{
+							trans_blocks = trans_blocks.filter( (block)=>{
 								if( typeof block == "string" && this.isJsonable( block ) )
 									block 		= JSON.parse( block );
 								
 								if( typeof block == "string" && ! this.isJsonable( block ) )
 									return false;
 								
-								return block.productID == productID;
+								return block.productID == productID && trans_ids.includes( block.blockID );
 								
 								
 							});
 						});
 						
 					}
-				} else {
+				} else { 
 					blocks 		= new Promise( (resolve, reject)=>{
 						this.getDataPersistently('productID', config.productID ).then( blocks =>{
 							setTimeout(()=>{
 								resolve(blocks);
-							},1000);
+							},3000);
 						});
 					});
 					blocks 		= await blocks;
 					blockIDs 	= [];
 					
-					if( this.blocks.length < limit && blocks ) {
-						this.blocks = this.blocks.concat( blocks );
+					if( trans_blocks.length < limit && blocks ) {
+						trans_blocks = trans_blocks.concat( blocks );
 						if( blocks && blocks.length && typeof blocks == "object" ){
 							blocks.forEach( block =>{
 								blockIDs.push( block.blockID );
@@ -28391,7 +37547,7 @@ static Base64 = {
 						}
 					}
 					
-					if( this.blocks.length < limit ){ 
+					if( trans_blocks.length < limit ){ 
 					
 						blocks 	= await this.getData("productID", config.productID, this.server ? this.server : "", "socket");
 						
@@ -28399,19 +37555,16 @@ static Base64 = {
 							blocks.forEach( block =>{
 								if( ! blockIDs.includes( block.blockID )){
 									blockIDs.push( block.blockID );
-									this.blocks.push( block );
+									trans_blocks.push( block );
 								}
 							});
 						}
 					}			
 								
-					if( this.blockIDs.length > 0 ){
-						this.blockIDs = this.blockIDs.filter( blockID =>{
-							return blockIDs.includes( blockID );
-						});
-					}
+					if( blockIDs.length )
+						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
+					
 				}
-				
 				delete this.productID;
 				searched.push("productID");
 			}
@@ -28442,33 +37595,35 @@ static Base64 = {
 				
 				else
 					typeCheck 	= "equal";
-				
-				if( searched.length ){
-					if( this.blocks.length ){
+								
+				if( searched.length && join == "AND" ){
+					if( trans_blocks.length ){
 						if( typeof config.transTime != "object" )
 							config.transTime 	= [ config.transTime ];
 						
 						config.transTime.forEach( (transTime)=>{
-							this.blocks = this.blocks.filter( (block)=>{
+							trans_blocks = trans_blocks.filter( (block)=>{
 								if( typeof block == "string" && this.isJsonable( block ) )
 									block 		= JSON.parse( block );
 								
 								if( typeof block == "string" && ! this.isJsonable( block ) )
 									return false;
 								
-								if( transCheck == "equal" )							
+								if( ! trans_ids.includes( block.blockID ) ) return false;
+								
+								if( typeCheck == "equal" )							
 									return block.transTime == transTime;
 								
-								if( transCheck == "greater" )
+								if( typeCheck == "greater" )
 									return block.transTime > transTime;
 								
-								if( transCheck == "greater-equal" )
+								if( typeCheck == "greater-equal" )
 									return block.transTime >= transTime;
 								
-								if( transCheck == "lesser" )
+								if( typeCheck == "lesser" )
 									return block.transTime < transTime;
 								
-								if( transCheck == "lesser-equal" )
+								if( typeCheck == "lesser-equal" )
 									return block.transTime <= transTime;
 								
 								
@@ -28481,14 +37636,16 @@ static Base64 = {
 						this.getDataPersistently('transTime', config.transTime, "transactions", typeCheck ).then( blocks =>{
 							setTimeout(()=>{
 								resolve(blocks);
-							},1000);
+							},3000);
 						});
 					});
 					blocks 		= await blocks;
+					
+					
 					blockIDs 	= [];
 					
-					if( this.blocks.length < limit && blocks ) {
-						this.blocks = this.blocks.concat( blocks );
+					if( trans_blocks.length < limit && blocks ) {
+						trans_blocks = trans_blocks.concat( blocks );
 						if( blocks && blocks.length && typeof blocks == "object" ){
 							blocks.forEach( block =>{
 								blockIDs.push( block.blockID );
@@ -28496,10 +37653,10 @@ static Base64 = {
 						}
 					}
 					
-					if( this.blocks.length < limit && blocks )
-						this.blocks = this.blocks.concat( blocks );
+					if( trans_blocks.length < limit && blocks )
+						trans_blocks = trans_blocks.concat( blocks );
 					
-					if( this.blocks.length < limit ){ 
+					if( trans_blocks.length < limit ){ 
 					
 						blocks = await this.getData(["transTime", "type"], [config.transTime, typeCheck ], this.server ? this.server : "", "socket");
 						
@@ -28507,19 +37664,16 @@ static Base64 = {
 							blocks.forEach( block =>{
 								if( ! blockIDs.includes( block.blockID )){
 									blockIDs.push( block.blockID );
-									this.blocks.push( block );
+									trans_blocks.push( block );
 								}
 							});
 						}
 					}							
 								
-					if( this.blockIDs.length > 0 ){
-						this.blockIDs = this.blockIDs.filter( blockID =>{
-							return blockIDs.includes( blockID );
-						});
-					}
+					if( blockIDs.length )
+						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
+					
 				}
-				
 				delete this.transTime;
 				searched.push("transTime");
 				
@@ -28529,39 +37683,39 @@ static Base64 = {
 				if( ! config.agreeID )
 					config.agreeID 		= this.agreeID;
 				
-				if( searched.length ){
-					if( this.blocks.length ){
+				if( searched.length && join == "AND" ){
+					if( trans_blocks.length ){
 						if( typeof config.agreeID != "object" )
 							config.agreeID 	= [ config.agreeID ];
 						
 						config.agreeID.forEach( (agreeID)=>{
-							this.blocks = this.blocks.filter( (block)=>{
+							trans_blocks = trans_blocks.filter( (block)=>{
 								if( typeof block == "string" && this.isJsonable( block ) )
 									block 		= JSON.parse( block );
 								
 								if( typeof block == "string" && ! this.isJsonable( block ) )
 									return false;
 								
-								return block.agreeID == agreeID;
+								return block.agreeID == agreeID && trans_ids.includes( block.blockID );
 								
 								
 							});
 						});
 						
 					}
-				} else {
+				} else { 
 					blocks 		= new Promise( (resolve, reject)=>{
 						this.getDataPersistently('agreeID', config.agreeID, "agreements" ).then( blocks =>{
 							setTimeout(()=>{
 								resolve(blocks);
-							},1000);
+							},3000);
 						});
 					});
 					blocks 		= await blocks;
 					blockIDs 	= [];
 					
-					if( this.blocks.length < limit && blocks ) {
-						this.blocks = this.blocks.concat( blocks );
+					if( trans_blocks.length < limit && blocks ) {
+						trans_blocks = trans_blocks.concat( blocks );
 						if( blocks && blocks.length && typeof blocks == "object" ){
 							blocks.forEach( block =>{
 								blockIDs.push( block.blockID );
@@ -28569,7 +37723,7 @@ static Base64 = {
 						}
 					}
 					
-					if( this.blocks.length < limit ){ 
+					if( trans_blocks.length < limit ){ 
 					
 						blocks 	= await this.getData("agreeID", config.agreeID, this.server ? this.server : "", "socket");
 						
@@ -28577,19 +37731,16 @@ static Base64 = {
 							blocks.forEach( block =>{
 								if( ! blockIDs.includes( block.blockID )){
 									blockIDs.push( block.blockID );
-									this.blocks.push( block );
+									trans_blocks.push( block );
 								}
 							});
 						}
 					}
 								
-					if( this.blockIDs.length > 0 ){
-						this.blockIDs = this.blockIDs.filter( blockID =>{
-							return blockIDs.includes( blockID );
-						});
-					}
+					if( blockIDs.length )
+						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
+					
 				}
-				
 				delete this.agreeID;
 				searched.push("agreeID");
 			}
@@ -28599,39 +37750,39 @@ static Base64 = {
 				if( ! config.productBlockID )
 					config.productBlockID = this.productBlockID;
 				
-				if( searched.length ){
-					if( this.blocks.length ){
+				if( searched.length && join == "AND" ){
+					if( trans_blocks.length ){
 						if( typeof config.productBlockID != "object" )
 							config.productBlockID 	= [ config.productBlockID ];
 						
 						config.productBlockID.forEach( (productBlockID)=>{
-							this.blocks = this.blocks.filter( (block)=>{
+							trans_blocks = trans_blocks.filter( (block)=>{
 								if( typeof block == "string" && this.isJsonable( block ) )
 									block 		= JSON.parse( block );
 								
 								if( typeof block == "string" && ! this.isJsonable( block ) )
 									return false;
 								
-								return block.productBlockID == productBlockID;
+								return block.productBlockID == productBlockID && trans_ids.includes( block.blockID );
 								
 								
 							});
 						});
 						
 					}
-				} else {
+				} else { 
 					blocks 		= new Promise( (resolve, reject)=>{
 						this.getDataPersistently('productBlockID', config.productBlockID ).then( blocks =>{
 							setTimeout(()=>{
 								resolve(blocks);
-							},1000);
+							},3000);
 						});
 					});
 					blocks 		= await blocks;					
 					blockIDs 	= [];
 								
 					if( blocks.length ){
-						this.blocks = this.blocks.concat( blocks );
+						trans_blocks = trans_blocks.concat( blocks );
 						if( blocks && blocks.length && typeof blocks == "object" ){
 							blocks.forEach( block =>{
 								blockIDs.push( block.blockID );
@@ -28643,11 +37794,11 @@ static Base64 = {
 						blocks 	= await this.getData("productBlockID", config.productBlockID, this.server ? this.server : "", "socket");
 						
 						if( blocks && blocks.blockID ){
-							this.blocks.push( blocks );
+							trans_blocks.push( blocks );
 							blockIDs.push( blocks.blockID );
 						}				
-						else if( blocks.length && typeof blocks == "object") {
-							this.blocks.concat( blocks );
+						else if( blocks && blocks.length && typeof blocks == "object") {
+							trans_blocks.concat( blocks );
 							blocks.forEach( block =>{
 								blockIDs.push( block.blockID );
 							});
@@ -28659,13 +37810,10 @@ static Base64 = {
 					blockIDs = this.l[ config.productBlockID ];							
 					
 
-					if( this.blockIDs.length > 0 ){
-						this.blockIDs = this.blockIDs.filter( blockID =>{
-							return blockIDs.includes( blockID );
-						});
-					}
+					if( blockIDs.length )
+						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
+					
 				}
-				
 				delete this.productBlockID;
 				searched.push("productBlockID");
 			}
@@ -28674,39 +37822,39 @@ static Base64 = {
 				if( ! config.exBlockID )
 					config.exBlockID 	= this.exBlockID;
 				
-				if( searched.length ){
-					if( this.blocks.length ){
+				if( searched.length && join == "AND" ){
+					if( trans_blocks.length ){
 						if( typeof config.exBlockID != "object" )
 							config.exBlockID 	= [ config.exBlockID ];
 						
 						config.exBlockID.forEach( (exBlockID)=>{
-							this.blocks = this.blocks.filter( (block)=>{
+							trans_blocks = trans_blocks.filter( (block)=>{
 								if( typeof block == "string" && this.isJsonable( block ) )
 									block 		= JSON.parse( block );
 								
 								if( typeof block == "string" && ! this.isJsonable( block ) )
 									return false;
 								
-								return block.exBlockID == exBlockID;
+								return block.exBlockID == exBlockID && trans_ids.includes( block.blockID );
 								
 								
 							});
 						});
 						
 					}
-				} else {
+				} else { 
 					blocks 		= new Promise( (resolve, reject)=>{
 						this.getDataPersistently('exBlockID', config.exBlockID ).then( blocks =>{
 							setTimeout(()=>{
 								resolve(blocks);
-							},1000);
+							},3000);
 						});
 					});
 					blocks 		= await blocks;
 					blockIDs 	= [];
 					
 					if(  blocks && blocks.length && typeof blocks == "object" ){
-						this.blocks = this.blocks.concat( blocks );
+						trans_blocks = trans_blocks.concat( blocks );
 						if( blocks && blocks.length && typeof blocks == "object" ){
 							blocks.forEach( block =>{
 								blockIDs.push( block.blockID );
@@ -28719,11 +37867,11 @@ static Base64 = {
 						blocks 	= await this.getData("exBlockID", config.exBlockID, this.server ? this.server : "", "socket");
 						
 						if( blocks && blocks.blockID ){
-							this.blocks.push( blocks );
+							trans_blocks.push( blocks );
 							blockIDs.push( blocks.blockID );
 						}				
 						else if( blocks && blocks.length && typeof blocks == "object" ) {
-							this.blocks.concat( blocks );
+							trans_blocks.concat( blocks );
 							blocks.forEach( block =>{
 								blockIDs.push( block.blockID );
 							});
@@ -28731,13 +37879,10 @@ static Base64 = {
 					
 					}
 					
-					if( this.blockIDs.length > 0 ){
-						this.blockIDs = this.blockIDs.filter( blockID =>{
-							return blockIDs.includes( blockID );
-						});
-					}
-				}
+					if( blockIDs.length )
+						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
 							
+				}
 				delete this.exBlockID;
 				searched.push("exBlockID");				
 			}
@@ -28746,32 +37891,32 @@ static Base64 = {
 				if( ! config.walletHASH	)
 					config.walletHASH 		= this.walletHASH;
 				
-				if( searched.length ){
-					if( this.blocks.length ){
+				if( searched.length && join == "AND" ){
+					if( trans_blocks.length ){
 						if( typeof config.walletHASH != "object" )
 							config.walletHASH 	= [ config.walletHASH ];
 						
 						config.walletHASH.forEach( (walletHASH)=>{
-							this.blocks = this.blocks.filter( (block)=>{
+							trans_blocks = trans_blocks.filter( (block)=>{
 								if( typeof block == "string" && this.isJsonable( block ) )
 									block 		= JSON.parse( block );
 								
 								if( typeof block == "string" && ! this.isJsonable( block ) )
 									return false;
 								
-								return block.walletHASH == walletHASH;
+								return block.walletHASH == walletHASH && trans_ids.includes( block.blockID );
 								
 								
 							});
 						});
 						
 					}
-				} else {
+				} else { 
 					blocks 		= new Promise( (resolve, reject)=>{
 						this.getDataPersistently('walletHASH', config.walletHASH ).then( blocks =>{
 							setTimeout(()=>{
 								resolve(blocks);
-							},1000);
+							},3000);
 						});
 					});
 					blocks 		= await blocks;
@@ -28779,7 +37924,7 @@ static Base64 = {
 					blockIDs 	= [];
 					
 					if( blocks && blocks.length && typeof blocks == "object" ){
-						this.blocks = this.blocks.concat( blocks );
+						trans_blocks = trans_blocks.concat( blocks );
 						
 						if( blocks && blocks.length && typeof blocks == "object" ){
 							blocks.forEach( block =>{
@@ -28792,12 +37937,12 @@ static Base64 = {
 						blocks 	= await this.getData("walletHASH", config.walletHASH, this.server ? this.server : "", "socket");
 						
 						if( blocks && blocks.blockID ){
-							this.blocks.push( blocks );
+							trans_blocks.push( blocks );
 							blockIDs.push( blocks.blockID );
 						}
 						
 						else if( blocks && blocks && blocks.length && typeof blocks == "object" ){
-							this.blocks.concat( blocks );
+							trans_blocks.concat( blocks );
 							blocks.forEach( block =>{
 								blockIDs.push( block.blockID );
 							});
@@ -28805,12 +37950,9 @@ static Base64 = {
 					}
 					
 					
-					if( this.blockIDs.length > 0 ){
-						this.blockIDs = this.blockIDs.filter( blockID =>{
-							return blockIDs.includes( blockID );
-						});
-					}
-				
+					if( blockIDs.length )
+						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
+					
 				}
 							
 				delete this.walletHASH;
@@ -28818,8 +37960,8 @@ static Base64 = {
 				
 			}
 			
-			if( this.blocks.length == 0 && searched.length < 1 ){
-				//console.log( "test blocks", this.blocks );
+			if( trans_blocks.length == 0 && searched.length < 1 ){
+				//console.log( "test blocks", trans_blocks );
 				if( this.#note && ! this.blockID )
 					this.blockID = this.#note.blockID;
 			}
@@ -28829,20 +37971,20 @@ static Base64 = {
 				if( ! config.blockID )
 					config.blockID 		= this.blockID;
 				
-				if( searched.length ){
-					if( this.blocks.length ){
+				if( searched.length && join == "AND" ){
+					if( trans_blocks.length ){
 						if( typeof config.blockID != "object" )
 							config.blockID 	= [ config.blockID ];
 						
 						config.blockID.forEach( (blockID)=>{
-							this.blocks = this.blocks.filter( (block)=>{
+							trans_blocks = trans_blocks.filter( (block)=>{
 								if( typeof block == "string" && this.isJsonable( block ) )
 									block 		= JSON.parse( block );
 								
 								if( typeof block == "string" && ! this.isJsonable( block ) )
 									return false;
 								
-								return block.blockID == blockID;
+								return block.blockID == blockID && trans_ids.includes( block.blockID );
 								
 								
 							});
@@ -28867,10 +38009,10 @@ static Base64 = {
 					}
 					// //console.log("blocks: " + blocks);
 					// await this.createAlert("blocking");
-					if( this.blocks.length < limit && blocks )
-						this.blocks = this.blocks.concat( blocks );
+					if( trans_blocks.length < limit && blocks )
+						trans_blocks = trans_blocks.concat( blocks );
 					
-					if( this.blocks.length < limit ){ 
+					if( trans_blocks.length < limit ){ 
 						if( typeof config.blockID == "string" )
 							blocks 	= await this.getData("blockID", config.blockID, this.server ? this.server : "", "socket");
 						
@@ -28885,37 +38027,38 @@ static Base64 = {
 							}
 						}
 						
-						if( this.blocks.length < limit && blocks )
-							this.blocks = this.blocks.concat( blocks );
+						if( trans_blocks.length < limit && blocks )
+							trans_blocks = trans_blocks.concat( blocks );
 					
 					}
 					
 					//blockIDs = this.l[ this.blockID ];
 										
 								
-					if( blocks && this.blocks.length < limit )
-						this.blocks.push( blocks );
+					if( blocks && trans_blocks.length < limit )
+						trans_blocks.push( blocks );
 					
-					if( this.blockIDs.length < limit )
-						this.blockIDs.push( this.blockID );
+					if( trans_ids.length < limit )
+						trans_ids.push( this.blockID );
+				
 				
 				}
-				
 				delete this.blockID;
 				
 			}
 
-			/* this.blocks = this.blocks.filter( block =>{
-				return this.blockIDs.includes( block.blockID );
+			/* trans_blocks = trans_blocks.filter( block =>{
+				return trans_ids.includes( block.blockID );
 			}); */
 			
-			/* if( ( this.blocks.length == 1 && this.blocks[0].blockID == "" && this.#note && this.l[ this.#note.noteAddress + "_current_block"] && this.isJsonable( this.l[ this.#note.noteAddress + "_current_block"] ) ) || ! this.blocks.length ){
-				this.blocks.splice(0,1);
-				this.blocks.push( JSON.parse( this.l[ this.#note.noteAddress + "_current_block"] ) );
+			/* if( ( trans_blocks.length == 1 && trans_blocks[0].blockID == "" && this.#note && this.l[ this.#note.noteAddress + "_current_block"] && this.isJsonable( this.l[ this.#note.noteAddress + "_current_block"] ) ) || ! trans_blocks.length ){
+				trans_blocks.splice(0,1);
+				trans_blocks.push( JSON.parse( this.l[ this.#note.noteAddress + "_current_block"] ) );
 			} */
 					
 			//always returns an array of values or blocks.
-			return this.blocks;	
+			trans_blocks  = Array.from( new Set(trans_blocks) );
+			return trans_blocks;	
 		} catch(e){
 			this.errorMessage(e.toString());
 			console.error(e);
@@ -29201,100 +38344,6 @@ static Base64 = {
 		
 	}
 	
-	static async #profitSharing( shareBlock, note, BLOCK, response = null ){
-		//console.log("profitSharing running " + this.funcUp[ this.funcUp.length] );
-		this.funcUp[ this.funcUp.length] = "profitSharing";
-		//the block must be configured as an object for the function to work and not an array.
-		if( typeof BLOCK != 'object' || BLOCK.length ) return;
-		
-		//initializing storage.
-		
-		if( ! response && this.response )
-			response = JSON.parse( JSON.stringify( this.response ));
-		
-		try {
-			
-			
-			shareBlock.formerBlockID 	= this.hashed(shareBlock.blockID);
-			shareBlock.blockID 			= await this.calculateNextBlockID(note);
-			shareBlock.nextBlockID 		= this.hashed(await this.calculateNextBlockID(note,shareBlock.blockID));
-			
-			
-			shareBlock.transType 		= 'PROFITSHARING';
-			shareBlock.transValue 		= this.#shareValue;
-			//this.#shareValue 			= false;
-			block 						= await this.getTransBlock(1, {productBlockID: shareBlock.formerProductBlockID});
-			block 						= block[0];//PERERE
-			
-			let agreeTime			=	parseInt( this.calculateTime( shareBlock.agreement.payPeriod ) );
-			
-			if( isNaN( agreeTime ) )
-				agreeTime			=	parseInt( this.calculateTime( "2 weeks" ) );
-				
-			let curTime				= parseInt( this.currentTime() );
-			
-			if( ! block || block.blockID == '' || ! block.profitKey  || ( block.transTime + agreeTime ) < curTime ) {
-				//this shows there is no more blocks to recieve the profit.
-				//the last block takes the last profit shared.
-				response.productNote.exchangeValue 	= parseFloat( response.productNote.exchangeValue ) + this.#shareValue;
-				this.#noVerify		= false;
-				this.storeBlock( response, note );
-				return response;
-			} 
-			note.blockID 				= shareBlock.blockID;
-	
-			var string 				= JSON.stringify( note );
-			let noteHASH				= this.hashed( string );
-			shareBlock.noteHash			= noteHASH.slice( 0, noteHASH.length / 2 );
-			note.noteHash				= noteHASH.slice( noteHASH.length / 2, noteHASH.length );
-			var string 				= noteHASH;
-			note.noteSign 				= await this.Sign(note.blockKey, this.hashed( string ));
-			this.returnNote 			= JSON.parse( JSON.stringify( this.#note ));
-			note.blockID 				= shareBlock.blockID;				
-			//this.response 		= JSON.parse( JSON.stringify( block ));
-			//await this.generateScriptbillTransactionBlock(details, note);
-			var id 						= await this.generateKey(10);
-			await this.setPublicKey( block.profitKey, id);
-			let privKeyd 					= await this.generateKey(10, true );
-			shareBlock.agreement.privateKey 	= privKeyd;
-			shareBlock.recipient 				=	this.#encrypt( shareBlock.agreement, id );
-			await this.setPrivateKey( shareBlock.agreement.privateKey, id );
-			delete shareBlock.agreement.privateKey;
-			shareBlock.blockRef 				= await this.getPublicKey(id, true);
-			shareBlock.signRef 					= await this.generateKey(20);
-			shareBlock.nextRecipient			= block.formerProductBlockID;
-			
-			BLOCK.nextBlockID			= shareBlock.nextBlockID;
-			BLOCK.blockID				= shareBlock.blockID;
-			BLOCK.formerBlockID			= shareBlock.formerBlockID;
-			BLOCK.blockRef				= shareBlock.blockRef;
-			BLOCK.signRef				= shareBlock.signRef;
-			BLOCK.transValue			= shareBlock.transValue;
-			BLOCK.transType				= shareBlock.transType;
-			
-			var string 				= JSON.stringify( BLOCK );
-			let transHASH				= this.hashed( string );
-			shareBlock.transHash   		= transHASH.slice( 0, transHASH.length / 2 );
-			
-			note.transHash 				= transHASH.slice( transHASH.length / 2, transHASH.length );
-			
-			
-			var string 				= transHASH;
-			shareBlock.blockHash		= this.hashed( string );
-			
-			
-			shareBlock.blockSign			= await this.Sign(note.blockKey, shareBlock.blockHash);
-			
-			//this.shareData( false, shareBlock );				
-			this.storeBlock( shareBlock, note );
-			this.saveNote( note );
-			return shareBlock;
-		} catch(e) {
-			this.errorMessage(e.toString());
-			return false;
-		}
-	}
-
 	/*
 		Logining in a user to the server will be done with the user'this.s walletID as the username, the user'this.s password and the note address.
 		If the user note address is not found, the user may be logeddin to the Scriptbill Application but will not be able to use any funds associated with that account 
@@ -29697,7 +38746,7 @@ static Base64 = {
 		
 		if( ! this.#note ) return false;
 		
-		if( ! this.#note.noteBudgets || ! this.#note.noteBudgets.length ){
+		if( ! this.#note.noteBudgets || ! this.#note.noteBudgets.length || ! this.#note.budgetID ){
 			this.errorMessage("Only notes that has budgets can update an Item on a budget");
 		}
 		
@@ -29712,6 +38761,15 @@ static Base64 = {
 			
 			else if( budgetID == await this.getPublicKey(id, true ) )
 				this.#budgetSecret 		= this.#note.noteBudgets[x];
+		}
+		
+		if( ! this.#budgetSecret && this.#note.budgetID ){
+			var id 		= await this.generateKey(10);
+			await this.setPrivateKey( this.#note.budgetID, id );
+			
+			if( budgetID == await this.getPublicKey(id)){
+				this.#budgetSecret 	= this.#note.budgetID;
+			}
 		}
 		
 		if( ( ! this.defaultItem.itemName && ! this.defaultItem.itemValue ) || ! this.#budgetSecret ) {
@@ -29734,7 +38792,7 @@ static Base64 = {
 			if( ! this.defaultItem.itemProduct ){
 				this.errorMessage("The Product ID or Product IDs that this Item would affect is not listed. This is a requirement for a Business Budget Type");
 				return false;
-			} else {
+			} else if(this.defaultItem.itemProduct != "ADVERT"){
 				let productIDs 		= this.defaultItem.itemProduct.split(',');
 				let forBudget 		= true, productID;
 				
@@ -29757,7 +38815,7 @@ static Base64 = {
 		
 		//next we check if there are means of communicating with the seller of the Product
 		let contact = false;
-		if( ! this.defaultItem.scriptbillAddress ){
+		if( ! this.defaultItem.scriptbillAddress && this.defaultItem.itemProduct != "ADVERT" ){
 			//if there is no Scriptbill address in item record, then we check if there IS
 			//a phone number or email to send the funds to.
 			if( ! this.defaultItem.businessPhone || ! this.defaultItem.businessEmail ) return false;
@@ -29773,7 +38831,7 @@ static Base64 = {
 			else
 				this.defaultScriptbill.noteType = this.#note.noteType;
 			
-			this.defaultScriptbill.walletID     = await this.generateKey(30);
+			this.defaultScriptbill.walletID     = this.hashed( this.currentTime());
 				
 			this.#note   = false;
 			this.#saveNote = false;
@@ -29783,7 +38841,7 @@ static Base64 = {
 						this.defaultItem.data = {};
 					}
 					let transKey 				= await this.generateKey(10);
-					var string 				= contact + transKey;
+					var string 					= contact + transKey;
 					this.defaultItem.data.note = this.encrypt( JSON.stringify( this.#note ), this.hashed( string ));
 					this.defaultItem.scriptbillAddress = this.#note.noteAddress;
 					this.#note 					= JSON.parse( JSON.stringify( note ));
@@ -29951,7 +39009,7 @@ static Base64 = {
 			if( ! note && this.#note )
 				note 		= JSON.parse( JSON.stringify( this.#note ));
 			
-			////alert(" Create Budget Running");
+			//////alert(" Create Budget Running");
 			
 			let testType 	= note.noteType.slice( 0, note.noteType.lastIndexOf("CRD"));
 			
@@ -29978,6 +39036,10 @@ static Base64 = {
 				
 				else //personal budget don't have stock IDs
 					budgetConfig.stockID = "";
+			}
+			
+			if(budgetConfig.stockID && budgetConfig.stockID.lastIndexOf("STK") != 3){
+				budgetConfig.stockID += "STK";
 			}
 			
 			
@@ -30025,7 +39087,7 @@ static Base64 = {
 					}
 				}
 			} */
-			////alert(" Create Budget Running 2");
+			//////alert(" Create Budget Running 2");
 					
 			if( typeof budgetConfig.max_exec == 'string' ) {
 				maxExecTime = parseInt( this.calculateTime( budgetConfig.max_exec ) );
@@ -30039,7 +39101,7 @@ static Base64 = {
 			}
 			
 			
-			////alert(" Create Budget Running 3");
+			//////alert(" Create Budget Running 3");
 			
 			//reconfiguring the value of the budget to equal the actual value of items in the budget.
 			
@@ -30068,7 +39130,7 @@ static Base64 = {
 					}
 				}
 			}	
-			////alert(" Create Budget Running 4 " + budgetConfig.budgetID );		
+			//////alert(" Create Budget Running 4 " + budgetConfig.budgetID );		
 			
 			let details 	= JSON.parse( JSON.stringify( this.defaultBlock ) );
 			
@@ -30101,7 +39163,7 @@ static Base64 = {
 			}
 			
 			let productNote 		= await this.getCurrentExchangeNote( budgetConfig.stockID );
-			//console.log("prodNote: ", productNote, "budCon: ", budgetConfig);
+			console.log("prodNote: ", productNote, "budCon: ", budgetConfig);
 			if( productNote && productNote.exchangeID && productNote.budgetID ){
 				if( ! note.budgetID ){					
 					this.errorMessage("Budget already created by another user. ");
@@ -30143,7 +39205,7 @@ static Base64 = {
 			
 			
 			/* if( budgetConfig.budgetType == "business" && $return.transType == "CREATEBUDGET" ){
-				//alert("Creating Item");
+				////alert("Creating Item");
 				if( this.defaultItem.itemCredit != budgetConfig.budgetCredit ){
 					let exValues 		= await this.getExchangeValue( budgetConfig.budgetCredit, this.defaultItem.itemCredit );
 					this.defaultItem.itemValue 		= this.defaultItem.itemValue * exValues[0];
@@ -30163,7 +39225,7 @@ static Base64 = {
 	
 	//to run auto investment. we run it locally on the server first and the network gets to know based on the 
 	//transactional data sent afterwards
-	static async autoInvestScriptbillBudget(){
+	static async #autoInvestScriptbillBudget(){
 		//console.log("autoInvestScriptbillBudget running " + this.funcUp[ this.funcUp.length] );
 		this.funcUp[ this.funcUp.length] = "autoInvestScriptbillBudget";
 		
@@ -30179,7 +39241,7 @@ static Base64 = {
 			var id 				= await this.generateKey(10);
 			await this.setPrivateKey( this.#note.budgetID, id );
 			let budgetID 		= await this.getPublicKey(id);
-			let budgetBlock 	= await this.getCurrentBlock( budgetID );
+			let budgetBlock 	= await this.getCurrentBudgetBlock( budgetID );
 			
 			if( ! budgetBlock || ! budgetBlock.agreement || ! budgetBlock.agreement.budgetType )
 				return;
@@ -30222,8 +39284,8 @@ static Base64 = {
 			let budgetItems = budget.budgetItems;
 			let len 		= budgetItems && budgetItems.length ? budgetItems.length : 0;
 			for( x = 0; x < len; x++ ){
-				this.blockID 	= budgetItems[x];
-				blk 			= await this.getTransBlock(1);
+				let blockID 	= budgetItems[x];
+				blk 			= await this.getTransBlock(1, {blockID});
 				
 				if( ! blk.length || ! blk[0].agreement || ! blk[0].agreement.item )
 					continue;

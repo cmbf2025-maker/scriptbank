@@ -110,7 +110,7 @@
               
               <div class="form-group">
                 <label for="storeName">Advert Header</label>
-                <input type="text" value="" class="form-control" data-bv-field="storeName" id="storeName" required placeholder="Enter Name of Store or Business">
+                <input type="text" value="" class="form-control" data-bv-field="storeName" id="storeName" required placeholder="Enter the advert header">
               </div> 
 			  <div class="form-group">
                 <label for="storeAddress">Store Address</label>
@@ -118,17 +118,17 @@
               </div>
 			  <div class="form-group">
                 <label for="storeUrl">Store url</label>
-                <input type="url" value="" class="form-control" data-bv-field="storeUrl" id="storeUrl" placeholder="https://srote-url.com">
+                <input type="url" value="" class="form-control" data-bv-field="storeUrl" id="storeUrl" placeholder="https://store-url.com">
 				<p class="text-3 text-muted">This should be a website where all your products are showcased and integrated with the Scriptbill crediting system.</p>
               </div>
 			  <div class="form-group">
                 <label for="postUrl">Post url</label>
-                <input type="url" value="" class="form-control" data-bv-field="postUrl" id="postUrl" placeholder="https://srote-url.com">
-				<p class="text-3 text-muted">This is good if you want to promote a particular link. Not, both video and banner will be ignored if this is set.</p>
+                <input type="url" value="" class="form-control" data-bv-field="postUrl" id="postUrl" placeholder="https://post-url.com">
+				<p class="text-3 text-muted">This is good if you want to promote a particular link. Note: both video and banner will be ignored if this is set.</p>
               </div>
 			  <div class="form-group">
                 <label for="videoUrl">Advert Video url</label>
-                <input type="url" value="" class="form-control" data-bv-field="videoUrl" id="videoUrl" placeholder="https://srote-url.com">
+                <input type="url" value="" class="form-control" data-bv-field="videoUrl" id="videoUrl" placeholder="https://video-url.com">
 				<p class="text-3 text-muted">This is a video you prepared to help your viewers understand your product the more</p>
               </div>
 			  <div class="form-group">
@@ -203,12 +203,12 @@
                     </select>
                     </span> </div>
                 </div>
-				<p class="text-3 text-muted">The amount you will like to spend for your advert</p>
+				<p class="text-3 text-muted">The amount you will like to spend for your advert. This may affect participation.</p>
               </div>		 
 			 
               <div class="form-group">
                 <label for="description">Advert Description</label>
-                <textarea class="form-control" rows="4" id="description" required placeholder="Payment Description"></textarea>
+                <textarea class="form-control" rows="4" id="description" required placeholder="Advert Description"></textarea>
 				<p class="text-3 text-muted">Useful for Text Based Advert that can be posted on Social Media and other advert formats that supports text. It could even be a social post or blog</p>
               </div>
 			  <div class="form-group">
@@ -218,9 +218,12 @@
               </div> 
 			  <div class="form-group">
                 <label for="viewShare">Viewers Share</label>
-               <input type="text" class="form-control" data-bv-field="viewShare" id="viewShare" value="1" placeholder="20%">
-			   <i=p class="text-3 text-muted">The percentage that will go to users who view this advert from the advert budget. The beauty of Scriptbill advert is that viewers who engage on your adverts will also be rewarded but not from advert money.</p>
+               <input type="text" class="form-control" data-bv-field="viewShare" id="viewShare" value="1" placeholder="20%" max="100">
+			   <i=p class="text-3 text-muted">The percentage that will go to users who view this advert from the advert budget. 100 means 100%, and 1 means 1%. The beauty of Scriptbill advert is that viewers who engage on your adverts will also be rewarded but not from advert money.</p>
               </div>
+			  <div class="form-group">
+				<span id="view-calculation"></span>
+			  </div>
 			  <div class="form-group">
                 <label for="pubNumber">Number of Publishers</label>
                <input type="number" class="form-control" data-bv-field="pubNumber" id="pubNumber" value="1" placeholder="">
@@ -231,6 +234,14 @@
                <input type="text" class="form-control" data-bv-field="pubShare" id="pubShare" value="1" placeholder="50%">
 			   <i=p class="text-3 text-muted">How much are they going to earn from your budget in percentages.</p>
               </div>
+			  <div class="form-group">
+                <label for="pubClick">Publishers Clicks</label>
+               <input type="text" class="form-control" data-bv-field="pubClick" id="pubClick" value="100">
+			   <i=p class="text-3 text-muted">How many clicks per publisher are you expecting.</p>
+              </div>
+			   <div class="form-group">
+				<span id="publish-calculation"></span>
+			  </div>
 			   <div class="form-group">
                 <label for="agreeConfig">Advert Scope</label>
 				<div id="avert-scope-placeholder"></div>
