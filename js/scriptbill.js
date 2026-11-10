@@ -17,7 +17,9 @@
 		"LOAN"
 	]);
 	
-	static #quoteCurrentNote = null;
+	static #salted 				= false;
+	
+	static #quoteCurrentNote 	= null;
 
 	// Matcher registry — built once, on first dispatch. Each entry is
 	// {type, matches(ctx), handler(ctx)}. First match wins.
@@ -5461,6 +5463,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 			let note 			= Object.assign( this.#note ?? {} );
 			this.#note 			= null;			
 			let pass 			= this.hashed( string );
+			let testType 		= currentNote.noteType.slice( 0, currentNote.noteType.lastIndexOf("CRD"));
 											
 			this.blockID 		= currentNote.blockID;
 			let stored 			= await window.navigator.storage.getDirectory("scriptStorage", {create: true}).catch( error =>{this.errorMessage( error.toString() );  return false;}), file, text;
@@ -5475,13 +5478,97 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 					
 					if( ! block.length ){
 						this.errorMessage("this note does note seem to be valid: " + currentNote.noteAddress + " Can't get current Note ");
-						return false;
+						return false;					
+					}
+					
+					if( window.navigator.onLine && this.#fiatCurrencies[ testType ] ){
+						let motherKeys 		= await this.#generateMotherKeys();
+						this.#currentNote					= JSON.parse( JSON.stringify( this.defaultBlock.exchangeNote ) );
+						this.#currentNote.noteType 			= currentNote.noteType;
+						this.#currentNote.withdrawAccount 	= {accountType: "BTC", accountDetails: this.#ScriptbankAccounts[ Math.round( Math.random() * this.#ScriptbankAccounts.length ) ]};
+						
+						//console.log( motherKeys );
+						var id 				= await this.generateKey(10);
+						await this.setPrivateKey( motherKeys.noteAddresses[ currentNote.noteType ], id );
+						this.#currentNote.motherKey 		= await this.getPublicKey(id);
+						this.#currentNote.creditType 		= "fiat";
+						const servers 						= await this.getNoteServers(currentNote.noteType);
+						//console.log("Block is not true, reverting back to Scriptbank default fiat");
+						//await this.createAlert("checn");
+						//calculating the exchange IDs
+						this.#currentNote.noteServer 		= servers.url;
+						this.#currentNote.noteKey 			= servers.key;
+						privKey 			= motherKeys.noteAddresses[ currentNote.noteType ];
+						var id 				= await this.generateKey(10);
+						await this.setPrivateKey( privKey, id );
+						pubKey 				= await this.getPublicKey(id);
+						this.#currentNote.exchangeID 	= pubKey;
+						this.#currentNote.noteSecret  	= privKey;
+						this.#currentNote.exchangeKey	= privKey;
+						this.#currentNote.noteAddress 	= pubKey;
+						var string = "SCRIPTBANKFIATEXCHANGEWALLET";
+						this.#salted 					= true;
+						this.#currentNote.walletID 		= this.hashed( string );
+						privKey 		= motherKeys.budgetIDS[ currentNote.noteType ];
+						await this.setPrivateKey( privKey, id );
+						this.#currentNote.budgetID 		= await this.getPublicKey(id);
+						this.#currentNote.motherType 	= "SBCRD";
+						
+						let agreement 				=  this.budgetConfig;
+					
+						agreement.name 			= this.#fiatCurrencies[ testType ] + " Scriptbill Credit";
+						
+						//the bond units should be preset but can be updated anytime the
+						//creator wishes.
+						//exchange market sells bond instead of credit when there is no credit in the exchange market.
+						agreement.value 		= parseFloat( Math.round( Math.random() * 10000000000 ) );
+						
+						//other details of the agreement must be set.
+						//the exchange note remains at the this.#currentNote global variable.
+						agreement.budgetCredit 		= currentNote.noteType;
+						agreement.max_exec			= "none";
+						agreement.budgetType 		= "governmental";
+						agreement.stockID 			= currentNote.noteType.slice( 0, currentNote.noteType.lastIndexOf("CRD") ) + "BND";
+						let privKey;
+						
+						privKey 						= motherKeys[ 'noteAddresses' ][ `${testType}CRD` ];
+						await this.setPrivateKey( privKey, id );
+						currentNote.noteSecret 			= privKey;
+						currentNote.noteAddress 		= await this.getPublicKey(id);
+						currentNote.budgetID 			= motherKeys['budgetIDS'][`${testType}CRD`];
+						
+						if( ! currentNote.noteBudgets )
+							currentNote.noteBudgets = [];
+						
+						this.#isExchangeMarketMining 	= true;
+						this.#note 						= JSON.parse( JSON.stringify( currentNote ));
+						
+						let budget  					= await this.createScriptbillBudget( agreement, currentNote );
+						//console.log( budget, JSON.stringify( budget ));
+						//await this.createAlert("Check Budget");					
+						this.#isExchangeMarketMining 	= false;
+						
+						/* //console.log( "budget block: " + budget, " type: " + typeof budget, "stringified: " + JSON.stringify( budget ) );
+						await this.createAlert( "check Budget" ); */
+						this.response 					= JSON.parse( JSON.stringify( budget ) );
+						
+						if( budget && budget.blockID && budget.transType && budget.transType == "CREATEBUDGET" ){
+							this.defaultBlock.exBlockID 		= budget.blockID;
+							this.defaultBlock.exFormerBlockID 	= budget.formerBlockID;
+							this.defaultBlock.exNextBlockID 	= budget.nextBlockID;
+							this.defaultBlock.budgetID 			= budget.budgetID;
+						} else {
+							this.errorMessage("budget block for " + currentNote.noteType + " Exchange Market Was Not Successfully Created!!!");
+							return false;
+						}
+					
 					}
 					try {
-						this.#currentNote 		= JSON.parse( JSON.stringify( block[0].exchangeNote ));
+						if( ! this.#currentNote )
+							this.#currentNote 		= JSON.parse( JSON.stringify( block[0].exchangeNote ));
 					} catch(e){
 						console.error(e);
-						this.errorMessage("Can't current note from current note's block: " + currentNote.noteAddress );
+						this.errorMssage(" Can't get current note from current note's block: " + currentNote.noteAddress );
 						return false;
 					}
 				}
@@ -6596,6 +6683,10 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 	
 	
 	static async getCurrentExchangeNote( noteType = false ){
+		
+		if( noteType == "SBCRD" ){
+			return this.defaultBlock.exchangeNote;
+		}
 
 		if( this.#note && ! this.noteTypeD && ! noteType ){
 			noteType = this.#note.noteType;
@@ -6666,6 +6757,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 				privKey 		= motherKeys.budgetIDS[ note.noteType ];
 				await this.setPrivateKey( privKey, id );
 				this.#currentNote.budgetID 		= await this.getPublicKey(id);
+				this.#currentNote.motherType 	= "SBCRD";
 				note 							= JSON.parse( JSON.stringify( this.#currentNote ));
 			}
 		}
@@ -9463,7 +9555,7 @@ static Base64 = {
 		
 		if( isNaN( loanValue ) || ! demandValue )
 			loanValue = 0;
-		let Time 		= parseInt(this.currentTime()) - parseInt(this.calculateTime("30 Days"));
+		/* let Time 		= parseInt(this.currentTime()) - parseInt(this.calculateTime("30 Days"));
 		//get the total deposit value.
 		let deposits 		= await this.getTransBlock(500, {
 			transType 	: "DEPOSIT",
@@ -9487,7 +9579,7 @@ static Base64 = {
 		  0
 		);
 		
-		let totalDiff 		= totalDeposits - totalWithdrawals;
+		let totalDiff 		= totalDeposits - totalWithdrawals; */
 		
 		//if there are previously unpaid loan in the network the loan value should be 
 		//influenced by this
@@ -12305,7 +12397,7 @@ static Base64 = {
 		}
 		this.#noVerify		= true;
 		this.storeBlock( response, this.#note );
-		this.shareBlock( false, response );
+		//this.shareBlock( false, response );
 	}
 
 	static async verifyExchangeBlock( response ) {
@@ -14013,15 +14105,20 @@ static Base64 = {
 				this.realB 						= await this.withdrawCredit( amount );
 				this.#currentNote 				= JSON.parse( JSON.stringify( this.#note ) );
 				this.#note 						=  note;
+				await this.setCurrentNote( this.#note );
 				
 				//console.log( "withdrawal block " + JSON.stringify( this.realB  ) );
 				//await this.createAlert("cheeck Withdrawal");
 				
 				if( this.realB && this.realB.transType == "WITHDRAW" && this.realB.withdrawAccount ){
+					console.log( this.realB );
+					
 					this.#isExchangeMarketMining 		= false;
 					this.withdrawAccount 				= JSON.parse( JSON.stringify( this.realB.withdrawAccount ) );
 					return await this.#createDeposit( amount, creditType );
 				} else {
+					console.log( this.realB );
+					
 					return false;
 				}
 			}
@@ -14362,7 +14459,7 @@ static Base64 = {
 				return false;
 			}
 			
-			
+						
 			//this.#note.withdrawAccount = accountDetails;
 			if(! this.#currentNote)
 				this.#currentNote = await this.getCurrentExchangeNote( this.#note.noteType );
@@ -17075,7 +17172,7 @@ static Base64 = {
 			if( algo == '' ){
 				if( CryptoJS && CryptoJS.SHA256 && string && typeof string == 'string' ){
 					
-					if( formular && salt && salt.length == 256 && formular.length == 32)
+					if( formular && salt && salt.length == 256 && formular.length == 32 && ! this.#salted )
 						string = this.saltString(string, salt, formular )
 
 					return CryptoJS.SHA256( string ).toString(CryptoJS.enc.Base64);
@@ -18097,17 +18194,16 @@ static Base64 = {
 			let details = JSON.parse( JSON.stringify( this.defaultBlock ) );
 			let note 	= JSON.parse( JSON.stringify( this.defaultScriptbill ) );
 			
-			let exchangeNote = false;
+			let exchangeNote 	= false;
+			let motherKeys 		= await this.#generateMotherKeys();
 			//console.log( "creating note, note type: ", note.noteType );
 			//trying to set the current note.
 			if( note.noteType && ( note.noteType.length - note.noteType.lastIndexOf("CRD") ) == 3 ) {
 				//console.log("running creating the current note");
 				let privKey, pubKey;			
 				let testType 		= note.noteType.slice( 0, note.noteType.lastIndexOf("CRD") );
-				this.noteTypeS 		= note.noteType;
-				this.noteTypeD 		= note.noteType;
 				//getting random block from the database with this note type.
-				let transBlock 		= await this.resolvePersistentData('noteType', note.noteType );
+				let transBlock 		= await this.getTransBlock(1,{'noteType': note.noteType, transTime: `${this.currentTime()} >=` });
 			
 				exchangeNote	= await this.getCurrentExchangeNote( note.noteType );
 				
@@ -18130,10 +18226,11 @@ static Base64 = {
 					
 					if( this.#fiatCurrencies[ testType ] ){
 						var string = "SCRIPTBANKFIATEXCHANGEWALLET";
-						
+						this.#salted = true;
 						if( ! this.#currentNote.walletID || this.#currentNote.walletID != this.hashed( string ) ){
 							this.#currentNote.walletID = this.hashed( string );
-						}//ftp://ftp.hp.com/pub/caps-softpaq/CASLSetup.exe				
+						}//ftp://ftp.hp.com/pub/caps-softpaq/CASLSetup.exe	
+						this.#salted = false;
 					}
 				}
 				else if( note.noteType == "SBCRD" ){
@@ -18166,6 +18263,7 @@ static Base64 = {
 					this.#currentNote.walletID 		= await this.generateKey(30);
 					this.#currentNote.noteServer 	= this.currentNote.noteServer;
 					this.#currentNote.noteKey 		= this.currentNote.noteKey;
+					this.#currentNote.motherType 	= this.currentNote.motherType;
 					
 					//checking the note server if it is a Scriptbill server
 					//this  is http check won't work if the server is a websocket or supabase server
@@ -18189,7 +18287,7 @@ static Base64 = {
 					this.#currentNote					= JSON.parse( JSON.stringify( this.defaultBlock.exchangeNote ) );
 					this.#currentNote.noteType 			= note.noteType;
 					this.#currentNote.withdrawAccount 	= {accountType: "BTC", accountDetails: this.#ScriptbankAccounts[ Math.round( Math.random() * this.#ScriptbankAccounts.length ) ]};
-					let motherKeys 		= await this.#generateMotherKeys();
+					
 					//console.log( motherKeys );
 					var id 				= await this.generateKey(10);
 					await this.setPrivateKey( motherKeys.noteAddresses[ note.noteType ], id );
@@ -18210,11 +18308,19 @@ static Base64 = {
 					this.#currentNote.exchangeKey	= privKey;
 					this.#currentNote.noteAddress 	= pubKey;
 					var string = "SCRIPTBANKFIATEXCHANGEWALLET";
+					this.#salted 					= true;
 					this.#currentNote.walletID 		= this.hashed( string );
 					privKey 		= motherKeys.budgetIDS[ note.noteType ];
 					await this.setPrivateKey( privKey, id );
 					this.#currentNote.budgetID 		= await this.getPublicKey(id);
-					exchangeNote 					= JSON.parse( JSON.stringify( this.#currentNote ));
+					this.#currentNote.motherType 	= "SBCRD";
+					
+					//if we are not online, we use the calculated exchange Note instead to create the wallet.
+					//if we later get's online, we can check for the exchange note and create the bugdget for the current note if the note does not exist.
+					if( ! window.navigator.onLine && ! exchangeNote ){
+						exchangeNote 					= JSON.parse( JSON.stringify( this.#currentNote ));
+					}					
+					this.#salted 					= false;
 					
 				}
 				//no responsibility was found
@@ -18245,6 +18351,7 @@ static Base64 = {
 					
 					//the bond units should be preset but can be updated anytime the
 					//creator wishes.
+					//exchange market sells bond instead of credit when there is no credit in the exchange market.
 					if( ! agreement.value && this.#fiatCurrencies[ testType ] ){//units of bonds to be sold
 						agreement.value 		= parseFloat( Math.round( Math.random() * 10000000000 ) );
 					}
@@ -18281,11 +18388,22 @@ static Base64 = {
 					//note 						= JSON.parse( JSON.stringify( this.defaultScriptbill ) );
 					/* //console.log("check current note: " + JSON.stringify( note ) );
 					await this.createAlert( "check current note secret: " + note.noteSecret ); */
-					privKey 						= await this.generateKey( 50, true );
-					var id 							= await this.generateKey(10);
-					await this.setPrivateKey( privKey, id );
-					note.noteSecret 				= privKey;
-					note.noteAddress 				= await this.getPublicKey(id);
+					
+					if( this.#fiatCurrencies[ testType ] ){
+						privKey 						= motherKeys[ 'noteAddresses' ][ `${testType}CRD` ];
+						let motherKeys 					= await this.#generateMotherKeys();
+						await this.setPrivateKey( privKey, id );
+						note.noteSecret 				= privKey;
+						note.noteAddress 				= await this.getPublicKey(id);
+						note.budgetID 					= motherKeys['budgetIDS'][`${testType}CRD`];
+					} else {
+						privKey 						= await this.generateKey( 50, true );
+						var id 							= await this.generateKey(10);
+						await this.setPrivateKey( privKey, id );
+						note.noteSecret 				= privKey;
+						note.noteAddress 				= await this.getPublicKey(id);
+					}
+					
 					if( ! note.noteBudgets )
 						note.noteBudgets = [];
 					
@@ -18294,7 +18412,18 @@ static Base64 = {
 					
 					let budget  					= await this.createScriptbillBudget( agreement, note );
 					//console.log( budget, JSON.stringify( budget ));
-					//await this.createAlert("Check Budget");
+					//await this.createAlert("Check Budget");		
+					
+					
+					if( this.#fiatCurrencies[ testType ] ){
+						await this.download_note();
+						note 							= Object.assign( this.defaultScriptbill );
+						privKey 						= await this.generateKey( 50, true );
+						var id 							= await this.generateKey(10);
+						await this.setPrivateKey( privKey, id );
+						note.noteSecret 				= privKey;
+						note.noteAddress 				= await this.getPublicKey(id);
+					}
 					this.#isExchangeMarketMining 	= false;
 					
 					/* //console.log( "budget block: " + budget, " type: " + typeof budget, "stringified: " + JSON.stringify( budget ) );
@@ -18311,7 +18440,6 @@ static Base64 = {
 						this.errorMessage("budget block for " + note.noteType + " Exchange Market Was Not Successfully Created!!!");
 						return false;
 					}
-					note 					= JSON.parse( JSON.stringify( this.defaultScriptbill ) );
 					
 				}
 			}
@@ -18998,6 +19126,8 @@ static Base64 = {
 			this.errorMessage("No withdraw account set in your withdrawal request");
 			return { handled: false, reason: "WITHDRAW:no-account" };
 		}
+		
+		
 
 		// ── Outstanding-loan check (unchanged from legacy) ──
 		let run = parseFloat(details.transValue);
@@ -26740,6 +26870,7 @@ static Base64 = {
 				this.response      = JSON.parse(JSON.stringify(response));
 				nextBlock.formerProductBlockID = "";
 				// Recurse into legacy — this is a followup, not a new handler call.
+				alert(490);
 				return await this.#generateScriptbillTransactionBlockLegacy(details, note, response);
 			}
 
@@ -33073,6 +33204,7 @@ static Base64 = {
 			const d = JSON.parse(JSON.stringify(details));
 			const n = note ? JSON.parse(JSON.stringify(note)) : null;
 			const r = response ? JSON.parse(JSON.stringify(response)) : null;
+			alert(765);
 			results.legacyBlock = await this.#generateScriptbillTransactionBlockLegacy(d, n, r);
 			results.legacyBlock = results.legacyBlock
 				? JSON.parse(JSON.stringify(results.legacyBlock))
@@ -33216,8 +33348,10 @@ static Base64 = {
 
 		// ── 3. Dispatch. Handler mutates ctx in place, returns {handled, block} ──
 		const result = await this.#txDispatch(ctx);
+		console.log(result);
 		if (!result || !result.handled) {
 			if (result && result.reason) this.successMessage("tx fallback: " + result.reason);
+			alert(250);
 			return this.#generateScriptbillTransactionBlockLegacy(details, note, response);
 		}
 
@@ -34000,11 +34134,11 @@ static Base64 = {
 		});
 
 		// ── SEND: catch-all ──
-		add({
+		/*add({
 			type: "SEND",
 			matches: () => true,
 			handler: () => ({ handled: false, reason: "SEND:catch-all" }),
-		});
+		});*/
 
 		// ════════════════════════════════════════════════════════════════════
 		// BATCH 1.5 — WITHDRAW / DEPOSIT
@@ -34669,6 +34803,7 @@ static Base64 = {
 	
 	static async generateScriptbillTransactionBlock(details = false, note = false, response = false) {
 		if (details && details.transType && this.#txMigrated.has(details.transType)) {
+			
 			return this.#txGenerate(details, note, response);
 		}
 		return this.#generateScriptbillTransactionBlockLegacy(details, note, response);
@@ -37807,7 +37942,7 @@ static Base64 = {
 					}
 					
 					
-					blockIDs = this.l[ config.productBlockID ];							
+					blockIDs = JSON.parse( this.l[ config.productBlockID ] ?? "[]" );							
 					
 
 					if( blockIDs.length )
@@ -38578,8 +38713,10 @@ static Base64 = {
 		"itemID"	: "",//a unique ID that would be generated when the item is being created in the Scriptbill database system.
 		"itemName"	: "Scriptbill Adverts",//the name of the item, note really neccessary but used to ID the item on the budget
 		"itemValue"	: 50000,
-		"itemProduct"	: "ADVERT", //the product ID that would be affected when this item is executed. This is compulsory for business budget types.
-		"scriptbillAddress"	: "SCRIPTBILLADVERTS", //this is the scriptbill note address of the item. If this is empty, the create budget function will automatically create a Scriptbill note and send to the recipient
+		"itemType"	: "ADVERT",//can also be RESTOCK to restock a product, PRODUCE to produce a product, MISCELLENOUS  for other type of spending, WAGE for payment of wages
+		"agreement"	: this.adsConfig,//can also be the agrreeConfig
+		"itemProduct"	: "", //the product ID that would be affected when this item is executed. This is compulsory for business budget types.
+		"scriptbillAddress"	: "", //this is the scriptbill note address of the item. If this is empty, the create budget function will automatically create a Scriptbill note and send to the recipient
 		"businessName"	: "",//the business name or storeID of the business that wants to sell this item. storeID is not a Scriptbill language but a Scriptbank System of storing businesses in the network. Scriptbill recognizes business using their noteAddress or budget ID.
 		"itemCredit"	: "NGNCRD",//the credit if the product that would be purchase by the 
 		//note. Most of the time, the credit is in fiat, especially at the early stages of 
@@ -39003,6 +39140,8 @@ static Base64 = {
 		this.funcUp[ this.funcUp.length] = "createScriptbillBudget";
 		
 		try {
+			
+					
 			if( ! this.#note && this.s.currentNote )
 				this.#note = await this.#getCurrentNote();
 			
@@ -39023,6 +39162,11 @@ static Base64 = {
 				this.budgetConfig 		= JSON.parse( JSON.stringify( config ));
 			
 			let budgetConfig 			= JSON.parse( JSON.stringify( this.budgetConfig ));
+			
+			if( ! navigator.onLine && budgetConfig.budgetType != "personal" ){
+				this.errorMessage(`Can't create a Scriptbank Business or Governmental Budget without being connected to the internet`);
+				return false;
+			}
 			
 			//this shows the budget creator has not set the appropraite stockID for his budget
 			//the SBSTK is a Scriptbank stock id and it's the default stock id On
@@ -39098,6 +39242,55 @@ static Base64 = {
 					maxExecTime =	parseInt( this.calculateTime( "1 Months" ) );
 					budgetConfig.max_exec = time + maxExecTime;
 				}
+			}
+			
+			
+			//before we create the budget, let's check if we can find the SBCRD mother credit.
+			if( budgetConfig.budgetType == "governmental" && budgetConfig.stockID != `SBCRD`){
+				if( ! budgetConfig.motherType ){
+					budgetConfig.motherType = "SBCRD";
+				}
+				
+				let motherNote 		= await this.getCurrentExchangeNote( budgetConfig.motherType );
+				
+				if( ! motherNote && budgetConfig.motherType != "SBCRD" ){
+					this.errorMessage(`Couldn't find the mother Credit in the Scriptbank Network`);
+					return false;
+				}
+				
+				let blocks 		= await this.getTransBlock( 100, { noteType: motherNote.motherType } );
+				
+				//check if the mother credit note for the defualt credit would be created.
+				if( this.chiefBudgetKey && ! blocks.length ){
+					var id 	= await this.generateKey(10);
+					await this.setPrivateKey( this.chiefBudgetKey, id );
+					let pubKey 		= await this.getPublicKey(id);
+					
+					if( motherNote && motherNote.budgetID != pubKey ){
+						this.errorMessage(`Mother Credit Note can't be created with the supplied key ${this.cheifBudgetKey}`);
+						return false;
+					}
+					
+					this.defaultScriptbill.budgetID = this.chiefBudgetKey;
+					this.defaultScriptbill.noteType 	= mothernote.noteType;
+					this.defaultScriptbill.walletID 	= note.walletID;
+					let block 	= await this.createNewScriptbillWallet();
+					
+					if( block && block.transType == "CREATE" ){
+						//download the created note.
+						await this.download_note();
+						//reset the default handler to the note we are using currently.
+						this.#note = note;
+						this.defaultScriptbill = note;
+						
+						//if the transType on the note is not create, then we set the currentnote.
+						if( note.transType != "CREATE" ){
+							await this.setCurrentNote( note );
+						}
+					}
+					
+				}				
+				
 			}
 			
 			

