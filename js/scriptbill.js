@@ -4696,6 +4696,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 		productBlockID  : '',//the current id of the product block. Useful in calculating the profit sharing formulars.
 		productNextBlockID : '',//the Id of the possible next block that will belong to this product.
 		productFormerBlockID : '',//the last id of the block belonging to this product, useful in knowing the most recent customer to the current product.
+		rankCode 			: "", //this is the code hash of the note rank that created the block
 		
 	};
 	//the default content n an agreement.
@@ -6684,7 +6685,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 	
 	static async getCurrentExchangeNote( noteType = false ){
 		
-		if( noteType == "SBCRD" ){
+		if( ( noteType.length - noteType.lastIndexOf("SBCRD")) != 5 ){
 			return this.defaultBlock.exchangeNote;
 		}
 
@@ -7526,8 +7527,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 					block 		= block[0];
 					if( block && block.rankCode){
 						//the wallet rank ket on a note is the private key used to encrypt and decrypt the user rank in the network.
-						var string 		=  this.#note.walletRank;
-						let rankCode 		= this.decrypt( block.rankCode, this.hashed( string ) );
+						let rankCode 		= this.decrypt( block.rankCode, note.walletRank );
 						
 						if( rankCode != block.rankCode && typeof rankCode == "string" ) {
 							let ranks = this.#scriptbillRanks;
@@ -7599,55 +7599,140 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 			
 			//this will store the total note found under this wallet
 			if( ! this.noteFound )
-				this.noteFound = 0;
+				this.noteFound = [];
+			
+			//this will store the total bond note's found
+			if( ! this.bondFound )
+				this.bondFound = [];
+			
+			//this will store the total Bond Value.
+			if( ! this.bondValue ){
+				this.bondValue = 0;
+			}
+			
+			//this will store the total stock note found.
+			if( ! this.stockFound )
+				this.stockFound = [];
+			
+			//this will store the stock value.
+			if( ! this.stockValue ){
+				this.stockValue = 0;
+			}
 			
 			//this will give us the total value of the whole note found under this wallet in
 			//scriptbills.
 			if( ! this.rankValue )
 				this.rankValue = 0;
 			
-			if( ! this.formerBlock && transBlock && transBlock.blockID && transBlock.walletHASH ){
-				//console.log("In Here >>>>");
-				this.notefound++;
-				this.walletHASH 		= transBlock.nextWalletHASH;
-				noteValue 				= transBlock.noteValue;
+			const processBlock = async (transBlock)=>{
+				
+				let noteValue, noteType, blockID, nextBlockID, formerBlockID, formerWalletHASH, exValue, rankValue;
+				
 				noteType				= transBlock.noteType;
 				nextBlockID				= transBlock.nextBlockID;
 				formerBlockID 			= transBlock.formerBlockID;
 				formerWalletHASH		= transBlock.formerWalletHASH;
 				blockID					= transBlock.blockID;
-				let noteValue			= parseFloat( transBlock.noteValue );
+				noteValue 				= parseFloat( transBlock.noteValue );
 				
+				this.noteFound.push( transBlock.blockID );
+					
 				if( this.#transSend.includes( transBlock.transType ) )
 					noteValue			-= parseFloat( transBlock.transValue );
 				
 				else if( this.#transRecieve.includes( transBlock.transType ) )
 					noteValue			+= parseFloat( transBlock.transValue );
 				
-				if( transBlock.noteType != 'SBCRD' && ! transBlock.noteType.includes("STK") ) {
-					exValue 				= await this.getExchangeValue( transBlock.noteType, 'SBCRD' );
+				if( ( transBlock.noteType.length - transBlock.noteType.lastIndexOf("STK")) == 3 ){
+					this.stockFound.push( transBlock.blockID );
 					
-					if( exValue )
-						rankValue 			= noteValue * exValue[1];
+					 
+					//next we get the budget value of the stock.
+					
+					//the stock value remain at what it is if we couldn't find a budget ID on the block
+					if( transBlock.budgetID ){
+						let budgetBlock = await this.getTransBlock( 1, {
+							budgetID: transBlock.budgetID,
+							noteType: transBlock.noteType,
+							transType: "UPDATEBUDGET",
+							transTime: `${transBlock.transTime} >=`
+						});
+						
+						//if we can't find the update budget transaction we find the create budget transaction instead.
+						if( ! budgetBlock.length ){
+							budgetBlock = await this.getTransBlock( 1, {
+								budgetID: transBlock.budgetID,
+								noteType: transBlock.noteType,
+								transType: "UPDATEBUDGET",
+								transTime: `${transBlock.transTime} >=`
+							});
+							
+							budgetBlock 	= budgetBlock.pop();
+						}
+						
+						//no budget block, no stock valuation calculation
+						if( budgetBlock && budgetBlock.blockID ){
+							let budget = Object.assign( budgetBlock.agreement );
+							let budgetValue = parseFloat( budget.value );
+							
+							//note a scriptbill note, we find the exchange value instead.
+							if( ( budgetBlock.noteType.length - budgetBlock.noteType.lastIndexOf("SBCRD")) != 5 ){
+								let exValue 		= await this.getExchangeValue( budgetBlock.noteType, "SBCRD" );
+								budgetValue 		= budgetValue * parseFloat( exValue[1] );
+							}
+							
+							let stockValue 		= noteValue * budgetValue;
+							this.stockValue 	+= stockValue;
+							this.rankValue 		+= stockValue;
+						}
+					}
+				}
+				
+				else if( (transBlock.noteType.length - transBlock.noteType.lastIndexOf("BND")) == 3 ){
+					this.bondFound.push( transBlock.blockID );
+					//for the bond,the value are much the same as the noteValue,
+					//note a scriptbill note, we find the exchange value instead.
+					if( ( transBlock.noteType.length - transBlock.noteType.lastIndexOf("SBCRD")) != 5 ){
+						let exValue 		= await this.getExchangeValue( transBlock.noteType, "SBCRD" );
+						noteValue 			= noteValue * parseFloat( exValue[1] );
+						this.bondValue 		+= noteValue;
+					}
+					else {
+						this.bondValue 		+= noteValue
+					}
+					
+					this.rankValue 			+= noteValue
+				}
+				
+				else {					
+					
+					
+					if( ( transBlock.noteType.length - transBlock.noteType.lastIndexOf("SBCRD")) != 5 && ! transBlock.noteType.includes("STK") ) {
+						exValue 				= await this.getExchangeValue( transBlock.noteType, 'SBCRD' );
+						
+						if( exValue )
+							rankValue 			= noteValue * exValue[1];
 
-					else 
+						else 
+							rankValue 			= noteValue;
+					}
+					 else {
 						rankValue 			= noteValue;
+					}
 				}
-				 else {
-					rankValue 			= noteValue;
-				}
+				this.walletHASH 		= transBlock.nextWalletHASH;
+				
 				this.workedID		= transBlock.blockID;
 				this.rankValue		+= rankValue;
-				this.formerBlock 	= transBlock;
-				this.blockID		= this.formerBlock.blockID;
-				transBlock 			= await this.getTransBlock();//getting the next trans block from the wallet hashes.
+				this.formerBlock 	= JSON.parse( JSON.stringify( transBlock ));
+				transBlock 			= await this.getTransBlock(1, {nextWalletHASH: this.hashed(this.formerBlock.walletHASH, this.formerBlock.lastSalt, this.formerBlock.lastFormular)});//getting the next trans block from the wallet hashes.
 				transBlock			= transBlock[0];
 				
 				if( transBlock && transBlock.blockID ){
-					this.nextBlock = transBlock;
+					this.nextBlock = JSON.parse( JSON.stringify( transBlock ));
 					this.startBlockID = blockID;
 					return await this.calculateWalletRank();
-				} else {
+				} /* else {
 					this.endBlockID 	= blockID;
 					this.nextBlock 	= this.formerBlock;
 					this.walletHASH	= this.nextBlock.formerWalletHASH;
@@ -7658,91 +7743,82 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 						this.formerBlock = transBlock;
 						return await this.calculateWalletRank();
 					}
+				}*/
+			}
+			
+			const processRank = ()=>{
+				let ret_obj = {};
+				if( this.rankValue ){
+					for( rank_code in this.#scriptbillRanks ){
+						let rank 	= this.#scriptbillRanks[ rank_code ];
+						
+						if( rank.max <= this.rankValue ){
+							ret_obj.rank 	= rank[this.#note.rankPref];
+						}
+					}
+				} else {
+					ret_obj.rank = this.#scriptbillRanks['IFVSSKJBHKSBUD'][this.#note.rankPref]
 				}
+				
+				ret_obj.total_notes = this.noteFound.length;
+				ret_obj.total_stocks = this.stockFound.length;
+				ret_obj.total_bond 	  = this.bondFound.length;
+				ret_obj.bond_value 	= this.bondValue;
+				ret_obj.stock_value 	= this.stockValue;
+				ret_obj.total_asset 	= this.rankValue;
+				
+				return ret_obj;
+			}
+			
+			if( ! this.formerBlock && transBlock && transBlock.blockID && transBlock.walletHASH ){
+				//console.log("In Here >>>>");
+				return processBlock(transBlock);
 			}
 			else if( this.formerBlock && this.nextBlock ){
-				if( this.formerBlock.nextBlockID != this.nextBlock.blockID || this.formerBlock.noteType != this.nextBlock.noteType ) {
-					this.noteFound++;
-					transBlock 			= this.nextBlock;
-					if( transBlock.noteType != 'SBCRD' && ! transBlock.noteType.includes("STOCK") ) {
-						exValue 			= await this.getExchangeValue( transBlock.noteType, 'SBCRD' );
-						
-						if( exValue )
-							rankValue 			= transBlock.noteValue * exValue[1];
-
-						else 
-							rankValue 			= transBlock.noteValue;
-					}
-					else {
-						rankValue 			= transBlock.noteValue;
-					}
-					this.rankValue 	+= rankValue;
-				}
-				
-				let isNextBlock = false;
-				
-				if( this.workedID && this.workedID == this.formerBlock.blockID ) {
-					this.walletHASH = this.nextBlock.nextWalletHASH;
-					isNextBlock = true;
-				}			
-				else if( this.workedID == this.nextBlock.blockID )
-					this.walletHASH	= this.formerBlock.formerWalletHASH;
-				
-				transBlock 				= await this.getTransBlock();
-				transBlock 				= transBlock[0];
-				
-				if( transBlock && transBlock.blockID && isNextBlock ){
-					this.formerBlock = this.nextBlock;
-					this.nextBlock	= transBlock;
-					return await this.calculateWalletRank();
-				}
-				else if( transBlock && transBlock.blockID && ! isNextBlock ) {
-					this.formerBlock 	= transBlock;
-					this.nextBlock	= this.formerBlock;
-					return await this.calculateWalletRank();
-				}
-				else if( ! transBlock ){
-					if( this.startBlockID && ! this.noBlock ){
-						this.blockID = this.startBlockID;
-						transBlock			= await this.getTransBlock();
-						transBlock 			= transBlock[0];
-						
-						if( transBlock && transBlock.blockID ) {
-							this.walletHASH	= transBlock.formerWalletHASH;
-							this.nextBlock	= transBlock;
-							this.formerBlock	= await this.getTransBlock();
-							this.formerBlock 	= this.formerBlock[0];
-							
-							if( this.formerBlock && this.formerBlock.blockID ){
-								this.noBlock		= true;
-								return await this.calculateWalletRank();
-							}
-						}
-					}else if( this.endBlockID && ! this.noBlock ){
-						this.blockID 		= this.endBlockID;
-						transBlock 			= await this.getTransBlock();
-						transBlock 			= transBlock[0];
-						
-						if( transBlock && transBlock.blockID ) {
-							this.walletHASH = transBlock.nextWalletHASH;
-							this.formerBlock	= transBlock;
-							this.nextBlock 	= await this.getTransBlock();
-							this.nextBlock 	= this.nextBlock[0];
-							
-							if( this.nextBlock && this.nextBlock.blockID ){
-								this.noBlock = true;
-								return await this.calculateWalletRank();
-							}
-						}
-					}
-					else {
-						this.noBlock = undefined;
-						return [ this.rankValue, this.noteFound ];
+				//check if the next block gotten is under the notes already gotten.
+				const shouldContinue = this.noteFound.filter( (blockID, index) =>{
+					//get the salt and formular from the nextBlock, 
+					//since it's expected to be the former block of any chain in 
+					//this wallet, then using the blocks current salt and 
+					//formular should just work
+					let blockIDHash = this.hashed( blockID.toString(), this.nextBlock.transSalt, this.nextBlock.transFormular );
+					
+					//this calculation should be equal to the nextBlockID handler 
+					//on the block for it to be the blockchain's former block.
+					if( blockIDHash == this.nextBlock.nextBlockID ){
+						//replace the old block ID with this current Block ID
+						this.noteFound[index] = this.nextBlock.blockID;
+						return true;
 					}
 					
+					return false;
+				});
+				
+				transBlock 			= JSON.parse( JSON.stringify( this.nextBlock ));
+				
+				//checking if the block needs to be proccessed:				
+				if( shouldContinue.length ){
+					//we guess the next wallet hash and continue.
+					this.formerBlock 	= JSON.parse( JSON.stringify( transBlock ));
+					transBlock 			= await this.getTransBlock(1, {nextWalletHASH: this.hashed(this.formerBlock.walletHASH, this.formerBlock.lastSalt, this.formerBlock.lastFormular)});//getting the next trans block from the wallet hashes.
+					transBlock			= transBlock[0];
+					
+					if( transBlock && transBlock.blockID ){
+						this.nextBlock = JSON.parse( JSON.stringify( transBlock ));
+						return await this.calculateWalletRank();
+					}
+					else {
+						//everything calculated will be returned here.
+						return processRank( transBlock );
+					}
 				}
+				
+				else {
+					return processBlock( transBlock );
+				}			
+				
 			} else {
-				return transBlock;
+				return processRank( transBlock );
 			}
 		} catch(e){
 			this.errorMessage(e.toString());
@@ -7756,10 +7832,18 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 		this.funcUp[ this.funcUp.length] = "scriptbillAssignRanks";
 		
 		try {
+			
+			this.#note = await this.#getCurrentNote();
+			let time 		= parseInt( this.currentTime() );
+			let is_running 	= this.s.is_rank_calc_running;
+			let noteID 		= this.#note ? this.#note.noteAddress.slice(0, 12): "";
+			let run_time 	= parseInt( this.s[`rank_calc_time_${noteID}`] ?? 0 );
+			
+			if( ! noteID || is_running || ! this.walletID || time < run_time ) return;
+			
+			this.s[`rank_calc_time_${noteID}`] = time + parseInt( this.calculateTime( " 1 hours" ) );
 		
 			this.calculateWalletRank();
-			
-			if( ! this.rankValue && ! this.walletID && ! this.#note ) return;
 			
 			let ranks = this.#scriptbillRanks;
 			let level, rank;
@@ -7785,11 +7869,21 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 			//console.log("assign rank: " + rank.code, typeof rank.code );		
 			//calculating the rank code.
 			//first set the walvar id as a private key to encrypt the rank code.
-			var string 			= this.#note.walletRank;
-			details.rankCode  	= this.encrypt( rank.code, this.hashed( string ) );
+			details.rankCode  	= this.encrypt( rank.code, this.#note.walletRank );
 			details.noteValue 	= this.#note.noteValue;
+			this.rankCode 		= details.rankCode;
 			details.transType 	= "UPDATE";
-			return await this.generateScriptbillTransactionBlock(details);
+			return await this.generateScriptbillTransactionBlock(details, this.#note).then( block =>{
+				if( block && block.transType == "UPDATE" ){
+					//run again in another thirty seconds
+					setTimeout(()=>{
+						this.scriptbillAssignRanks();
+					}, 30000);
+					return block;
+				}
+				
+				return false;
+			});
 		} catch( e ){
 			console.error(e);
 			this.errorMessage(e.toString());
@@ -14131,7 +14225,7 @@ static Base64 = {
 				budget.max_exec 	= "Anytime";
 				budget.stockID 		= creditType;
 						
-				if( creditType == "SBCRD" ){
+				if( ( creditType.length - creditType.lastIndexOf("SBCRD")) != 5 ){
 					budget.budgetCredit 	= "BTC";
 				} else {
 					budget.budgetCredit 	= testType;
@@ -14575,7 +14669,7 @@ static Base64 = {
 					creditType2 = creditType1;
 				}
 				
-				if( creditType != "SBCRD" ){
+				if(( creditType.length - creditType.lastIndexOf("SBCRD")) != 5 ){
 					this.sellCredit = creditType;
 					this.buyCredit  = creditType;
 					this.transType  = 'EXCHANGE';
@@ -14664,7 +14758,7 @@ static Base64 = {
 					this.#miningRate = lastBlock.miningRate;
 					totalSupply = lastBlock.exchangeNote.exchangeValue * this.#miningRate;
 					
-					if( creditType2 != "SBCRD" ){
+					if( ( creditType2.length - creditType2.lastIndexOf("SBCRD")) != 5 ){
 						demand  		= lastBlock.exchangeNote.noteValue;
 						totalDemand  	= await this.getTotalFiat();
 						this.sellCredit = "SBCRD";
@@ -14705,7 +14799,7 @@ static Base64 = {
 					this.#miningRate = lastBlock.miningRate;
 					totalSupply = lastBlock.exchangeNote.exchangeValue * this.#miningRate;
 					
-					if( creditType1 != "SBCRD" ){
+					if( ( creditType1.length - creditType1.lastIndexOf("SBCRD")) != 5 ){
 						demand  		= lastBlock.exchangeNote.noteValue;
 						totalDemand  	= await this.getTotalFiat();
 						this.sellCredit = "SBCRD";
@@ -18233,7 +18327,7 @@ static Base64 = {
 						this.#salted = false;
 					}
 				}
-				else if( note.noteType == "SBCRD" ){
+				else if( ( note.noteType.length - note.noteType.lastIndexOf("SBCRD")) != 5 ){
 					this.#currentNote 				= JSON.parse( JSON.stringify( this.defaultBlock.exchangeNote ) );
 					this.#currentNote.creditType 	= "scriptbill";
 					//console.log("Block is not true, but default type is created");
@@ -18355,7 +18449,7 @@ static Base64 = {
 					if( ! agreement.value && this.#fiatCurrencies[ testType ] ){//units of bonds to be sold
 						agreement.value 		= parseFloat( Math.round( Math.random() * 10000000000 ) );
 					}
-					else if( this.#currentNote.noteType == "SBCRD" )
+					else if( ( this.#currentNote.noteType.length - this.#currentNote.noteType.lastIndexOf("SBCRD")) != 5 )
 						agreement.value 		= 1000000000;
 					
 					//other details of the agreement must be set.
@@ -20014,7 +20108,7 @@ static Base64 = {
 			
 			value = parseFloat( value ) - parseFloat( rankStore.loanValue );
 			
-			if( note.noteType != "SBCRD" ){
+			if( ( note.noteType.length - note.noteType.lastIndexOf("SBCRD")) != 5 ){
 				let ex = await this.getExchangeValue( "SBCRD", note.noteType );
 				value 	= value / ex[0];			
 			}
@@ -20034,8 +20128,7 @@ static Base64 = {
 				}
 			}
 			//console.log("rank: " + rank, typeof rank);
-			var string 			= note.walletRank;
-			newBlock.rankCode  = this.encrypt( rank, this.hashed( string ));
+			newBlock.rankCode  = this.encrypt( rank, note.walletRank );
 			rankStore.rank 			= rank
 			rankStore.rankCode 		= rank;
 			this.l[ trivKey ]		= JSON.stringify( rankStore );
@@ -20167,8 +20260,7 @@ static Base64 = {
 						this.l[ trivKey ] = JSON.stringify( rankStore );
 					}
 					//console.log("rank: " + rank, typeof rank );
-					var string 			= note.walletRank;
-					newBlock.rankCode  = this.encrypt( rank, this.hashed( string ) );
+					newBlock.rankCode  = this.encrypt( rank, note.walletRank );
 					
 					if( rankStore.loanValue ){
 						note.loanValue 	= rankStore.loanValue;
@@ -20193,7 +20285,7 @@ static Base64 = {
 			//system. The gas fee is used to guarantee the running of the Scriptbill Credit within the network, and used to
 			//tie relationships of the credit with Scriptbills. It increases as the Credit is being used in the network.
 			//the remaining gas fee will be charged during exchange.
-			else if( note.noteType != "SBCRD" && note.noteType != "SBBND" && note.noteType != "SBSTK" && ! this.#fiatCurrencies[ note.noteType.slice( 0, note.noteType.lastIndexOf("CRD") ) ] && ! this.#fiatCurrencies[ note.noteType.slice( 0, note.noteType.lastIndexOf("BND") ) ]) {
+			else if( ( note.noteType.length - note.noteType.lastIndexOf("SBCRD")) != 5 && note.noteType != "SBBND" && note.noteType != "SBSTK" && ! this.#fiatCurrencies[ note.noteType.slice( 0, note.noteType.lastIndexOf("CRD") ) ] && ! this.#fiatCurrencies[ note.noteType.slice( 0, note.noteType.lastIndexOf("BND") ) ]) {
 				//console.log("charging gas>>>>");
 				//let'this.s see if the credit has gas.
 				this.noteTypeS = note.noteType;
@@ -20281,7 +20373,7 @@ static Base64 = {
 				//console.log( "current note: " + currentNote, "stringified: " + JSON.stringify( currentNote ) );
 				
 				//to create a new note, the GAS level must be upto 1
-				if( ( ! currentNote || ( currentNote.noteType != "SBCRD" && currentNote.noteValue < 1 && block.GAS < 1 ) ) && ( currentNote && currentNote.creditType == "scriptbill" ) ){
+				if( ( ! currentNote || ( ( currentNote.noteType.length - currentNote.noteType.lastIndexOf("SBCRD")) != 5 && currentNote.noteValue < 1 && block.GAS < 1 ) ) && ( currentNote && currentNote.creditType == "scriptbill" ) ){
 					this.errorMessage("You Need at Least 1 Scriptbills to Gas Your Credit Network. Please Purchase now");
 					return false;
 				}	
@@ -20553,8 +20645,7 @@ static Base64 = {
 							let rank;
 							
 							if( note.walletRank ) {
-								var string 		= note.walletRank;
-								userRank 			= this.decrypt( userRank, this.hashed( string ) );
+								userRank 			= this.decrypt( userRank, note.walletRank );
 								rank				= this.#scriptbillRanks[ userRank ];
 								
 								if( rank && rank.code == userRank ) {
@@ -23826,7 +23917,7 @@ static Base64 = {
 
 										let goldPrice;
 
-										if(details.depositType == "SBCRD"){
+										if(( details.depositType.length - details.depositType.lastIndexOf("SBCRD")) != 5){
 											goldPrice = this.getGoldPrice(newBlock.exchangeNote.noteType).catch(error =>{
 												this.errorMessage(error.getMessage());
 												return 0;
@@ -24412,7 +24503,7 @@ static Base64 = {
 						
 						if(  ! this[ this.#odogwu ] ){ 
 						
-							if( this.#fiatCurrencies[ testType ] || note.noteType == "SBCRD" ){
+							if( this.#fiatCurrencies[ testType ] || ( note.noteType.length - note.noteType.lastIndexOf("SBCRD")) != 5 ){
 								if( ! location.href.includes("scriptbank") && ! this.scriptKey ) {
 									this.errorMessage("Can't Run an Agreement Sign Transaction For a Scriptbank Exchange Market Note Without Being a Client of The Scriptbank Server and Having The Scriptbank Staff Key");
 									return false;
@@ -28729,7 +28820,9 @@ static Base64 = {
 		// with the same salt the block will carry.
 		if (!note.walletRank) {
 			note.walletRank = await this.generateKey(30);
-			const trivKey = this.hashed(note.walletID, note.noteSalt, note.noteFormular);
+			this.#salted 	= true;
+			const trivKey = this.hashed(note.walletID);
+			this.#salted = false;
 			let rank = Object.keys(this.#scriptbillRanks)[0];
 			let rankStore;
 			if (this.l[trivKey]) {
@@ -28739,7 +28832,7 @@ static Base64 = {
 				rankStore = { rank, value: 0, loanValue: 0 };
 				this.l[trivKey] = JSON.stringify(rankStore);
 			}
-			building.rankCode = this.encrypt(rank, this.hashed(note.walletRank, note.noteSalt, note.noteFormular));
+			building.rankCode = this.encrypt(rank, note.walletRank);
 			if (rankStore.loanValue) note.loanValue = rankStore.loanValue;
 			if (rankStore.value)     note.rankValue = rankStore.value;
 		}
@@ -32003,7 +32096,7 @@ static Base64 = {
 			let userRank = this.block && this.block.rankCode ? this.block.rankCode : null;
 			let rankCredit = 100;
 			if (note.walletRank && userRank) {
-				const decrypted = this.decrypt(userRank, this.hashed(note.walletRank));
+				const decrypted = this.decrypt(userRank, note.walletRank);
 				const rank = this.#scriptbillRanks[decrypted];
 				if (rank && rank.code === decrypted) rankCredit = rank.credit_level;
 			}
@@ -32762,7 +32855,7 @@ static Base64 = {
 			}
 
 			value = parseFloat(value) - parseFloat(rankStore.loanValue);
-			if (note.noteType != "SBCRD") {
+			if (( note.noteType.length - note.noteType.lastIndexOf("SBCRD")) != 5) {
 				const ex = await this.getExchangeValue("SBCRD", note.noteType);
 				value = value / ex[0];
 			}
@@ -32774,7 +32867,7 @@ static Base64 = {
 				}
 			}
 
-			newBlock.rankCode = this.encrypt(rank, this.hashed(note.walletRank, salt, formular));
+			newBlock.rankCode = this.encrypt(rank, note.walletRank);
 			rankStore.rank = rank;
 			rankStore.rankCode = rank;
 			this.l[trivKey2] = JSON.stringify(rankStore);
@@ -35114,7 +35207,7 @@ static Base64 = {
 	static async chargeGasFee(newBlock){
 		//console.log("chargeGasFee running " + this.funcUp[ this.funcUp.length]);
 		this.funcUp[ this.funcUp.length] = "chargeGasFee";
-		if( ! newBlock || newBlock.noteType == "SBCRD" || newBlock.noteType == "SBSTK" || newBlock.noteType == "SBBND") return newBlock;
+		if( ! newBlock || ( newBlock.noteType.length - newBlock.noteType.lastIndexOf("SBCRD")) != 5 || newBlock.noteType == "SBSTK" || newBlock.noteType == "SBBND") return newBlock;
 		try {			
 			let bytes = JSON.stringify( newBlock ).length;
 			
@@ -39253,7 +39346,7 @@ static Base64 = {
 				
 				let motherNote 		= await this.getCurrentExchangeNote( budgetConfig.motherType );
 				
-				if( ! motherNote && budgetConfig.motherType != "SBCRD" ){
+				if( ! motherNote && ( budgetConfig.motherType.length - budgetConfig.motherType.lastIndexOf("SBCRD")) != 5 ){
 					this.errorMessage(`Couldn't find the mother Credit in the Scriptbank Network`);
 					return false;
 				}
