@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1.0, shrink-to-fit=no">
+<link href="/../scriptbill/images/icon32x32.png" rel="icon" />
+<title>Scriptbank - Businesses</title>
+<meta name="description" content="A app used to manage Scriptbill, a Cryptocurrency built against financial mishandling and misappropraition..">
+<meta name="author" content="scriptbank.com.ng">
+
+<link rel='stylesheet' href='https://fonts.googleapis.com/css?family=Rubik:300,300i,400,400i,500,500i,700,700i,900,900i' type='text/css'>
+
+<link rel="stylesheet" type="text/css" href="/vendor/bootstrap/css/bootstrap.min.css" />
+<link rel="stylesheet" type="text/css" href="/vendor/font-awesome/css/all.min.css" />
+<link rel="stylesheet" type="text/css" href="/vendor/bootstrap-select/css/bootstrap-select.min.css" />
+<link rel="stylesheet" type="text/css" href="/vendor/currency-flags/css/currency-flags.min.css" />
+<link rel="stylesheet" type="text/css" href="/vendor/owl.carousel/assets/owl.carousel.min.css" />
+<link rel="stylesheet" type="text/css" href="/vendor/daterangepicker/daterangepicker.css" />
+<link rel="stylesheet" type="text/css" href="/css/stylesheet.css" />
+<link rel="stylesheet" type="text/css" href="/css/css.css" />
+
+<style>
+  .biz-item { cursor: pointer; transition: background-color .15s ease; }
+  .biz-item:hover { background-color: rgba(0,0,0,.025); }
+  .biz-logo { width: 46px; height: 46px; border-radius: 10px; display:flex; align-items:center; justify-content:center; background: rgba(13,110,253,.1); color:#0d6efd; font-size: 1.2rem; }
+  #noBiz { display:none; }
+</style>
+</head>
+<body>
+
+<div id="preloader"><div data-loader="dual-ring"></div></div>
+
+<div id="main-wrapper">
+  <header id="header">
+    <div class="container">
+      <div class="header-row">
+        <div class="header-column justify-content-start">
+          <div class="logo"> <a class="d-flex" href="/" title="Scriptbill Cryptonote"><img src="/images/scriptbankLogo2.png" alt="Scriptbank" /></a> </div>
+          <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#header-nav"> <span></span> <span></span> <span></span> </button>
+          <nav class="primary-menu navbar navbar-expand-lg">
+            <div id="header-nav" class="collapse navbar-collapse">
+              <ul class="navbar-nav mr-auto">
+                <li><a href="/dashboard">Dashboard</a></li>
+                <li><a href="/transactions">Transactions</a></li>
+                <li><a href="/businesses">Businesses</a></li>
+                <li><a href="/send-money">Send/Request</a></li>
+                <li><a href="/help">Help</a></li>
+                <li><a href="/login?loggout=TRUE">Logout</a></li>
+              </ul>
+            </div>
+          </nav>
+        </div>
+        <div class="header-column justify-content-end">
+          <nav class="login-signup navbar navbar-expand">
+            <ul class="navbar-nav">
+              <li><a href="/profile">Settings</a> </li>
+              <li class="align-items-center h-auto ml-sm-3"><a class="btn btn-outline-primary shadow-none d-none d-sm-block" href="/login?loggout=TRUE">Sign out</a></li>
+              <li class="align-items-center h-auto ml-sm-3"><a class="btn btn-primary shadow-none d-none d-sm-block" href="/loan">Get Loan</a></li>
+            </ul>
+          </nav>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div id="content" class="py-4">
+    <div class="container">
+      <div class="row">
+
+        <!-- Left Panel -->
+        <aside class="col-lg-3">
+          <div class="bg-light shadow-sm rounded text-center p-3 mb-4">
+            <div class="profile-thumb mt-3 mb-4"> <img class="rounded-circle" id="rankImage" src="/images/profile-thumb.jpg" alt="">
+              <div class="profile-thumb-edit custom-file bg-primary text-white" data-toggle="tooltip" title="Change Wallet Rank"> <i class="fas fa-briefcase position-absolute"></i>
+                <a href="/#" class="custom-file-input" id="customFile"></a>
+              </div>
+            </div>
+            <p class="text-3 font-weight-500 mb-2" id="salutation">Hello, Smith Rhodes</p>
+            <p class="text-5 font-weight-700 mb-2" id="rankSalute">CMBF Beginner</p>
+          </div>
+
+          <!-- Businesses summary -->
+          <div class="bg-light shadow-sm rounded text-center p-3 mb-4">
+            <div class="text-17 text-light my-3"><i class="fas fa-store"></i></div>
+            <h3 class="text-9 font-weight-400" id="bizCount">0</h3>
+            <p class="mb-2 text-muted opacity-8">Businesses Added</p>
+            <hr class="mx-n3">
+            <h3 class="text-7 font-weight-400" id="bizTotal">$0.00</h3>
+            <p class="mb-0 text-muted opacity-8">Combined Sales Value</p>
+          </div>
+
+          <div class="bg-light shadow-sm rounded text-center p-3 mb-4">
+            <div class="text-17 text-light my-3"><i class="fas fa-comments"></i></div>
+            <h3 class="text-3 font-weight-400 my-4">Need Help?</h3>
+            <p class="text-muted opacity-8 mb-4">Have questions about managing your businesses?</p>
+            <a href="/https://t.me/companymatrix" class="btn btn-primary btn-block">Chat with Us</a>
+          </div>
+        </aside>
+
+        <!-- Middle Panel -->
+        <div class="col-lg-9">
+
+          <div class="d-flex align-items-center flex-wrap mb-3">
+            <h2 class="font-weight-400 mb-0 mr-auto">Businesses in My Area</h2>
+            <button class="btn btn-primary" data-toggle="modal" data-target="#add-business"><i class="fas fa-plus mr-1"></i>Add Business</button>
+          </div>
+
+          <!-- Filter -->
+          <div class="row">
+            <div class="col mb-2">
+              <form id="filterBiz" method="post" onsubmit="return false;">
+                <div class="form-row">
+                  <div class="col-sm-6 col-md-5 form-group">
+                    <input id="bizSearch" type="text" class="form-control" placeholder="Search by name or location">
+                    <span class="icon-inside"><i class="fas fa-search"></i></span>
+                  </div>
+                  <div class="col-sm-4 col-md-3 form-group">
+                    <select id="bizCategory" class="form-control">
+                      <option value="">All Categories</option>
+                      <option value="Retail">Retail</option>
+                      <option value="Food &amp; Drink">Food &amp; Drink</option>
+                      <option value="Services">Services</option>
+                      <option value="Technology">Technology</option>
+                    </select>
+                  </div>
+                  <div class="col-auto d-flex align-items-center ml-auto form-group">
+                    <select id="bizSort" class="form-control">
+                      <option value="recent">Recently added</option>
+                      <option value="sales">Highest sales</option>
+                      <option value="name">Name A-Z</option>
+                    </select>
+                  </div>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <!-- Business List -->
+          <div class="bg-light shadow-sm rounded py-4 mb-4">
+            <h3 class="text-5 font-weight-400 d-flex align-items-center px-4 mb-3">My Businesses</h3>
+            <div class="transaction-title py-2 px-4">
+              <div class="row">
+                <div class="col-auto" style="width:64px;"></div>
+                <div class="col col-sm-5">Business</div>
+                <div class="col-auto col-sm-3 d-none d-sm-block">Category</div>
+                <div class="col-auto col-sm-2 d-none d-sm-block text-center">Sales</div>
+                <div class="col col-sm-2 text-right">Value</div>
+              </div>
+            </div>
+
+            <div class="transaction-list" id="bizList"><!-- injected --></div>
+            <div class="text-center text-muted py-5" id="noBiz">
+              <i class="fas fa-store-slash text-9 d-block mb-3 opacity-8"></i>
+              No businesses yet. Add one to get started.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Business Modal -->
+  <div id="add-business" class="modal fade" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title font-weight-400">Add Business</h5>
+          <button type="button" class="close font-weight-400" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+        </div>
+        <div class="modal-body p-4">
+          <form id="addBizForm" onsubmit="return false;">
+            <div class="form-group">
+              <label for="abName">Business Name</label>
+              <input type="text" class="form-control" id="abName" required placeholder="e.g. Ikeja Fresh Mart">
+            </div>
+            <div class="form-group">
+              <label for="abCategory">Category</label>
+              <select class="form-control" id="abCategory">
+                <option>Retail</option>
+                <option>Food &amp; Drink</option>
+                <option>Services</option>
+                <option>Technology</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="abLocation">Location</label>
+              <input type="text" class="form-control" id="abLocation" placeholder="e.g. Ikeja, Lagos">
+            </div>
+            <div class="form-group">
+              <label for="abOwner">Owner / Contact</label>
+              <input type="text" class="form-control" id="abOwner" placeholder="e.g. Jane Doe">
+            </div>
+            <div class="form-group">
+              <label for="abBudget">Budget ID</label>
+              <input type="text" class="form-control" id="abBudget" placeholder="If Available">
+              <p>Get from Businesses in the network else leave empty to create new.</p>
+            </div>
+            <div class="form-group">
+              <label for="abDesc">Description</label>
+              <textarea class="form-control" id="abDesc" rows="2" placeholder="What does this business do?"></textarea>
+            </div>
+            <button class="btn btn-primary btn-block mt-3" type="submit" id="saveBizBtn">Save Business</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer id="footer">
+    <div class="container">
+      <div class="row">
+        <div class="col-lg d-lg-flex align-items-center">
+          <ul class="nav justify-content-center justify-content-lg-start text-3">
+            <li class="nav-item"> <a class="nav-link active" href="/about-us">About Us</a></li>
+            <li class="nav-item"> <a class="nav-link" href="/help">Help</a></li>
+            <li class="nav-item"> <a class="nav-link" href="/fees">Fees</a></li>
+          </ul>
+        </div>
+        <div class="col-lg d-lg-flex justify-content-lg-end mt-3 mt-lg-0">
+          <ul class="social-icons justify-content-center">
+            <li class="social-icons-facebook"><a data-toggle="tooltip" href="/http://www.facebook.com/" target="_blank" title="Facebook"><i class="fab fa-facebook-f"></i></a></li>
+            <li class="social-icons-twitter"><a data-toggle="tooltip" href="/http://www.twitter.com/" target="_blank" title="Twitter"><i class="fab fa-twitter"></i></a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-copyright pt-3 pt-lg-2 mt-2">
+        <div class="row">
+          <div class="col-lg">
+            <p class="text-center text-lg-left mb-2 mb-lg-0">Copyright &copy; 2024 <a href="/https://t.me/companymatrix">Scriptbank &amp; Company Matrix</a>. All Rights Reserved.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </footer>
+</div>
+
+<a id="back-to-top" data-toggle="tooltip" title="Back to Top" href="/javascript:void(0)"><i class="fa fa-chevron-up"></i></a>
+
+<script src="/vendor/jquery/jquery.min.js"></script>
+<script src="/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+<script src="/vendor/daterangepicker/moment.min.js"></script>
+<script src="/vendor/daterangepicker/daterangepicker.js"></script>
+<script src="/js/theme.js"></script>
+<script src="/js/supabase.js"></script>
+<script src="/js/crypto-js.js"></script>
+<script src="/js/scriptbill.js"></script>
+<script src="/js/qrcode.min.js"></script>
+<script src="/js/checkLogin.js"></script>
+
+<!-- Businesses list logic
+     ============================================================
+     DEFAULT_BUSINESSES is dummy data. Replace loadBusinesses() and
+     saveBusiness() with your Supabase calls. Clicking a row goes to
+     business.html?id=<id> (the detail page).
+     ============================================================ -->
+</body>
+</html>

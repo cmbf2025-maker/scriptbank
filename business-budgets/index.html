@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1.0, shrink-to-fit=no">
+<link href="/../scriptbill/images/icon32x32.png" rel="icon" />
+<title>Scriptbank - Tasks</title>
+<meta name="description" content="A app used to manage Scriptbill, a Cryptocurrency built against financial mishandling and misappropraition..">
+<meta name="author" content="scriptbank.com.ng">
+
+<!-- Web Fonts
+============================================= -->
+<link rel='stylesheet' href='https://fonts.googleapis.com/css?family=Rubik:300,300i,400,400i,500,500i,700,700i,900,900i' type='text/css'>
+
+<!-- Stylesheet
+============================================= -->
+<link rel="stylesheet" type="text/css" href="/vendor/bootstrap/css/bootstrap.min.css" />
+<link rel="stylesheet" type="text/css" href="/vendor/font-awesome/css/all.min.css" />
+<link rel="stylesheet" type="text/css" href="/vendor/bootstrap-select/css/bootstrap-select.min.css" />
+<link rel="stylesheet" type="text/css" href="/vendor/currency-flags/css/currency-flags.min.css" />
+<link rel="stylesheet" type="text/css" href="/vendor/owl.carousel/assets/owl.carousel.min.css" />
+<link rel="stylesheet" type="text/css" href="/vendor/daterangepicker/daterangepicker.css" />
+<link rel="stylesheet" type="text/css" href="/css/stylesheet.css" />
+<link rel="stylesheet" type="text/css" href="/css/css.css" />
+
+<style>
+  /* Page-specific helpers only. Keep in /css/css.css if you prefer. */
+  .task-item { cursor: pointer; transition: background-color .15s ease; }
+  .task-item:hover { background-color: rgba(0,0,0,.025); }
+  .task-item.is-selected { background-color: rgba(13,110,253,.06); }
+  .bulk-bar { gap: .5rem; }
+  .task-check { cursor: pointer; }
+  .chk-cell { width: 42px; }
+  .badge-soft { font-weight: 500; }
+  #noTasks { display: none; }
+</style>
+</head>
+<body>
+
+<!-- Preloader -->
+<div id="preloader">
+  <div data-loader="dual-ring"></div>
+</div>
+<!-- Preloader End -->
+
+<!-- Document Wrapper
+============================================= -->
+<div id="main-wrapper">
+  <!-- Header
+  ============================================= -->
+  <header id="header">
+    <div class="container">
+      <div class="header-row">
+        <div class="header-column justify-content-start">
+          <!-- Logo -->
+          <div class="logo"> <a class="d-flex" href="/" title="Scriptbill Cryptonote"><img src="/images/scriptbankLogo2.png" alt="Scriptbank" /></a> </div>
+          <!-- Collapse Button -->
+          <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#header-nav"> <span></span> <span></span> <span></span> </button>
+          <!-- Primary Navigation -->
+          <nav class="primary-menu navbar navbar-expand-lg">
+            <div id="header-nav" class="collapse navbar-collapse">
+              <ul class="navbar-nav mr-auto">
+                <li><a href="/dashboard">Dashboard</a></li>
+                <li><a href="/transactions">Transactions</a></li>
+                <li><a href="/tasks">Tasks</a></li>
+                <li><a href="/send-money">Send/Request</a></li>
+                <li><a href="/help">Help</a></li>
+                <li><a href="/login?loggout=TRUE">Logout</a></li>
+              </ul>
+            </div>
+          </nav>
+        </div>
+        <div class="header-column justify-content-end">
+          <nav class="login-signup navbar navbar-expand">
+            <ul class="navbar-nav">
+              <li><a href="/profile">Settings</a> </li>
+              <li class="align-items-center h-auto ml-sm-3"><a class="btn btn-outline-primary shadow-none d-none d-sm-block" href="/login?loggout=TRUE">Sign out</a></li>
+              <li class="align-items-center h-auto ml-sm-3"><a class="btn btn-primary shadow-none d-none d-sm-block" href="/loan">Get Loan</a></li>
+            </ul>
+          </nav>
+        </div>
+      </div>
+    </div>
+  </header>
+  <!-- Header End -->
+
+  <!-- Content
+  ============================================= -->
+  <div id="content" class="py-4">
+    <div class="container">
+      <div class="row">
+
+        <!-- Left Panel
+        ============================================= -->
+        <aside class="col-lg-3">
+          <!-- Profile Details -->
+          <div class="bg-light shadow-sm rounded text-center p-3 mb-4">
+            <div class="profile-thumb mt-3 mb-4"> <img class="rounded-circle" id="rankImage" src="/images/profile-thumb.jpg" alt="">
+              <div class="profile-thumb-edit custom-file bg-primary text-white" data-toggle="tooltip" title="Change Wallet Rank"> <i class="fas fa-briefcase position-absolute"></i>
+                <a href="/#buy-rank-bond" data-toggle="modal" class="custom-file-input" id="customFile"></a>
+              </div>
+            </div>
+            <p class="text-3 font-weight-500 mb-2" id="salutation">Hello, Smith Rhodes</p>
+            <p class="text-5 font-weight-700 mb-2" id="rankSalute">CMBF Beginner</p>
+          </div>
+
+          <!-- Available Balance -->
+          <div class="bg-light shadow-sm rounded text-center p-3 mb-4" style="position:relative;">
+            <div class="text-17 text-light my-3"><i class="fas fa-wallet"></i></div>
+            <a href="/scan-qrcode" class="text-5 my-3" style="position:absolute; width:fit-content; right:3%;top:0; cursor:pointer;"><i class="fas fa-qrcode"></i></a>
+            <h3 class="text-9 font-weight-400" id="noteValue">--.--</h3>
+            <p class="mb-2 text-muted opacity-8">Available Balance</p>
+            <hr class="mx-n3">
+            <div class="d-flex"><a href="/withdraw-money" class="btn-link mr-auto">Withdraw</a> <a href="/deposit-money" class="btn-link ml-auto">Deposit</a></div>
+          </div>
+
+          <!-- Need Help? -->
+          <div class="bg-light shadow-sm rounded text-center p-3 mb-4">
+            <div class="text-17 text-light my-3"><i class="fas fa-comments"></i></div>
+            <h3 class="text-3 font-weight-400 my-4">Need Help?</h3>
+            <p class="text-muted opacity-8 mb-4">Have questions or concerns regrading your account?<br>
+              Our experts are here to help!.</p>
+            <a href="/https://t.me/companymatrix" class="btn btn-primary btn-block">Chat with Us</a> </div>
+        </aside>
+        <!-- Left Panel End -->
+
+        <!-- Middle Panel
+        ============================================= -->
+        <div class="col-lg-9">
+
+          <h2 class="font-weight-400 mb-3">Tasks</h2>
+
+          <!-- Filter
+          ============================================= -->
+          <div class="row">
+            <div class="col mb-2">
+              <form id="filterTasks" method="post" onsubmit="return false;">
+                <div class="form-row">
+                  <!-- Date / Time Range -->
+                  <div class="col-sm-6 col-md-4 form-group">
+                    <input id="dateRange" type="text" class="form-control" placeholder="Execution Date Range">
+                    <span class="icon-inside"><i class="fas fa-calendar-alt"></i></span>
+                  </div>
+                  <!-- All Filters Link -->
+                  <div class="col-auto d-flex align-items-center mr-auto form-group" data-toggle="collapse"> <a class="btn-link" data-toggle="collapse" href="#allFilters" aria-expanded="false" aria-controls="allFilters">All Filters<i class="fas fa-sliders-h text-3 ml-1"></i></a> </div>
+                  <!-- Statements Link -->
+                  <div class="col-auto d-flex align-items-center ml-auto form-group">
+                    <div class="dropdown"> <a class="text-muted btn-link" href="/#" role="button" id="statements" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false"><i class="fas fa-file-download text-3 mr-1"></i>Export</a>
+                      <div class="dropdown-menu dropdown-menu-right" aria-labelledby="statements"> <a class="dropdown-item" href="/#" id="exportCsv">CSV</a> <a class="dropdown-item" href="/#" id="exportPdf">PDF</a> </div>
+                    </div>
+                  </div>
+
+                  <!-- All Filters collapse -->
+                  <div class="col-12 collapse mb-3" id="allFilters">
+                    <div class="form-row">
+                      <div class="col-sm-4 form-group">
+                        <label class="text-2 text-uppercase text-muted">Budget ID</label>
+                        <input type="text" id="filterBudgetId" class="form-control" placeholder="e.g. BID-10293">
+                      </div>
+                      <div class="col-sm-4 form-group">
+                        <label class="text-2 text-uppercase text-muted">Min Value</label>
+                        <input type="number" id="filterMinValue" min="0" class="form-control" placeholder="0">
+                      </div>
+                      <div class="col-sm-4 form-group">
+                        <label class="text-2 text-uppercase text-muted">Max Value</label>
+                        <input type="number" id="filterMaxValue" min="0" class="form-control" placeholder="Any">
+                      </div>
+                    </div>
+                    <div class="form-row">
+                      <div class="col-sm-4 form-group">
+                        <label class="text-2 text-uppercase text-muted">Status</label>
+                        <select id="filterStatus" class="form-control">
+                          <option value="">All</option>
+                          <option value="Pending">Pending</option>
+                          <option value="Scheduled">Scheduled</option>
+                          <option value="Awaiting Signature">Awaiting Signature</option>
+                        </select>
+                      </div>
+                      <div class="col-sm-4 form-group">
+                        <label class="text-2 text-uppercase text-muted">Sort by time</label>
+                        <select id="filterSort" class="form-control">
+                          <option value="soonest">Soonest first</option>
+                          <option value="latest">Latest first</option>
+                        </select>
+                      </div>
+                      <div class="col-sm-4 form-group d-flex align-items-end">
+                        <button type="button" id="resetFilters" class="btn btn-outline-secondary btn-block">Reset Filters</button>
+                      </div>
+                    </div>
+                  </div>
+                  <!-- All Filters collapse End -->
+                </div>
+              </form>
+            </div>
+          </div>
+          <!-- Filter End -->
+
+          <!-- All Tasks
+          ============================================= -->
+          <div class="bg-light shadow-sm rounded py-4 mb-4">
+            <div class="d-flex align-items-center flex-wrap px-4 mb-3">
+              <h3 class="text-5 font-weight-400 mb-0 mr-auto">All Tasks</h3>
+              <!-- Bulk action bar -->
+              <div class="d-flex align-items-center bulk-bar">
+                <span class="text-muted text-2 mr-2" id="selectedCount">0 selected</span>
+                <button type="button" class="btn btn-sm btn-primary" id="bulkExecute" disabled><i class="fas fa-check mr-1"></i>Execute</button>
+                <button type="button" class="btn btn-sm btn-danger" id="bulkDecline" disabled><i class="fas fa-trash-alt mr-1"></i>Decline</button>
+              </div>
+            </div>
+
+            <!-- Title -->
+            <div class="transaction-title py-2 px-4">
+              <div class="row align-items-center">
+                <div class="col-auto chk-cell text-center">
+                  <div class="custom-control custom-checkbox">
+                    <input type="checkbox" class="custom-control-input" id="selectAll">
+                    <label class="custom-control-label" for="selectAll"></label>
+                  </div>
+                </div>
+                <div class="col-2 col-sm-1 text-center"><span>Date</span></div>
+                <div class="col col-sm-5">Description</div>
+                <div class="col-auto col-sm-2 d-none d-sm-block text-center">Status</div>
+                <div class="col-3 col-sm-2 text-right">Value</div>
+              </div>
+            </div>
+            <!-- Title End -->
+
+            <!-- Task List -->
+            <div class="transaction-list" id="taskList">
+              <!-- rows injected by JS -->
+            </div>
+            <div class="text-center text-muted py-5" id="noTasks">
+              <i class="fas fa-inbox text-9 d-block mb-3 opacity-8"></i>
+              No tasks match your filters.
+            </div>
+            <!-- Task List End -->
+
+            <!-- Task Detail Modal
+            =========================================== -->
+            <div id="task-detail" class="modal fade text-wrap" role="dialog" aria-hidden="true" style="word-break: break-all;">
+              <div class="modal-dialog modal-dialog-centered transaction-details" role="document">
+                <div class="modal-content">
+                  <div class="modal-body">
+                    <div class="row no-gutters">
+                      <div class="col-sm-5 d-flex justify-content-center bg-primary rounded-left py-4">
+                        <div class="my-auto text-center">
+                          <div class="text-17 text-white my-3"><i class="fas fa-tasks"></i></div>
+                          <h3 class="text-4 text-white font-weight-400 my-3" id="d_title">Task Title</h3>
+                          <div class="text-8 font-weight-500 text-white my-4" id="d_value">$0.00</div>
+                          <p class="text-white" id="d_execDate">--</p>
+                        </div>
+                      </div>
+                      <div class="col-sm-7">
+                        <h5 class="text-5 font-weight-400 m-3">Task Details
+                          <button type="button" class="close font-weight-400" data-dismiss="modal" aria-label="Close"> <span aria-hidden="true">&times;</span> </button>
+                        </h5>
+                        <hr>
+                        <div class="px-3">
+                          <ul class="list-unstyled">
+                            <li class="mb-2">Value <span class="float-right text-3" id="d_valueLine">$0.00</span></li>
+                            <li class="mb-2">Fee <span class="float-right text-3" id="d_fee">-$0.00</span></li>
+                          </ul>
+                          <hr class="mb-2">
+                          <p class="d-flex align-items-center font-weight-500 mb-4">Net <span class="text-3 ml-auto" id="d_net">$0.00</span></p>
+                          <ul class="list-unstyled">
+                            <li class="font-weight-500">Budget ID:</li>
+                            <li class="text-muted" id="d_budgetId">--</li>
+                          </ul>
+                          <ul class="list-unstyled">
+                            <li class="font-weight-500">Task ID:</li>
+                            <li class="text-muted" id="d_taskId">--</li>
+                          </ul>
+                          <ul class="list-unstyled">
+                            <li class="font-weight-500">Scheduled Execution:</li>
+                            <li class="text-muted" id="d_execFull">--</li>
+                          </ul>
+                          <ul class="list-unstyled">
+                            <li class="font-weight-500">Requested By:</li>
+                            <li class="text-muted" id="d_requestedBy">--</li>
+                          </ul>
+                          <ul class="list-unstyled">
+                            <li class="font-weight-500">Description:</li>
+                            <li class="text-muted" id="d_desc">--</li>
+                          </ul>
+                          <ul class="list-unstyled">
+                            <li class="font-weight-500">Status:</li>
+                            <li class="text-muted" id="d_status">--</li>
+                          </ul>
+                          <div style="display:flex; justify-content:space-between; max-width:100%;">
+                            <button class="btn btn-primary btn-block mt-4 mr-2" id="d_decline" style="background-color:red;outline:none;border-color:red;color:white;"><i class="fas fa-trash-alt mr-1"></i>Decline</button>
+                            <button class="btn btn-primary btn-block mt-4 ml-2" id="d_support" style="color:white;"><i class="fas fa-check mr-1"></i>Support</button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <!-- Task Detail Modal End -->
+
+            <!-- Pagination -->
+            <ul class="pagination justify-content-center mt-4 mb-0" id="pignation">
+              <li class="page-item disabled"> <a class="page-link" href="/#" tabindex="-1"><i class="fas fa-angle-left"></i></a> </li>
+              <li class="page-item active"><a class="page-link" href="/#">1</a></li>
+              <li class="page-item"> <a class="page-link" href="/#"><i class="fas fa-angle-right"></i></a> </li>
+            </ul>
+            <!-- Paginations end -->
+          </div>
+          <!-- All Tasks End -->
+        </div>
+        <!-- Middle End -->
+      </div>
+    </div>
+  </div>
+  <!-- Content end -->
+
+  <!-- Footer
+  ============================================= -->
+  <footer id="footer">
+    <div class="container">
+      <div class="row">
+        <div class="col-lg d-lg-flex align-items-center">
+          <ul class="nav justify-content-center justify-content-lg-start text-3">
+            <li class="nav-item"> <a class="nav-link active" href="/about-us">About Us</a></li>
+            <li class="nav-item"> <a class="nav-link" href="/https://t.me/companymatrix">Support</a></li>
+            <li class="nav-item"> <a class="nav-link" href="/help">Help</a></li>
+            <li class="nav-item"> <a class="nav-link" href="/fees">Fees</a></li>
+          </ul>
+        </div>
+        <div class="col-lg d-lg-flex justify-content-lg-end mt-3 mt-lg-0">
+          <ul class="social-icons justify-content-center">
+            <li class="social-icons-facebook"><a data-toggle="tooltip" href="/http://www.facebook.com/" target="_blank" title="Facebook"><i class="fab fa-facebook-f"></i></a></li>
+            <li class="social-icons-twitter"><a data-toggle="tooltip" href="/http://www.twitter.com/" target="_blank" title="Twitter"><i class="fab fa-twitter"></i></a></li>
+            <li class="social-icons-google"><a data-toggle="tooltip" href="/http://www.google.com/" target="_blank" title="Google"><i class="fab fa-google"></i></a></li>
+            <li class="social-icons-youtube"><a data-toggle="tooltip" href="/http://www.youtube.com/" target="_blank" title="Youtube"><i class="fab fa-youtube"></i></a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-copyright pt-3 pt-lg-2 mt-2">
+        <div class="row">
+          <div class="col-lg">
+            <p class="text-center text-lg-left mb-2 mb-lg-0">Copyright &copy; 2024 <a href="/https://t.me/companymatrix">Scriptbank &amp; Company Matrix</a>. All Rights Reserved.</p>
+          </div>
+          <div class="col-lg d-lg-flex align-items-center justify-content-lg-end">
+            <ul class="nav justify-content-center">
+              <li class="nav-item"> <a class="nav-link active" href="/security">Security</a></li>
+              <li class="nav-item"> <a class="nav-link" href="/term">Terms</a></li>
+              <li class="nav-item"> <a class="nav-link" href="/privacy">Privacy</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </footer>
+  <!-- Footer end -->
+
+</div>
+<!-- Document Wrapper end -->
+
+<!-- Back to Top -->
+<a id="back-to-top" data-toggle="tooltip" title="Back to Top" href="/javascript:void(0)"><i class="fa fa-chevron-up"></i></a>
+
+<!-- Script -->
+<script src="/vendor/jquery/jquery.min.js"></script>
+<script src="/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+<script src="/vendor/daterangepicker/moment.min.js"></script>
+<script src="/vendor/daterangepicker/daterangepicker.js"></script>
+<script src="/js/theme.js"></script>
+<script src="/js/supabase.js"></script>
+<script src="/js/crypto-js.js"></script>
+<script src="/js/scriptbill.js"></script>
+<script src="/js/qrcode.min.js"></script>
+<script src="/js/checkLogin.js"></script>
+
+<!-- Tasks page logic
+     ============================================================
+     Default data lives in DEFAULT_TASKS. Replace loadTasks() with
+     your Supabase query when you wire up the backend. Everything
+     else (filter, render, modal, bulk) works off the `tasks` array.
+     ============================================================ -->
+<script>
+(function () {
+  "use strict";
+
+  // ---- Default/dummy data. Swap this out for a Supabase fetch. ----
+  var DEFAULT_TASKS = [
+    { id: "TSK-00001", budgetId: "BID-10293", title: "Payroll Disbursement", value: 1250.00, fee: 12.50,
+      execAt: "2026-11-18T09:00:00", requestedBy: "Finance Bot", status: "Scheduled",
+      desc: "Release monthly payroll to 14 verified wallet addresses under budget BID-10293." },
+    { id: "TSK-00002", budgetId: "BID-10311", title: "Vendor Settlement", value: 540.20, fee: 5.40,
+      execAt: "2026-11-17T15:30:00", requestedBy: "Smith Rhodes", status: "Awaiting Signature",
+      desc: "Settle outstanding invoice for Envato Pty Ltd member payment." },
+    { id: "TSK-00003", budgetId: "BID-10293", title: "Rank Bond Purchase", value: 100.00, fee: 1.00,
+      execAt: "2026-11-20T11:00:00", requestedBy: "Smith Rhodes", status: "Pending",
+      desc: "Buy a rank bond to upgrade wallet rank from CMBF Beginner." },
+    { id: "TSK-00004", budgetId: "BID-10450", title: "Refund to Client", value: 320.75, fee: 3.20,
+      execAt: "2026-11-19T08:15:00", requestedBy: "Support Desk", status: "Scheduled",
+      desc: "Process refund for duplicate deposit flagged in ticket #4471." },
+    { id: "TSK-00005", budgetId: "BID-10450", title: "Loan Repayment", value: 2000.00, fee: 20.00,
+      execAt: "2026-11-25T10:00:00", requestedBy: "Loan Engine", status: "Pending",
+      desc: "Scheduled repayment installment against active loan agreement." },
+    { id: "TSK-00006", budgetId: "BID-10311", title: "Treasury Top-up", value: 780.00, fee: 7.80,
+      execAt: "2026-11-21T13:45:00", requestedBy: "Smith Rhodes", status: "Awaiting Signature",
+      desc: "Move funds into treasury reserve wallet ahead of month end." }
+  ];
+
+  var tasks = [];          // working set (what's left after declines)
+  var selected = {};       // id -> true
+  var dateStart = null, dateEnd = null;
+
+  var $list = $("#taskList");
+  var $noTasks = $("#noTasks");
+
+  // ---- Data load. Replace body with Supabase when ready. ----
+  function loadTasks() {
+    // Example Supabase shape (uncomment & adapt):
+    // const { data } = await supabase.from('tasks').select('*').eq('status','Pending');
+    // tasks = data.map(mapRow);
+    tasks = DEFAULT_TASKS.slice();
+    render();
+  }
+
+  function money(n) {
+    return "$" + Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function fmtDay(iso)  { return moment(iso).format("DD"); }
+  function fmtMon(iso)  { return moment(iso).format("MMM"); }
+  function fmtFull(iso) { return moment(iso).format("DD MMM YYYY, h:mm A"); }
+
+  function statusBadge(s) {
+    var map = {
+      "Pending": "text-warning",
+      "Scheduled": "text-info",
+      "Awaiting Signature": "text-primary"
+    };
+    var cls = map[s] || "text-muted";
+    return '<span class="' + cls + ' badge-soft" data-toggle="tooltip" data-original-title="' + s + '"><i class="fas fa-circle text-1 mr-1"></i>' + s + '</span>';
+  }
+
+  // ---- Filtering ----
+  function applyFilters(arr) {
+    var bId   = $("#filterBudgetId").val().trim().toLowerCase();
+    var min   = parseFloat($("#filterMinValue").val());
+    var max   = parseFloat($("#filterMaxValue").val());
+    var stat  = $("#filterStatus").val();
+    var sort  = $("#filterSort").val();
+
+    var out = arr.filter(function (t) {
+      if (bId && t.budgetId.toLowerCase().indexOf(bId) === -1) return false;
+      if (!isNaN(min) && t.value < min) return false;
+      if (!isNaN(max) && t.value > max) return false;
+      if (stat && t.status !== stat) return false;
+      if (dateStart && moment(t.execAt).isBefore(dateStart, "day")) return false;
+      if (dateEnd && moment(t.execAt).isAfter(dateEnd, "day")) return false;
+      return true;
+    });
+
+    out.sort(function (a, b) {
+      var da = moment(a.execAt).valueOf(), db = moment(b.execAt).valueOf();
+      return sort === "latest" ? db - da : da - db;
+    });
+    return out;
+  }
+
+  // ---- Render ----
+  function render() {
+    var view = applyFilters(tasks);
+    $list.empty();
+
+    if (!view.length) {
+      $noTasks.show();
+    } else {
+      $noTasks.hide();
+      view.forEach(function (t) {
+        var isSel = !!selected[t.id];
+        var row =
+          '<div class="transaction-item task-item px-4 py-3 ' + (isSel ? "is-selected" : "") + '" data-id="' + t.id + '">' +
+            '<div class="row align-items-center flex-row">' +
+              '<div class="col-auto chk-cell text-center">' +
+                '<div class="custom-control custom-checkbox">' +
+                  '<input type="checkbox" class="custom-control-input task-check" id="chk_' + t.id + '" ' + (isSel ? "checked" : "") + '>' +
+                  '<label class="custom-control-label" for="chk_' + t.id + '"></label>' +
+                '</div>' +
+              '</div>' +
+              '<div class="col-2 col-sm-1 text-center">' +
+                '<span class="d-block text-4 font-weight-300">' + fmtDay(t.execAt) + '</span>' +
+                '<span class="d-block text-1 font-weight-300 text-uppercase">' + fmtMon(t.execAt) + '</span>' +
+              '</div>' +
+              '<div class="col col-sm-5 task-open" style="cursor:pointer;">' +
+                '<span class="d-block text-4">' + t.title + '</span>' +
+                '<span class="text-muted">' + t.budgetId + ' &bull; ' + t.id + '</span>' +
+              '</div>' +
+              '<div class="col-auto col-sm-2 d-none d-sm-block text-center text-3">' + statusBadge(t.status) + '</div>' +
+              '<div class="col-3 col-sm-2 text-right text-4 task-open" style="cursor:pointer;">' +
+                '<span class="text-wrap">' + money(t.value) + '</span>' +
+              '</div>' +
+            '</div>' +
+          '</div>';
+        $list.append(row);
+      });
+    }
+
+    syncSelectAll();
+    updateBulkBar();
+    if (window.jQuery && $.fn.tooltip) { $('[data-toggle="tooltip"]').tooltip(); }
+  }
+
+  // ---- Selection ----
+  function updateBulkBar() {
+    var ids = selectedIds();
+    $("#selectedCount").text(ids.length + " selected");
+    $("#bulkExecute, #bulkDecline").prop("disabled", ids.length === 0);
+  }
+  function selectedIds() { return Object.keys(selected).filter(function (k) { return selected[k]; }); }
+
+  function syncSelectAll() {
+    var view = applyFilters(tasks);
+    var allSel = view.length > 0 && view.every(function (t) { return selected[t.id]; });
+    $("#selectAll").prop("checked", allSel);
+  }
+
+  // ---- Open detail modal ----
+  function openDetail(id) {
+    var t = tasks.find(function (x) { return x.id === id; });
+    if (!t) return;
+    $("#d_title").text(t.title);
+    $("#d_value").text(money(t.value));
+    $("#d_valueLine").text(money(t.value));
+    $("#d_fee").text("-" + money(t.fee));
+    $("#d_net").text(money(t.value - t.fee));
+    $("#d_budgetId").text(t.budgetId);
+    $("#d_taskId").text(t.id);
+    $("#d_execDate").text(moment(t.execAt).format("DD MMM YYYY"));
+    $("#d_execFull").text(fmtFull(t.execAt));
+    $("#d_requestedBy").text(t.requestedBy);
+    $("#d_desc").text(t.desc);
+    $("#d_status").text(t.status);
+    $("#task-detail").data("current-id", id).modal("show");
+  }
+
+  // ---- Actions ----
+  function supportTasks(ids) {
+    // TODO: call Supabase to mark supported/executed, e.g.
+    // await supabase.from('tasks').update({status:'Executed'}).in('id', ids);
+    console.log("SUPPORT/EXECUTE:", ids);
+    removeTasks(ids);
+  }
+  function declineTasks(ids) {
+    // TODO: call Supabase to trash/decline, e.g.
+    // await supabase.from('tasks').delete().in('id', ids);
+    console.log("DECLINE/TRASH:", ids);
+    removeTasks(ids);
+  }
+  function removeTasks(ids) {
+    tasks = tasks.filter(function (t) { return ids.indexOf(t.id) === -1; });
+    ids.forEach(function (id) { delete selected[id]; });
+    render();
+  }
+
+  // ---- Events ----
+  $(function () {
+    // Date range picker (optional dependency already loaded in header)
+    if ($.fn.daterangepicker) {
+      $("#dateRange").daterangepicker({
+        autoUpdateInput: false,
+        locale: { cancelLabel: "Clear", format: "DD MMM YYYY" }
+      });
+      $("#dateRange").on("apply.daterangepicker", function (ev, picker) {
+        dateStart = picker.startDate; dateEnd = picker.endDate;
+        $(this).val(picker.startDate.format("DD MMM YYYY") + " - " + picker.endDate.format("DD MMM YYYY"));
+        render();
+      });
+      $("#dateRange").on("cancel.daterangepicker", function () {
+        dateStart = dateEnd = null; $(this).val(""); render();
+      });
+    }
+
+    // Live filters
+    $("#filterBudgetId, #filterMinValue, #filterMaxValue").on("input", render);
+    $("#filterStatus, #filterSort").on("change", render);
+    $("#resetFilters").on("click", function () {
+      $("#filterTasks")[0].reset();
+      $("#dateRange").val(""); dateStart = dateEnd = null;
+      render();
+    });
+
+    // Open detail (click title/value, not the checkbox)
+    $list.on("click", ".task-open", function () {
+      openDetail($(this).closest(".task-item").data("id"));
+    });
+
+    // Row checkbox
+    $list.on("change", ".task-check", function () {
+      var id = $(this).closest(".task-item").data("id");
+      selected[id] = this.checked;
+      $(this).closest(".task-item").toggleClass("is-selected", this.checked);
+      syncSelectAll(); updateBulkBar();
+    });
+
+    // Select all (within current filtered view)
+    $("#selectAll").on("change", function () {
+      var on = this.checked;
+      applyFilters(tasks).forEach(function (t) { selected[t.id] = on; });
+      render();
+    });
+
+    // Bulk actions
+    $("#bulkExecute").on("click", function () {
+      var ids = selectedIds(); if (ids.length) supportTasks(ids);
+    });
+    $("#bulkDecline").on("click", function () {
+      var ids = selectedIds(); if (ids.length) declineTasks(ids);
+    });
+
+    // Modal actions (single task)
+    $("#d_support").on("click", function () {
+      var id = $("#task-detail").data("current-id");
+      $("#task-detail").modal("hide"); if (id) supportTasks([id]);
+    });
+    $("#d_decline").on("click", function () {
+      var id = $("#task-detail").data("current-id");
+      $("#task-detail").modal("hide"); if (id) declineTasks([id]);
+    });
+
+    loadTasks();
+  });
+})();
+</script>
+</body>
+</html>

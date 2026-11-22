@@ -41,6 +41,9 @@ let createItem		= window.location.origin + '/create-item';
 let createBudget		= window.location.origin + '/create-budget';
 let sellProduct		= window.location.origin + '/sell-product';
 let budgetSuccess 	= window.location.origin + '/create-budget-success';
+let businessInfo 		= window.location.origin + '/business';
+let businessBudget 	= window.location.origin + '/business-budgets';
+let businessesUrl 	= window.location.origin + '/businesses';
 let conUrl   		= new URL( window.location.href );
 
 function generateRandomString(source, length){
@@ -2529,7 +2532,7 @@ if( location.href.includes( signupUrl ) ){
 									}
 									this.innerText = "Login Failed...";
 									setTimeout( ()=>{
-										location.reload();
+										//location.reload();
 									}, 10000 );
 								}
 							});
@@ -2543,7 +2546,7 @@ if( location.href.includes( signupUrl ) ){
 						}
 						this.innerText = "Creating Wallet Failed...";
 						setTimeout( ()=>{
-							location.reload();
+							//location.reload();
 						}, 15000 );
 					}
 				});
@@ -3038,6 +3041,1132 @@ function setAccountRank(){
 			}
 		}
 	});
+}
+
+if (location.href.includes(businessesUrl)) {
+
+  (async function () {
+    "use strict";
+
+	if(  ! Scriptbill.s.currentNote || ! Scriptbill.isJsonable( Scriptbill.s.currentNote )  ){
+		location.href = loginUrl;
+		return;
+	}
+
+	let note 		= JSON.parse( Scriptbill.s.currentNote );
+
+	 if( note.rankPref != "businessManager"){
+		location.href 	= dashboardUrl;
+		return;
+	} 
+
+	setAccountRank();
+	
+
+    var DEFAULT_BUSINESSES = [
+      { id: "BIZ-001", name: "Ikeja Fresh Mart", category: "Retail", location: "Ikeja, Lagos",
+        owner: "Jane Doe", desc: "Neighborhood grocery and fresh produce store.",
+        salesCount: 42, salesValue: 18450.00, addedAt: "2026-10-02" },
+      { id: "BIZ-002", name: "Yaba Byte Labs", category: "Technology", location: "Yaba, Lagos",
+        owner: "Tunde Bello", desc: "Software and device repair workshop.",
+        salesCount: 17, salesValue: 9320.50, addedAt: "2026-10-18" },
+      { id: "BIZ-003", name: "Corner Suya Spot", category: "Food & Drink", location: "Surulere, Lagos",
+        owner: "Amaka N.", desc: "Grilled suya and small chops vendor.",
+        salesCount: 88, salesValue: 6610.00, addedAt: "2026-11-05" }
+    ];
+
+    var businesses = [];
+    var listEl, noneEl, addModalEl;
+
+    // ---- Small DOM helpers (replace jQuery) ----
+    function byId(id) { return document.getElementById(id); }
+
+    function setText(id, value) {
+      var el = byId(id);
+      if (el) el.textContent = value;
+    }
+
+    function getVal(id) {
+      var el = byId(id);
+      return el ? el.value : "";
+    }
+
+    function show(el) {
+      if (!el) return;
+      el.style.display = "";
+      if (getComputedStyle(el).display === "none") el.style.display = "block";
+    }
+
+    function hide(el) {
+      if (el) el.style.display = "none";
+    }
+
+    function on(ids, eventName, handler) {
+      ids.forEach(function (id) {
+        var el = byId(id);
+        if (el) el.addEventListener(eventName, handler);
+      });
+    }
+
+    // Escape text before it goes into innerHTML (users type these values in the Add form)
+    function esc(str) {
+      return String(str == null ? "" : str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function money(n) {
+      return "$" + Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    // ---- Modal (replaces $("#add-business").modal("show"/"hide")) ----
+    var hasBs5Modal = !!(window.bootstrap && window.bootstrap.Modal);
+    var backdropEl = null;
+    var openModalEl = null;
+
+    function onEscKey(e) {
+      if (e.key === "Escape" && openModalEl) hideModal(openModalEl);
+    }
+
+    function showModal(modal) {
+      if (!modal) return;
+      if (hasBs5Modal) {
+        window.bootstrap.Modal.getOrCreateInstance(modal).show();
+        return;
+      }
+      modal.style.display = "block";
+      modal.removeAttribute("aria-hidden");
+      modal.setAttribute("aria-modal", "true");
+      document.body.classList.add("modal-open");
+
+      backdropEl = document.createElement("div");
+      backdropEl.className = "modal-backdrop fade";
+      document.body.appendChild(backdropEl);
+
+      void modal.offsetWidth; // reflow so the fade-in runs
+      modal.classList.add("show");
+      backdropEl.classList.add("show");
+
+      openModalEl = modal;
+      document.addEventListener("keydown", onEscKey);
+
+      var firstField = modal.querySelector("input, select, textarea");
+      if (firstField) firstField.focus();
+    }
+
+    function hideModal(modal) {
+      if (!modal) return;
+      if (hasBs5Modal) {
+        window.bootstrap.Modal.getOrCreateInstance(modal).hide();
+        return;
+      }
+      modal.classList.remove("show");
+      modal.style.display = "none";
+      modal.setAttribute("aria-hidden", "true");
+      modal.removeAttribute("aria-modal");
+      document.body.classList.remove("modal-open");
+      if (backdropEl) {
+        backdropEl.remove();
+        backdropEl = null;
+      }
+      openModalEl = null;
+      document.removeEventListener("keydown", onEscKey);
+    }
+
+    function wireModal(modal) {
+      if (!modal || hasBs5Modal) return; // Bootstrap 5 handles all of this itself
+      var selector = "#" + modal.id;
+
+      // Buttons that open the modal, e.g. <button data-toggle="modal" data-target="#add-business">
+      document.addEventListener("click", function (e) {
+        var trigger = e.target.closest('[data-toggle="modal"], [data-bs-toggle="modal"]');
+        if (!trigger) return;
+        var target = trigger.getAttribute("data-target") ||
+                     trigger.getAttribute("data-bs-target") ||
+                     trigger.getAttribute("href");
+        if (target !== selector) return;
+        e.preventDefault();
+        showModal(modal);
+      });
+
+      // Close buttons and clicks on the dark area outside the dialog
+      modal.addEventListener("click", function (e) {
+        if (e.target.closest('[data-dismiss="modal"], [data-bs-dismiss="modal"]') || e.target === modal) {
+          hideModal(modal);
+        }
+      });
+    }
+
+    // ---- Data ----
+    async function loadBusinesses() {
+      // Supabase example:
+      // const { data } = await supabase.from('businesses').select('*').eq('user_id', uid);
+      // businesses = data;
+
+	  businesses = await Scriptbill.loadBusinesses();
+
+	  /*if(! businesses || ! businesses.length)
+      	businesses = DEFAULT_BUSINESSES.slice();*/
+	  //
+      render();
+    }
+
+    async function saveBusiness(b) {
+      // Supabase example:
+      // const { data } = await supabase.from('businesses').insert(b).select().single();
+      // b.id = data.id;
+      /* b.id = "BIZ-" + String(Date.now()).slice(-5);
+      b.salesCount = 0;
+      b.salesValue = 0;
+      b.addedAt = moment().format("YYYY-MM-DD");
+      businesses.unshift(b); */
+	  Scriptbill.budgetConfig = Object.assign(b);
+	  let details = Object.assign( Scriptbill.defaultBlock );
+	  details.transType = "CREATEBUDGET";
+
+	  if( b.budgetID ){
+		let blocks = await Scriptbill.getTransBlock(1, {
+			transType : "CREATEBUDGET",
+			budgetID: b.budgetID,
+			transTime: `${Scriptbill.currentTime()} >=`
+		});
+
+		if( ! blocks || ! blocks.length ){
+			Scriptbill.budgetConfig.budgetID = "";
+		}
+	  }
+	  Scriptbill.createScriptbillBudget(Scriptbill.budgetConfig).then(async (block)=>{
+			if( block.transType == "CREATEBUDGET" || block.transType == "UPDATEBUDGET"){
+				await Scriptbill.createAlert(`Business Added Successfully with ID: ${block.budgetID}`);
+				businesses = await Scriptbill.loadBusinesses();
+				render();
+			}
+	  });
+      render();
+    }
+
+    // ---- Filtering ----
+    function applyFilters(arr) {
+      var q = getVal("bizSearch").trim().toLowerCase();
+      var cat = getVal("bizCategory");
+      var sort = getVal("bizSort");
+
+      var out = arr.filter(function (b) {
+        if (q && (b.agreement.name + " " + b.agreement.location).toLowerCase().indexOf(q) === -1) return false;
+        if (cat && b.agreement.category !== cat) return false;
+        return true;
+      });
+
+      out.sort(function (a, b) {
+        if (sort === "sales") return b.agreement.value - a.agreement.value;
+        if (sort === "name") return a.greement.name.localeCompare(b.agreement.name);
+        return moment(b.transTime).valueOf() - moment(a.transTime).valueOf();
+      });
+
+	  
+
+      return out;
+    }
+
+
+	function calculculateScriptbillBusiness(arr){
+		let trans_time = window.transTime ?? "";
+		const out = arr.map(async (block)=>{
+			let allSale = [];
+			let trans = await Scriptbill.getTransBlock( 100, {
+				budgetID: block.budgetID,
+				transType: "BUYPRODUCT",
+				transTime: trans_time
+			});
+
+			let trans2 = await Scriptbill.getTransBlock( 100, {
+				budgetID: block.budgetID,
+				transType: "PRODUCTSUB",
+				transTime: trans_time
+			});
+			allSale.push( ...trans, ...trans2 );
+			let productIDs = allSale.map((b)=>{
+				if( ! block.total_sales )
+					block.total_sales = 0;
+
+				block.total_sales += parseFloat(b.transValue);
+				return b.productID;
+			});
+			productIDs = new Set(productIDs);
+			block.productCount = productIDs.length;
+
+			return block;
+		});
+
+		return out;
+	}
+
+    // ---- Render ----
+    function render() {
+      var view = applyFilters(businesses);
+	  //view 		= calculculateScriptbillBusiness(view);
+
+      if (listEl) {
+        if (!view.length) {
+          listEl.innerHTML = "";
+          show(noneEl);
+        } else {
+          hide(noneEl);
+          listEl.innerHTML = view.map(function (b) {
+            var initials = b.name.split(" ").slice(0, 2).map(function (w) { return w[0]; }).join("").toUpperCase();
+            return (
+				'<a href="/business?id='+ b.id + '">' +
+             '<div class="transaction-item biz-item px-4 py-3" data-id="' + b.id + '">' +
+            '<div class="row align-items-center">' +
+              '<div class="col-auto" style="width:64px;"><div class="biz-logo">' + initials + '</div></div>' +
+              '<div class="col col-sm-5">' +
+                '<span class="d-block text-4">' + b.name + '</span>' +
+                '<span class="text-muted"><i class="fas fa-map-marker-alt text-1 mr-1"></i>' + b.location + '</span>' +
+              '</div>' +
+              '<div class="col-auto col-sm-3 d-none d-sm-block"><span class="text-muted">' + b.category + '</span></div>' +
+              '<div class="col-auto col-sm-2 d-none d-sm-block text-center text-4">' + b.salesCount + '</div>' +
+              '<div class="col col-sm-2 text-right text-4">' + money(b.salesValue) + '</div>' +
+            '</div>' +
+          '</div>' +
+		  '</a>'
+            );
+          }).join("");
+        }
+      }
+
+      // sidebar summary
+      setText("bizCount", businesses.length);
+      var total = businesses.reduce(function (s, b) { return s + b.agreement.value; }, 0);
+      setText("bizTotal", money(total));
+    }
+
+    // ---- Events ----
+    function init() {
+      listEl = byId("bizList");
+      noneEl = byId("noBiz");
+      addModalEl = byId("add-business");
+
+      wireModal(addModalEl);
+
+      on(["bizSearch"], "input", render);
+      on(["bizCategory", "bizSort"], "change", render);
+
+      if (listEl) {
+        listEl.addEventListener("click", function (e) {
+          var row = e.target.closest(".biz-item");
+          if (!row || !listEl.contains(row)) return;
+          window.location.href = "/business?id=" + encodeURIComponent(row.dataset.id);
+        });
+      }
+
+      on(["addBizForm"], "submit", function (e) {
+        e.preventDefault(); // stop the browser from reloading the page
+
+        var nameEl = byId("abName");
+        var name = nameEl ? nameEl.value.trim() : "";
+        if (!name) {
+          if (nameEl) nameEl.focus();
+          return;
+        }
+
+        saveBusiness({
+          name: name,
+          category: getVal("abCategory"),
+          location: getVal("abLocation").trim(),
+          owner: getVal("abOwner").trim(),
+          desc: getVal("abDesc").trim()
+        });
+
+        this.reset();
+        hideModal(addModalEl);
+      });
+
+      loadBusinesses();
+    }
+
+    // Replaces $(function(){ ... })
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+
+}
+
+if( location.href.includes( businessBudget )){
+
+	
+	(function () {
+		"use strict";
+
+		if(  ! Scriptbill.s.currentNote || ! Scriptbill.isJsonable( Scriptbill.s.currentNote )  ){
+			location.href = loginUrl;
+			return;
+		}
+
+		let note 		= JSON.parse( Scriptbil.s.currentNote );
+
+		if( ! note.rankPref != "businessManager"){
+			location.href 	= dashboardUrl;
+			return;
+		}
+
+		// ---- Default/dummy data. Swap this out for a Supabase fetch. ----
+		var DEFAULT_TASKS = [
+			{ id: "TSK-00001", budgetId: "BID-10293", title: "Payroll Disbursement", value: 1250.00, fee: 12.50,
+			execAt: "2026-11-18T09:00:00", requestedBy: "Finance Bot", status: "Scheduled",
+			desc: "Release monthly payroll to 14 verified wallet addresses under budget BID-10293." },
+			{ id: "TSK-00002", budgetId: "BID-10311", title: "Vendor Settlement", value: 540.20, fee: 5.40,
+			execAt: "2026-11-17T15:30:00", requestedBy: "Smith Rhodes", status: "Awaiting Signature",
+			desc: "Settle outstanding invoice for Envato Pty Ltd member payment." },
+			{ id: "TSK-00003", budgetId: "BID-10293", title: "Rank Bond Purchase", value: 100.00, fee: 1.00,
+			execAt: "2026-11-20T11:00:00", requestedBy: "Smith Rhodes", status: "Pending",
+			desc: "Buy a rank bond to upgrade wallet rank from CMBF Beginner." },
+			{ id: "TSK-00004", budgetId: "BID-10450", title: "Refund to Client", value: 320.75, fee: 3.20,
+			execAt: "2026-11-19T08:15:00", requestedBy: "Support Desk", status: "Scheduled",
+			desc: "Process refund for duplicate deposit flagged in ticket #4471." },
+			{ id: "TSK-00005", budgetId: "BID-10450", title: "Loan Repayment", value: 2000.00, fee: 20.00,
+			execAt: "2026-11-25T10:00:00", requestedBy: "Loan Engine", status: "Pending",
+			desc: "Scheduled repayment installment against active loan agreement." },
+			{ id: "TSK-00006", budgetId: "BID-10311", title: "Treasury Top-up", value: 780.00, fee: 7.80,
+			execAt: "2026-11-21T13:45:00", requestedBy: "Smith Rhodes", status: "Awaiting Signature",
+			desc: "Move funds into treasury reserve wallet ahead of month end." }
+		];
+
+		var tasks = [];          // working set (what's left after declines)
+		var selected = {};       // id -> true
+		var dateStart = null, dateEnd = null;
+		var currentId = null;    // task open in the detail modal (replaces .data("current-id"))
+		var datePicker = null;
+
+		var listEl, noTasksEl, modalEl;
+
+		// ---- Small DOM helpers (replace jQuery) ----
+		function byId(id) { return document.getElementById(id); }
+
+		function setText(id, value) {
+			var el = byId(id);
+			if (el) el.textContent = value;
+		}
+
+		function getVal(id) {
+			var el = byId(id);
+			return el ? el.value : "";
+		}
+
+		function show(el) {
+			if (!el) return;
+			el.style.display = "";
+			if (getComputedStyle(el).display === "none") el.style.display = "block";
+		}
+
+		function hide(el) {
+			if (el) el.style.display = "none";
+		}
+
+		function on(ids, eventName, handler) {
+			ids.forEach(function (id) {
+			var el = byId(id);
+			if (el) el.addEventListener(eventName, handler);
+			});
+		}
+
+		// Escape text before it goes into innerHTML (important once data comes from Supabase)
+		function esc(str) {
+			return String(str == null ? "" : str)
+			.replace(/&/g, "&amp;")
+			.replace(/</g, "&lt;")
+			.replace(/>/g, "&gt;")
+			.replace(/"/g, "&quot;")
+			.replace(/'/g, "&#39;");
+		}
+
+		// ---- Data load. Replace body with Supabase when ready. ----
+		async function loadTasks() {
+			// Example Supabase shape (uncomment & adapt):
+			// const { data } = await supabase.from('tasks').select('*').eq('status','Pending');
+			// tasks = data.map(mapRow);
+			const businesses = await Scriptbill.loadBusinesses();
+
+			if(! businesses || ! businesses.length )
+				tasks = DEFAULT_TASKS.slice();
+
+			else {
+				let trans_time = parseInt(Scriptbill.currentTime() ) - Scriptbill.calculateTime("30 Days");
+				for(const budget in businesses ){
+					let eachT = await Scriptbill.getTransBlock(100, {
+						budgetID: budget.budgetID,
+						transType: `ADDITEM`,
+						transTime: `${trans_time} >=`
+					});
+					tasks.push(...eachT);
+					eachT = await Scriptbill.getTransBlock(100, {
+						budgetID: budget.budgetID,
+						transType: `UPDATEITEM`,
+						transTime: `${trans_time} >=`
+					});
+					tasks.push(...eachT);
+				}
+			}
+
+			tasks = tasks.filter((t)=>{
+				return !! t.agreement && t.agreement.itemID;
+			});
+			render();
+		}
+
+		function money(n) {
+			return "$" + Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+		}
+		function fmtDay(iso)  { return moment(iso).format("DD"); }
+		function fmtMon(iso)  { return moment(iso).format("MMM"); }
+		function fmtFull(iso) { return moment(iso).format("DD MMM YYYY, h:mm A"); }
+
+		function statusBadge(s) {
+			var map = {
+			"Pending": "text-warning",
+			"Scheduled": "text-info",
+			"Awaiting Signature": "text-primary"
+			};
+			var cls = map[s] || "text-muted";
+			// title gives a native tooltip; data-bs-* lets Bootstrap 5 upgrade it if loaded
+			return '<span class="' + cls + ' badge-soft" data-bs-toggle="tooltip" title="' + esc(s) + '">' +
+					'<i class="fas fa-circle text-1 mr-1"></i>' + esc(s) +
+				'</span>';
+		}
+
+		// ---- Filtering ----
+		function applyFilters(arr) {
+			var bId  = getVal("filterBudgetId").trim().toLowerCase();
+			var min  = parseFloat(getVal("filterMinValue"));
+			var max  = parseFloat(getVal("filterMaxValue"));
+			var stat = getVal("filterStatus");
+			var sort = getVal("filterSort");
+
+			var out = arr.filter(function (t) {
+			if (bId && t.budgetId.toLowerCase().indexOf(bId) === -1) return false;
+			if (!isNaN(min) && t.value < min) return false;
+			if (!isNaN(max) && t.value > max) return false;
+			if (stat && t.status !== stat) return false;
+			if (dateStart && moment(t.execAt).isBefore(dateStart, "day")) return false;
+			if (dateEnd && moment(t.execAt).isAfter(dateEnd, "day")) return false;
+			return true;
+			});
+
+			out.sort(function (a, b) {
+			var da = moment(a.execAt).valueOf(), db = moment(b.execAt).valueOf();
+			return sort === "latest" ? db - da : da - db;
+			});
+			return out;
+		}
+
+		// ---- Render ----
+		function render() {
+			var view = applyFilters(tasks);
+			if (!listEl) return;
+
+			if (!view.length) {
+			listEl.innerHTML = "";
+			show(noTasksEl);
+			} else {
+			hide(noTasksEl);
+			listEl.innerHTML = view.map(function (t) {
+				var isSel = !!selected[t.id];
+				var safeId = esc(t.blockID);
+				return (
+				'<div class="transaction-item task-item px-4 py-3 ' + (isSel ? "is-selected" : "") + '" data-id="' + safeId + '">' +
+					'<div class="row align-items-center flex-row">' +
+					'<div class="col-auto chk-cell text-center">' +
+						'<div class="custom-control custom-checkbox">' +
+						'<input type="checkbox" class="custom-control-input task-check" id="chk_' + safeId + '" ' + (isSel ? "checked" : "") + '>' +
+						'<label class="custom-control-label" for="chk_' + safeId + '"></label>' +
+						'</div>' +
+					'</div>' +
+					'<div class="col-2 col-sm-1 text-center">' +
+						'<span class="d-block text-4 font-weight-300">' + fmtDay(t.execAt) + '</span>' +
+						'<span class="d-block text-1 font-weight-300 text-uppercase">' + fmtMon(t.execAt) + '</span>' +
+					'</div>' +
+					'<div class="col col-sm-5 task-open" style="cursor:pointer;">' +
+						'<span class="d-block text-4">' + esc(t.title) + '</span>' +
+						'<span class="text-muted">' + esc(t.budgetID) + ' &bull; ' + safeId + '</span>' +
+					'</div>' +
+					'<div class="col-auto col-sm-2 d-none d-sm-block text-center text-3">' + statusBadge(t.status) + '</div>' +
+					'<div class="col-3 col-sm-2 text-right text-4 task-open" style="cursor:pointer;">' +
+						'<span class="text-wrap">' + money(t.transValue) + '</span>' +
+					'</div>' +
+					'</div>' +
+				'</div>'
+				);
+			}).join("");
+			}
+
+			syncSelectAll();
+			updateBulkBar();
+			initTooltips();
+		}
+
+		function initTooltips() {
+			// Only runs if Bootstrap 5 (no jQuery) is on the page. Otherwise the native title tooltip shows.
+			if (!window.bootstrap || !window.bootstrap.Tooltip || !listEl) return;
+			listEl.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
+			window.bootstrap.Tooltip.getOrCreateInstance(el);
+			});
+		}
+
+		// ---- Selection ----
+		function selectedIds() {
+			return Object.keys(selected).filter(function (k) { return selected[k]; });
+		}
+
+		function updateBulkBar() {
+			var ids = selectedIds();
+			setText("selectedCount", ids.length + " selected");
+			["bulkExecute", "bulkDecline"].forEach(function (id) {
+			var btn = byId(id);
+			if (btn) btn.disabled = ids.length === 0;
+			});
+		}
+
+		function syncSelectAll() {
+			var view = applyFilters(tasks);
+			var allSel = view.length > 0 && view.every(function (t) { return selected[t.id]; });
+			var box = byId("selectAll");
+			if (box) box.checked = allSel;
+		}
+
+		// ---- Modal (replaces $("#task-detail").modal("show"/"hide")) ----
+		var backdropEl = null;
+
+		function onEscKey(e) {
+			if (e.key === "Escape") hideModal();
+		}
+
+		function showModal() {
+			if (!modalEl) return;
+
+			// Use Bootstrap 5's modal if it's loaded
+			if (window.bootstrap && window.bootstrap.Modal) {
+			window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
+			return;
+			}
+
+			// Fallback: plain JS version of what Bootstrap's modal does
+			modalEl.style.display = "block";
+			modalEl.removeAttribute("aria-hidden");
+			modalEl.setAttribute("aria-modal", "true");
+			document.body.classList.add("modal-open");
+
+			backdropEl = document.createElement("div");
+			backdropEl.className = "modal-backdrop fade";
+			document.body.appendChild(backdropEl);
+
+			// force a reflow so the fade-in transition runs
+			void modalEl.offsetWidth;
+			modalEl.classList.add("show");
+			backdropEl.classList.add("show");
+
+			document.addEventListener("keydown", onEscKey);
+		}
+
+		function hideModal() {
+			if (!modalEl) return;
+
+			if (window.bootstrap && window.bootstrap.Modal) {
+			window.bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+			return;
+			}
+
+			modalEl.classList.remove("show");
+			modalEl.style.display = "none";
+			modalEl.setAttribute("aria-hidden", "true");
+			modalEl.removeAttribute("aria-modal");
+			document.body.classList.remove("modal-open");
+			if (backdropEl) {
+			backdropEl.remove();
+			backdropEl = null;
+			}
+			document.removeEventListener("keydown", onEscKey);
+		}
+
+		function wireModalClose() {
+			if (!modalEl || (window.bootstrap && window.bootstrap.Modal)) return; // Bootstrap 5 handles this itself
+
+			// Close buttons (supports both Bootstrap 4 and 5 attribute names)
+			modalEl.addEventListener("click", function (e) {
+			if (e.target.closest('[data-dismiss="modal"], [data-bs-dismiss="modal"]')) {
+				hideModal();
+				return;
+			}
+			// Click on the dark area outside the dialog
+			if (e.target === modalEl) hideModal();
+			});
+		}
+
+		// ---- Open detail modal ----
+		function openDetail(id) {
+			var t = tasks.find(function (x) { return x.id === id; });
+			if (!t) return;
+			setText("d_title", t.title);
+			setText("d_value", money(t.value));
+			setText("d_valueLine", money(t.value));
+			setText("d_fee", "-" + money(t.fee));
+			setText("d_net", money(t.value - t.fee));
+			setText("d_budgetId", t.budgetId);
+			setText("d_taskId", t.id);
+			setText("d_execDate", moment(t.execAt).format("DD MMM YYYY"));
+			setText("d_execFull", fmtFull(t.execAt));
+			setText("d_requestedBy", t.requestedBy);
+			setText("d_desc", t.desc);
+			setText("d_status", t.status);
+			currentId = id;
+			showModal();
+		}
+
+		// ---- Actions ----
+		function supportTasks(ids) {
+			// TODO: call Supabase to mark supported/executed, e.g.
+			// await supabase.from('tasks').update({status:'Executed'}).in('id', ids);
+			console.log("SUPPORT/EXECUTE:", ids);
+			ids.forEach(async (id)=>{
+				let block = await Scriptbill.getTransBlock(1, {blockID: id});
+
+				if( block && block.blockID ){
+					let details = Object.assign(block);
+					details.transType = "BUSINESS";
+					Scriptbill.generateScriptbillTransactionBlock(details, null, block);
+				}
+			});
+			removeTasks(ids);
+		}
+
+		function declineTasks(ids) {
+			// TODO: call Supabase to trash/decline, e.g.
+			// await supabase.from('tasks').delete().in('id', ids);
+			console.log("DECLINE/TRASH:", ids);
+			removeTasks(ids);
+		}
+
+		function removeTasks(ids) {
+			tasks = tasks.filter(function (t) { return ids.indexOf(t.blockID) === -1; });
+			ids.forEach(function (id) { delete selected[id]; });
+			let removed = JSON.parse(Scriptbill.l.removedTask ?? '[]');
+			removed.push(...ids);
+			Scriptbill.l.removedTask = JSON.stringify(removed);
+			render();
+		}
+
+		// ---- Date range picker: flatpickr (no jQuery) in place of daterangepicker ----
+		function initDatePicker() {
+			var input = byId("dateRange");
+			if (!input || typeof window.flatpickr !== "function") return;
+
+			datePicker = window.flatpickr(input, {
+			mode: "range",
+			dateFormat: "d M Y",
+			onChange: function (picked) {
+				if (picked.length === 2) {
+				dateStart = moment(picked[0]);
+				dateEnd = moment(picked[1]);
+				render();
+				} else if (picked.length === 0) {
+				dateStart = dateEnd = null;
+				render();
+				}
+			}
+			});
+		}
+
+		// ---- Events ----
+		function init() {
+			listEl = byId("taskList");
+			noTasksEl = byId("noTasks");
+			modalEl = byId("task-detail");
+
+			initDatePicker();
+			wireModalClose();
+
+			// Live filters
+			on(["filterBudgetId", "filterMinValue", "filterMaxValue"], "input", render);
+			on(["filterStatus", "filterSort"], "change", render);
+			on(["resetFilters"], "click", function () {
+			var form = byId("filterTasks");
+			if (form) form.reset();
+			if (datePicker) datePicker.clear();
+			var dr = byId("dateRange");
+			if (dr) dr.value = "";
+			dateStart = dateEnd = null;
+			render();
+			});
+
+			if (listEl) {
+			// Open detail (click title/value, not the checkbox)
+			listEl.addEventListener("click", function (e) {
+				var openEl = e.target.closest(".task-open");
+				if (!openEl || !listEl.contains(openEl)) return;
+				var row = openEl.closest(".task-item");
+				if (row) openDetail(row.dataset.id);
+			});
+
+			// Row checkbox
+			listEl.addEventListener("change", function (e) {
+				var box = e.target.closest(".task-check");
+				if (!box) return;
+				var row = box.closest(".task-item");
+				if (!row) return;
+				selected[row.dataset.id] = box.checked;
+				row.classList.toggle("is-selected", box.checked);
+				syncSelectAll();
+				updateBulkBar();
+			});
+			}
+
+			// Select all (within current filtered view)
+			on(["selectAll"], "change", function () {
+			var checked = this.checked;
+			applyFilters(tasks).forEach(function (t) { selected[t.blockID] = checked; });
+			render();
+			});
+
+			// Bulk actions
+			on(["bulkExecute"], "click", function () {
+			var ids = selectedIds();
+			if (ids.length) supportTasks(ids);
+			});
+			on(["bulkDecline"], "click", function () {
+			var ids = selectedIds();
+			if (ids.length) declineTasks(ids);
+			});
+
+			// Modal actions (single task)
+			on(["d_support"], "click", function () {
+			var id = currentId;
+			hideModal();
+			if (id) supportTasks([id]);
+			});
+			on(["d_decline"], "click", function () {
+			var id = currentId;
+			hideModal();
+			if (id) declineTasks([id]);
+			});
+
+			loadTasks();
+		}
+
+		// Replaces $(function(){ ... })
+		if (document.readyState === "loading") {
+			document.addEventListener("DOMContentLoaded", init);
+		} else {
+			init();
+		}
+	})();
+
+}
+
+if( location.href.includes( `businessInfo` ) ){
+
+	(function () {
+	"use strict";
+
+	if(  ! Scriptbill.s.currentNote || ! Scriptbill.isJsonable( Scriptbill.s.currentNote ) ){
+		location.href = loginUrl;
+		return;
+	}
+
+	let note 		= JSON.parse( Scriptbil.s.currentNote );
+
+	if( ! note.rankPref != "businessManager"){
+		location.href 	= dashboardUrl;
+		return;
+	}
+
+	function $(id) { return document.getElementById(id); }
+  function setText(id, val) { var el = $(id); if (el) el.textContent = (val === null || val === undefined || val === "") ? "-" : val; }
+  function fmtMoney(n) {
+    return "$" + Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function M(d) { return (typeof moment === "function") ? moment(d) : null; }
+  function fmtDate(iso, pattern) {
+    var m = M(iso);
+    if (m) return m.format(pattern);
+    var d = new Date(iso);
+    var mon = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][d.getMonth()];
+    var day = String(d.getDate()).padStart(2, "0");
+    if (pattern === "DD") return day;
+    if (pattern === "MMM") return mon;
+    if (pattern === "DD MMM YYYY") return day + " " + mon + " " + d.getFullYear();
+    var h = d.getHours(), ampm = h >= 12 ? "PM" : "AM";
+    h = h % 12 || 12;
+    var min = String(d.getMinutes()).padStart(2, "0");
+    return day + " " + mon + " " + d.getFullYear() + ", " + h + ":" + min + " " + ampm;
+  }
+  function timeValue(iso) {
+    var m = M(iso);
+    return m ? m.valueOf() : new Date(iso).getTime();
+  }
+  function qsParam(name) {
+    var m = new RegExp("[?&]" + name + "=([^&]*)").exec(window.location.search);
+    return m ? decodeURIComponent(m[1]) : null;
+  }
+
+  // --- dummy data: replace with Supabase. Extra fields drive the popup. ---
+  var DEFAULT_BUSINESSES = {
+    "BIZ-001": { id:"BIZ-001", name:"Ikeja Fresh Mart", category:"Retail", location:"Ikeja, Lagos", owner:"Jane Doe", desc:"Neighborhood grocery and fresh produce store.", addedAt:"2026-10-02" },
+    "BIZ-002": { id:"BIZ-002", name:"Yaba Byte Labs", category:"Technology", location:"Yaba, Lagos", owner:"Tunde Bello", desc:"Software and device repair workshop.", addedAt:"2026-10-18" },
+    "BIZ-003": { id:"BIZ-003", name:"Corner Suya Spot", category:"Food & Drink", location:"Surulere, Lagos", owner:"Amaka N.", desc:"Grilled suya and small chops vendor.", addedAt:"2026-11-05" }
+  };
+
+  var DEFAULT_SALES = {
+    "BIZ-001": [
+      { id:"SAL-1001", item:"Weekly grocery bundle", ref:"INV-5521", amount:420.00, qty:1, method:"Scriptbill", customer:"Walk-in", status:"Completed", note:"Delivered to customer address.", at:"2026-11-16T10:20:00" },
+      { id:"SAL-1002", item:"Fresh produce crate", ref:"INV-5522", amount:180.50, qty:2, method:"Cash", customer:"Mrs. Okafor", status:"Completed", note:"Regular weekly order.", at:"2026-11-15T14:05:00" },
+      { id:"SAL-1003", item:"Household supplies", ref:"INV-5523", amount:260.00, qty:1, method:"Card", customer:"Walk-in", status:"Refunded", note:"One item returned, refund issued.", at:"2026-11-14T09:40:00" },
+      { id:"SAL-1004", item:"Beverage restock", ref:"INV-5524", amount:95.25, qty:5, method:"Scriptbill", customer:"Corner Shop Ltd", status:"Completed", note:"", at:"2026-11-12T16:30:00" }
+    ],
+    "BIZ-002": [
+      { id:"SAL-2001", item:"Laptop screen repair", ref:"JOB-331", amount:540.00, qty:1, method:"Card", customer:"David A.", status:"Completed", note:"14-day warranty on parts.", at:"2026-11-16T11:00:00" },
+      { id:"SAL-2002", item:"Custom web build", ref:"JOB-332", amount:1200.00, qty:1, method:"Scriptbill", customer:"Bright Logistics", status:"Pending", note:"50% deposit received.", at:"2026-11-13T13:10:00" }
+    ],
+    "BIZ-003": [
+      { id:"SAL-3001", item:"Suya platter (large)", ref:"R-8841", amount:35.00, qty:1, method:"Cash", customer:"Walk-in", status:"Completed", note:"", at:"2026-11-16T19:40:00" },
+      { id:"SAL-3002", item:"Small chops tray", ref:"R-8842", amount:52.00, qty:2, method:"Scriptbill", customer:"Event order", status:"Completed", note:"For birthday party pickup.", at:"2026-11-16T20:15:00" },
+      { id:"SAL-3003", item:"Suya platter (small)", ref:"R-8843", amount:18.50, qty:1, method:"Cash", customer:"Walk-in", status:"Completed", note:"", at:"2026-11-15T18:05:00" }
+    ]
+  };
+
+  var biz = null, sales = [], dateStart = null, dateEnd = null;
+  var listEl = $("salesList"), noneEl = $("noSales");
+
+  async function loadBusiness(id) {
+	const businesses  =  await Scriptbill.loadBusinesses();
+
+	if( ! businesses ||  ! businesses.length )
+		return DEFAULT_BUSINESSES[id] || null;
+
+	const business = businesses.filter((biz)=>{
+		return biz.budgetID == id;
+	});
+
+	return business.pop();
+ }
+  async function loadSales(id) { 
+	const sales = await Scriptbill.loadBusinessSales(id);
+
+	if( ! sales || ! sales.length )
+		return (DEFAULT_SALES[id] || []).slice();
+
+	return sales;
+}
+
+  function initials(name) {
+    return name.split(" ").slice(0, 2).map(function (w) { return w[0]; }).join("").toUpperCase();
+  }
+
+  function renderHeader() {
+    if (!biz) { setText("bizName", "Business not found"); setText("bizInitials", "!"); return; }
+    setText("bizInitials", initials(biz.name));
+    setText("bizName", biz.name);
+    setText("bizLocation", biz.location);
+    setText("bizCategory", biz.category);
+    setText("bizDesc", biz.desc);
+    setText("bizOwner", biz.owner);
+    setText("bizId", biz.id);
+    setText("bizAdded", fmtDate(biz.addedAt, "DD MMM YYYY"));
+
+    var total = sales.reduce(function (s, x) { return s + x.amount; }, 0);
+    setText("totalValue", fmtMoney(total));
+    setText("salesCount", sales.length);
+    setText("avgSale", fmtMoney(sales.length ? total / sales.length : 0));
+  }
+
+  function applyFilters(arr) {
+	let removed = JSON.parse(Scriptbill.l.removedTask ?? "[]");
+	arr    = arr.filter((t)=>{
+			return ! removed.include(t.blockID);
+	});
+    var q = $("saleSearch").value.trim().toLowerCase();
+    var min = parseFloat($("minValue").value);
+    var max = parseFloat($("maxValue").value);
+    var pay = $("payMethod").value;
+    var sort = $("saleSort").value;
+
+    var out = arr.filter(function (s) {
+      if (q && (s.item + " " + s.ref).toLowerCase().indexOf(q) === -1) return false;
+      if (!isNaN(min) && s.amount < min) return false;
+      if (!isNaN(max) && s.amount > max) return false;
+      if (pay && s.method !== pay) return false;
+      if (dateStart && timeValue(s.at) < dateStart) return false;
+      if (dateEnd && timeValue(s.at) > dateEnd) return false;
+      return true;
+    });
+
+    out.sort(function (a, b) {
+      if (sort === "high") return b.amount - a.amount;
+      if (sort === "low") return a.amount - b.amount;
+      if (sort === "oldest") return timeValue(a.at) - timeValue(b.at);
+      return timeValue(b.at) - timeValue(a.at);
+    });
+    return out;
+  }
+
+  function methodBadge(m) {
+    var map = { "Scriptbill": "text-primary", "Cash": "text-success", "Card": "text-info" };
+    return '<span class="' + (map[m] || "text-muted") + '"><i class="fas fa-circle text-1 mr-1"></i>' + m + '</span>';
+  }
+
+  function saleRow(s) {
+    var div = document.createElement("div");
+    div.className = "transaction-item sale-item px-4 py-3";
+    div.setAttribute("data-id", s.id);
+    div.innerHTML =
+      '<div class="row align-items-center flex-row">' +
+        '<div class="col-2 col-sm-1 text-center">' +
+          '<span class="d-block text-4 font-weight-300">' + fmtDate(s.at, "DD") + '</span>' +
+          '<span class="d-block text-1 font-weight-300 text-uppercase">' + fmtDate(s.at, "MMM") + '</span>' +
+        '</div>' +
+        '<div class="col col-sm-6">' +
+          '<span class="d-block text-4">' + s.item + '</span>' +
+          '<span class="text-muted">' + s.ref + ' &bull; ' + fmtDate(s.at, "h:mm A") + '</span>' +
+        '</div>' +
+        '<div class="col-auto col-sm-3 d-none d-sm-block text-center text-3">' + methodBadge(s.method) + '</div>' +
+        '<div class="col-3 col-sm-2 text-right text-4">' + fmtMoney(s.amount) + '</div>' +
+      '</div>';
+    return div;
+  }
+
+  function renderSales() {
+    var view = applyFilters(sales);
+    listEl.innerHTML = "";
+    if (!view.length) { noneEl.style.display = "block"; }
+    else {
+      noneEl.style.display = "none";
+      var frag = document.createDocumentFragment();
+      view.forEach(function (s) { frag.appendChild(saleRow(s)); });
+      listEl.appendChild(frag);
+    }
+    var filteredTotal = view.reduce(function (sum, s) { return sum + s.amount; }, 0);
+    setText("filteredTotal", fmtMoney(filteredTotal));
+  }
+
+  // --- modal open/close (Bootstrap if present, manual fallback if not) ---
+  function showModal() {
+    var el = $("sale-detail");
+    if (window.jQuery && window.jQuery.fn && window.jQuery.fn.modal) {
+      window.jQuery(el).modal("show");
+      return;
+    }
+    // fallback
+    el.classList.add("show", "sb-modal-open");
+    el.style.display = "block";
+    el.removeAttribute("aria-hidden");
+    if (!document.querySelector(".sb-backdrop")) {
+      var bd = document.createElement("div");
+      bd.className = "sb-backdrop";
+      bd.addEventListener("click", hideModal);
+      document.body.appendChild(bd);
+    }
+    document.body.classList.add("modal-open");
+  }
+  function hideModal() {
+    var el = $("sale-detail");
+    if (window.jQuery && window.jQuery.fn && window.jQuery.fn.modal) {
+      window.jQuery(el).modal("hide");
+      return;
+    }
+    el.classList.remove("show", "sb-modal-open");
+    el.style.display = "none";
+    el.setAttribute("aria-hidden", "true");
+    var bd = document.querySelector(".sb-backdrop");
+    if (bd) bd.parentNode.removeChild(bd);
+    document.body.classList.remove("modal-open");
+  }
+
+  function openSaleDetail(id) {
+    var s = sales.find(function (x) { return x.id === id; });
+    if (!s) return;
+    var qty = s.qty || 1;
+    var unit = s.amount / qty;
+
+    setText("s_item", s.item);
+    setText("s_amount", fmtMoney(s.amount));
+    setText("s_date", fmtDate(s.at, "DD MMM YYYY"));
+    setText("s_unit", fmtMoney(unit));
+    setText("s_qty", qty);
+    setText("s_total", fmtMoney(s.amount));
+    setText("s_ref", s.ref);
+    setText("s_id", s.id);
+    setText("s_customer", s.customer);
+    setText("s_method", s.method);
+    setText("s_datetime", fmtDate(s.at, "DD MMM YYYY, h:mm A"));
+    setText("s_status", s.status);
+    setText("s_note", s.note);
+
+    showModal();
+  }
+
+  function initDateRange() {
+    if (typeof window.jQuery === "undefined" || !window.jQuery.fn || !window.jQuery.fn.daterangepicker) return;
+    var $jq = window.jQuery;
+    $jq("#dateRange").daterangepicker({ autoUpdateInput: false, locale: { cancelLabel: "Clear", format: "DD MMM YYYY" } });
+    $jq("#dateRange").on("apply.daterangepicker", function (ev, p) {
+      dateStart = p.startDate.startOf("day").valueOf();
+      dateEnd = p.endDate.endOf("day").valueOf();
+      this.value = p.startDate.format("DD MMM YYYY") + " - " + p.endDate.format("DD MMM YYYY");
+      renderSales();
+    });
+    $jq("#dateRange").on("cancel.daterangepicker", function () {
+      dateStart = dateEnd = null; this.value = ""; renderSales();
+    });
+  }
+
+  function init() {
+    var id = qsParam("id") || "BIZ-001";
+    biz = loadBusiness(id);
+    sales = loadSales(id);
+
+    renderHeader();
+    renderSales();
+    initDateRange();
+
+    // open popup on row click (event delegation)
+    listEl.addEventListener("click", function (e) {
+      var row = e.target.closest(".sale-item");
+      if (row) openSaleDetail(row.getAttribute("data-id"));
+    });
+
+    // close buttons / backdrop for the manual fallback path
+    document.querySelectorAll('#sale-detail [data-dismiss="modal"]').forEach(function (btn) {
+      btn.addEventListener("click", hideModal);
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") hideModal();
+    });
+
+    ["saleSearch", "minValue", "maxValue"].forEach(function (f) {
+      $(f).addEventListener("input", renderSales);
+    });
+    ["payMethod", "saleSort"].forEach(function (f) {
+      $(f).addEventListener("change", renderSales);
+    });
+    $("resetSales").addEventListener("click", function () {
+      $("filterSales").reset();
+      $("dateRange").value = "";
+      dateStart = dateEnd = null;
+      renderSales();
+    });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();
+
+	
 }
 
 if( location.href.includes( profileUrl ) && ! location.href.includes(bankUrl) ) {
@@ -7702,9 +8831,14 @@ if( location.href.includes( sellProduct )){
 
 						
 		fetch("/currencies.json").then( resp =>{ return resp.json(); } ).then( async result =>{
-			if(! note.budgetID){
+			if(! note.budgetID || (! note.businesses && ! note.businesses.length && note.rankPref == "businessManager")){
 				await Scriptbill.createAlert(`You need a running Scriptbank Budget to create a Product in the Scriptbank Network`);
-				location.href = createBudget;
+
+				if( note.rankPref != "businessManager" )
+					location.href = createBudget;
+
+				else 
+					location.href = businessesUrl;
 				return;
 			}
 

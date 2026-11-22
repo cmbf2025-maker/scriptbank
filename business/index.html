@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1.0, shrink-to-fit=no">
+<link href="/../scriptbill/images/icon32x32.png" rel="icon" />
+<title>Scriptbank - Business</title>
+<meta name="description" content="A app used to manage Scriptbill, a Cryptocurrency built against financial mishandling and misappropraition..">
+<meta name="author" content="scriptbank.com.ng">
+
+<link rel='stylesheet' href='https://fonts.googleapis.com/css?family=Rubik:300,300i,400,400i,500,500i,700,700i,900,900i' type='text/css'>
+
+<link rel="stylesheet" type="text/css" href="/vendor/bootstrap/css/bootstrap.min.css" />
+<link rel="stylesheet" type="text/css" href="/vendor/font-awesome/css/all.min.css" />
+<link rel="stylesheet" type="text/css" href="/vendor/bootstrap-select/css/bootstrap-select.min.css" />
+<link rel="stylesheet" type="text/css" href="/vendor/currency-flags/css/currency-flags.min.css" />
+<link rel="stylesheet" type="text/css" href="/vendor/owl.carousel/assets/owl.carousel.min.css" />
+<link rel="stylesheet" type="text/css" href="/vendor/daterangepicker/daterangepicker.css" />
+<link rel="stylesheet" type="text/css" href="/css/stylesheet.css" />
+<link rel="stylesheet" type="text/css" href="/css/css.css" />
+
+<style>
+  .sale-item { cursor: pointer; transition: background-color .15s ease; }
+  .sale-item:hover { background-color: rgba(0,0,0,.025); }
+  .biz-hero-logo { width: 64px; height: 64px; border-radius: 14px; display:flex; align-items:center; justify-content:center; background: rgba(255,255,255,.2); color:#fff; font-size: 1.6rem; }
+  #noSales { display:none; }
+  /* Manual modal fallback (only used if Bootstrap JS isn't present) */
+  .sb-modal-open { display:block !important; padding-right:15px; }
+  .sb-backdrop { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,.5); z-index:1040; }
+</style>
+</head>
+<body>
+
+<div id="preloader"><div data-loader="dual-ring"></div></div>
+
+<div id="main-wrapper">
+  <header id="header">
+    <div class="container">
+      <div class="header-row">
+        <div class="header-column justify-content-start">
+          <div class="logo"> <a class="d-flex" href="/" title="Scriptbill Cryptonote"><img src="/images/scriptbankLogo2.png" alt="Scriptbank" /></a> </div>
+          <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#header-nav"> <span></span> <span></span> <span></span> </button>
+          <nav class="primary-menu navbar navbar-expand-lg">
+            <div id="header-nav" class="collapse navbar-collapse">
+              <ul class="navbar-nav mr-auto">
+                <li><a href="/dashboard">Dashboard</a></li>
+                <li><a href="/transactions">Transactions</a></li>
+                <li><a href="/businesses">Businesses</a></li>
+                <li><a href="/send-money">Send/Request</a></li>
+                <li><a href="/help">Help</a></li>
+                <li><a href="/login?loggout=TRUE">Logout</a></li>
+              </ul>
+            </div>
+          </nav>
+        </div>
+        <div class="header-column justify-content-end">
+          <nav class="login-signup navbar navbar-expand">
+            <ul class="navbar-nav">
+              <li><a href="/profile">Settings</a> </li>
+              <li class="align-items-center h-auto ml-sm-3"><a class="btn btn-outline-primary shadow-none d-none d-sm-block" href="/login?loggout=TRUE">Sign out</a></li>
+              <li class="align-items-center h-auto ml-sm-3"><a class="btn btn-primary shadow-none d-none d-sm-block" href="/loan">Get Loan</a></li>
+            </ul>
+          </nav>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div id="content" class="py-4">
+    <div class="container">
+
+      <!-- Breadcrumb -->
+      <div class="mb-3">
+        <a href="/businesses" class="btn-link"><i class="fas fa-angle-left mr-1"></i>Back to Businesses</a>
+      </div>
+
+      <div class="row">
+
+        <!-- Left Panel: business profile + totals -->
+        <aside class="col-lg-3">
+          <div class="bg-primary shadow-sm rounded text-center p-3 mb-4 text-white">
+            <div class="d-flex justify-content-center mt-3 mb-3">
+              <div class="biz-hero-logo" id="bizInitials">--</div>
+            </div>
+            <p class="text-5 font-weight-700 mb-1" id="bizName">--</p>
+            <p class="text-3 opacity-8 mb-2"><i class="fas fa-map-marker-alt mr-1"></i><span id="bizLocation">--</span></p>
+            <span class="badge badge-light text-dark font-weight-500" id="bizCategory">--</span>
+          </div>
+
+          <div class="bg-light shadow-sm rounded text-center p-3 mb-4">
+            <div class="text-17 text-light my-3"><i class="fas fa-coins"></i></div>
+            <h3 class="text-9 font-weight-400" id="totalValue">$0.00</h3>
+            <p class="mb-2 text-muted opacity-8">Total Sales Value</p>
+            <div class="d-flex justify-content-between"><button class="btn-primary btn" id="buyStock">Buy Stock</button> <button class="btn-primary btn" id="sellStock">Sell Stocks</button></div>
+            <hr class="mx-n3">
+            <div class="d-flex">
+              <span class="mr-auto text-muted">Sales</span><span class="ml-auto font-weight-500" id="salesCount">0</span>
+            </div>
+            <div class="d-flex mt-2">
+              <span class="mr-auto text-muted">Avg. sale</span><span class="ml-auto font-weight-500" id="avgSale">$0.00</span>
+            </div>
+          </div>
+
+          <div class="bg-light shadow-sm rounded p-3 mb-4">
+            <h3 class="text-3 font-weight-500 mb-2">About</h3>
+            <p class="text-muted opacity-8 mb-3" id="bizDesc">--</p>
+            <ul class="list-unstyled mb-0">
+              <li class="mb-1"><span class="text-muted">Owner:</span> <span id="bizOwner">--</span></li>
+              <li class="mb-1"><span class="text-muted">Business ID:</span> <span id="bizId">--</span></li>
+              <li><span class="text-muted">Added:</span> <span id="bizAdded">--</span></li>
+            </ul>
+          </div>
+        </aside>
+
+        <!-- Middle Panel: sales list + filters -->
+        <div class="col-lg-9">
+          <h2 class="font-weight-400 mb-3">Sales</h2>
+
+          <!-- Filter -->
+          <div class="row">
+            <div class="col mb-2">
+              <form id="filterSales" method="post" onsubmit="return false;">
+                <div class="form-row">
+                  <div class="col-sm-6 col-md-4 form-group">
+                    <input id="dateRange" type="text" class="form-control" placeholder="Date Range">
+                    <span class="icon-inside"><i class="fas fa-calendar-alt"></i></span>
+                  </div>
+                  <div class="col-sm-6 col-md-3 form-group">
+                    <input id="saleSearch" type="text" class="form-control" placeholder="Search item / ref">
+                    <span class="icon-inside"><i class="fas fa-search"></i></span>
+                  </div>
+                  <div class="col-auto d-flex align-items-center mr-auto form-group" data-toggle="collapse">
+                    <a class="btn-link" data-toggle="collapse" href="#salesFilters" aria-expanded="false" aria-controls="salesFilters">All Filters<i class="fas fa-sliders-h text-3 ml-1"></i></a>
+                  </div>
+                  <div class="col-auto d-flex align-items-center ml-auto form-group">
+                    <div class="dropdown"> <a class="text-muted btn-link" href="/#" role="button" id="statements" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false"><i class="fas fa-file-download text-3 mr-1"></i>Export</a>
+                      <div class="dropdown-menu dropdown-menu-right" aria-labelledby="statements"> <a class="dropdown-item" href="/#">CSV</a> <a class="dropdown-item" href="/#">PDF</a> </div>
+                    </div>
+                  </div>
+
+                  <div class="col-12 collapse mb-3" id="salesFilters">
+                    <div class="form-row">
+                      <div class="col-sm-3 form-group">
+                        <label class="text-2 text-uppercase text-muted">Min Value</label>
+                        <input type="number" id="minValue" min="0" class="form-control" placeholder="0">
+                      </div>
+                      <div class="col-sm-3 form-group">
+                        <label class="text-2 text-uppercase text-muted">Max Value</label>
+                        <input type="number" id="maxValue" min="0" class="form-control" placeholder="Any">
+                      </div>
+                      <div class="col-sm-3 form-group">
+                        <label class="text-2 text-uppercase text-muted">Payment</label>
+                        <select id="payMethod" class="form-control">
+                          <option value="">All</option>
+                          <option value="Scriptbill">Scriptbill</option>
+                          <option value="Cash">Cash</option>
+                          <option value="Card">Card</option>
+                        </select>
+                      </div>
+                      <div class="col-sm-3 form-group">
+                        <label class="text-2 text-uppercase text-muted">Sort</label>
+                        <select id="saleSort" class="form-control">
+                          <option value="latest">Newest first</option>
+                          <option value="oldest">Oldest first</option>
+                          <option value="high">Highest value</option>
+                          <option value="low">Lowest value</option>
+                        </select>
+                      </div>
+                    </div>
+                    <button type="button" id="resetSales" class="btn btn-outline-secondary">Reset Filters</button>
+                  </div>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <!-- Sales list -->
+          <div class="bg-light shadow-sm rounded py-4 mb-4">
+            <div class="d-flex align-items-center flex-wrap px-4 mb-3">
+              <h3 class="text-5 font-weight-400 mb-0 mr-auto">Sales Record</h3>
+              <span class="text-muted">Showing total: <span class="font-weight-600" id="filteredTotal">$0.00</span></span>
+            </div>
+            <div class="transaction-title py-2 px-4">
+              <div class="row">
+                <div class="col-2 col-sm-1 text-center">Date</div>
+                <div class="col col-sm-6">Item / Reference</div>
+                <div class="col-auto col-sm-3 d-none d-sm-block text-center">Payment</div>
+                <div class="col-3 col-sm-2 text-right">Amount</div>
+              </div>
+            </div>
+            <div class="transaction-list" id="salesList"><!-- injected --></div>
+            <div class="text-center text-muted py-5" id="noSales">
+              <i class="fas fa-receipt text-9 d-block mb-3 opacity-8"></i>
+              No sales match your filters.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sale Detail Modal
+  =========================================== -->
+  <div id="sale-detail" class="modal fade text-wrap" role="dialog" aria-hidden="true" style="word-break: break-all;">
+    <div class="modal-dialog modal-dialog-centered transaction-details" role="document">
+      <div class="modal-content">
+        <div class="modal-body">
+          <div class="row no-gutters">
+            <div class="col-sm-5 d-flex justify-content-center bg-primary rounded-left py-4">
+              <div class="my-auto text-center">
+                <div class="text-17 text-white my-3"><i class="fas fa-receipt"></i></div>
+                <h3 class="text-4 text-white font-weight-400 my-3" id="s_item">Sale Item</h3>
+                <div class="text-8 font-weight-500 text-white my-4" id="s_amount">$0.00</div>
+                <p class="text-white" id="s_date">--</p>
+              </div>
+            </div>
+            <div class="col-sm-7">
+              <h5 class="text-5 font-weight-400 m-3">Sale Details
+                <button type="button" class="close font-weight-400" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+              </h5>
+              <hr>
+              <div class="px-3">
+                <ul class="list-unstyled">
+                  <li class="mb-2">Unit Price <span class="float-right text-3" id="s_unit">$0.00</span></li>
+                  <li class="mb-2">Quantity <span class="float-right text-3" id="s_qty">1</span></li>
+                </ul>
+                <hr class="mb-2">
+                <p class="d-flex align-items-center font-weight-500 mb-4">Total <span class="text-3 ml-auto" id="s_total">$0.00</span></p>
+                <ul class="list-unstyled">
+                  <li class="font-weight-500">Reference:</li>
+                  <li class="text-muted" id="s_ref">--</li>
+                </ul>
+                <ul class="list-unstyled">
+                  <li class="font-weight-500">Sale ID:</li>
+                  <li class="text-muted" id="s_id">--</li>
+                </ul>
+                <ul class="list-unstyled">
+                  <li class="font-weight-500">Customer:</li>
+                  <li class="text-muted" id="s_customer">--</li>
+                </ul>
+                <ul class="list-unstyled">
+                  <li class="font-weight-500">Payment Method:</li>
+                  <li class="text-muted" id="s_method">--</li>
+                </ul>
+                <ul class="list-unstyled">
+                  <li class="font-weight-500">Date &amp; Time:</li>
+                  <li class="text-muted" id="s_datetime">--</li>
+                </ul>
+                <ul class="list-unstyled">
+                  <li class="font-weight-500">Status:</li>
+                  <li class="text-muted" id="s_status">--</li>
+                </ul>
+                <ul class="list-unstyled">
+                  <li class="font-weight-500">Note:</li>
+                  <li class="text-muted" id="s_note">--</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Sale Detail Modal End -->
+
+  <footer id="footer">
+    <div class="container">
+      <div class="row">
+        <div class="col-lg d-lg-flex align-items-center">
+          <ul class="nav justify-content-center justify-content-lg-start text-3">
+            <li class="nav-item"> <a class="nav-link active" href="/about-us">About Us</a></li>
+            <li class="nav-item"> <a class="nav-link" href="/help">Help</a></li>
+            <li class="nav-item"> <a class="nav-link" href="/fees">Fees</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-copyright pt-3 pt-lg-2 mt-2">
+        <div class="row">
+          <div class="col-lg">
+            <p class="text-center text-lg-left mb-2 mb-lg-0">Copyright &copy; 2024 <a href="/https://t.me/companymatrix">Scriptbank &amp; Company Matrix</a>. All Rights Reserved.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </footer>
+</div>
+
+<a id="back-to-top" data-toggle="tooltip" title="Back to Top" href="/javascript:void(0)"><i class="fa fa-chevron-up"></i></a>
+
+<script src="/vendor/jquery/jquery.min.js"></script>
+<script src="/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+<script src="/vendor/daterangepicker/moment.min.js"></script>
+<script src="/vendor/daterangepicker/daterangepicker.js"></script>
+<script src="/js/theme.js"></script>
+<script src="/js/supabase.js"></script>
+<script src="/js/crypto-js.js"></script>
+<script src="/js/scriptbill.js"></script>
+<script src="/js/qrcode.min.js"></script>
+<script src="/js/checkLogin.js"></script>
+
+<!-- Business detail logic (vanilla JS)
+     ============================================================
+     Reads ?id=<businessId> from the URL. DEFAULT_* are dummy data.
+     Replace loadBusiness(id) and loadSales(id) with Supabase calls.
+     Clicking a sales row opens the #sale-detail modal.
+     ============================================================ 
+<script>
+(function () {
+  "use strict";
+
+  function $(id) { return document.getElementById(id); }
+  function setText(id, val) { var el = $(id); if (el) el.textContent = (val === null || val === undefined || val === "") ? "-" : val; }
+  function fmtMoney(n) {
+    return "$" + Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function M(d) { return (typeof moment === "function") ? moment(d) : null; }
+  function fmtDate(iso, pattern) {
+    var m = M(iso);
+    if (m) return m.format(pattern);
+    var d = new Date(iso);
+    var mon = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][d.getMonth()];
+    var day = String(d.getDate()).padStart(2, "0");
+    if (pattern === "DD") return day;
+    if (pattern === "MMM") return mon;
+    if (pattern === "DD MMM YYYY") return day + " " + mon + " " + d.getFullYear();
+    var h = d.getHours(), ampm = h >= 12 ? "PM" : "AM";
+    h = h % 12 || 12;
+    var min = String(d.getMinutes()).padStart(2, "0");
+    return day + " " + mon + " " + d.getFullYear() + ", " + h + ":" + min + " " + ampm;
+  }
+  function timeValue(iso) {
+    var m = M(iso);
+    return m ? m.valueOf() : new Date(iso).getTime();
+  }
+  function qsParam(name) {
+    var m = new RegExp("[?&]" + name + "=([^&]*)").exec(window.location.search);
+    return m ? decodeURIComponent(m[1]) : null;
+  }
+
+  // --- dummy data: replace with Supabase. Extra fields drive the popup. ---
+  var DEFAULT_BUSINESSES = {
+    "BIZ-001": { id:"BIZ-001", name:"Ikeja Fresh Mart", category:"Retail", location:"Ikeja, Lagos", owner:"Jane Doe", desc:"Neighborhood grocery and fresh produce store.", addedAt:"2026-10-02" },
+    "BIZ-002": { id:"BIZ-002", name:"Yaba Byte Labs", category:"Technology", location:"Yaba, Lagos", owner:"Tunde Bello", desc:"Software and device repair workshop.", addedAt:"2026-10-18" },
+    "BIZ-003": { id:"BIZ-003", name:"Corner Suya Spot", category:"Food & Drink", location:"Surulere, Lagos", owner:"Amaka N.", desc:"Grilled suya and small chops vendor.", addedAt:"2026-11-05" }
+  };
+
+  var DEFAULT_SALES = {
+    "BIZ-001": [
+      { id:"SAL-1001", item:"Weekly grocery bundle", ref:"INV-5521", amount:420.00, qty:1, method:"Scriptbill", customer:"Walk-in", status:"Completed", note:"Delivered to customer address.", at:"2026-11-16T10:20:00" },
+      { id:"SAL-1002", item:"Fresh produce crate", ref:"INV-5522", amount:180.50, qty:2, method:"Cash", customer:"Mrs. Okafor", status:"Completed", note:"Regular weekly order.", at:"2026-11-15T14:05:00" },
+      { id:"SAL-1003", item:"Household supplies", ref:"INV-5523", amount:260.00, qty:1, method:"Card", customer:"Walk-in", status:"Refunded", note:"One item returned, refund issued.", at:"2026-11-14T09:40:00" },
+      { id:"SAL-1004", item:"Beverage restock", ref:"INV-5524", amount:95.25, qty:5, method:"Scriptbill", customer:"Corner Shop Ltd", status:"Completed", note:"", at:"2026-11-12T16:30:00" }
+    ],
+    "BIZ-002": [
+      { id:"SAL-2001", item:"Laptop screen repair", ref:"JOB-331", amount:540.00, qty:1, method:"Card", customer:"David A.", status:"Completed", note:"14-day warranty on parts.", at:"2026-11-16T11:00:00" },
+      { id:"SAL-2002", item:"Custom web build", ref:"JOB-332", amount:1200.00, qty:1, method:"Scriptbill", customer:"Bright Logistics", status:"Pending", note:"50% deposit received.", at:"2026-11-13T13:10:00" }
+    ],
+    "BIZ-003": [
+      { id:"SAL-3001", item:"Suya platter (large)", ref:"R-8841", amount:35.00, qty:1, method:"Cash", customer:"Walk-in", status:"Completed", note:"", at:"2026-11-16T19:40:00" },
+      { id:"SAL-3002", item:"Small chops tray", ref:"R-8842", amount:52.00, qty:2, method:"Scriptbill", customer:"Event order", status:"Completed", note:"For birthday party pickup.", at:"2026-11-16T20:15:00" },
+      { id:"SAL-3003", item:"Suya platter (small)", ref:"R-8843", amount:18.50, qty:1, method:"Cash", customer:"Walk-in", status:"Completed", note:"", at:"2026-11-15T18:05:00" }
+    ]
+  };
+
+  var biz = null, sales = [], dateStart = null, dateEnd = null;
+  var listEl = $("salesList"), noneEl = $("noSales");
+
+  function loadBusiness(id) { return DEFAULT_BUSINESSES[id] || null; }
+  function loadSales(id) { return (DEFAULT_SALES[id] || []).slice(); }
+
+  function initials(name) {
+    return name.split(" ").slice(0, 2).map(function (w) { return w[0]; }).join("").toUpperCase();
+  }
+
+  function renderHeader() {
+    if (!biz) { setText("bizName", "Business not found"); setText("bizInitials", "!"); return; }
+    setText("bizInitials", initials(biz.name));
+    setText("bizName", biz.name);
+    setText("bizLocation", biz.location);
+    setText("bizCategory", biz.category);
+    setText("bizDesc", biz.desc);
+    setText("bizOwner", biz.owner);
+    setText("bizId", biz.id);
+    setText("bizAdded", fmtDate(biz.addedAt, "DD MMM YYYY"));
+
+    var total = sales.reduce(function (s, x) { return s + x.amount; }, 0);
+    setText("totalValue", fmtMoney(total));
+    setText("salesCount", sales.length);
+    setText("avgSale", fmtMoney(sales.length ? total / sales.length : 0));
+  }
+
+  function applyFilters(arr) {
+    var q = $("saleSearch").value.trim().toLowerCase();
+    var min = parseFloat($("minValue").value);
+    var max = parseFloat($("maxValue").value);
+    var pay = $("payMethod").value;
+    var sort = $("saleSort").value;
+
+    var out = arr.filter(function (s) {
+      if (q && (s.item + " " + s.ref).toLowerCase().indexOf(q) === -1) return false;
+      if (!isNaN(min) && s.amount < min) return false;
+      if (!isNaN(max) && s.amount > max) return false;
+      if (pay && s.method !== pay) return false;
+      if (dateStart && timeValue(s.at) < dateStart) return false;
+      if (dateEnd && timeValue(s.at) > dateEnd) return false;
+      return true;
+    });
+
+    out.sort(function (a, b) {
+      if (sort === "high") return b.amount - a.amount;
+      if (sort === "low") return a.amount - b.amount;
+      if (sort === "oldest") return timeValue(a.at) - timeValue(b.at);
+      return timeValue(b.at) - timeValue(a.at);
+    });
+    return out;
+  }
+
+  function methodBadge(m) {
+    var map = { "Scriptbill": "text-primary", "Cash": "text-success", "Card": "text-info" };
+    return '<span class="' + (map[m] || "text-muted") + '"><i class="fas fa-circle text-1 mr-1"></i>' + m + '</span>';
+  }
+
+  function saleRow(s) {
+    var div = document.createElement("div");
+    div.className = "transaction-item sale-item px-4 py-3";
+    div.setAttribute("data-id", s.id);
+    div.innerHTML =
+      '<div class="row align-items-center flex-row">' +
+        '<div class="col-2 col-sm-1 text-center">' +
+          '<span class="d-block text-4 font-weight-300">' + fmtDate(s.at, "DD") + '</span>' +
+          '<span class="d-block text-1 font-weight-300 text-uppercase">' + fmtDate(s.at, "MMM") + '</span>' +
+        '</div>' +
+        '<div class="col col-sm-6">' +
+          '<span class="d-block text-4">' + s.item + '</span>' +
+          '<span class="text-muted">' + s.ref + ' &bull; ' + fmtDate(s.at, "h:mm A") + '</span>' +
+        '</div>' +
+        '<div class="col-auto col-sm-3 d-none d-sm-block text-center text-3">' + methodBadge(s.method) + '</div>' +
+        '<div class="col-3 col-sm-2 text-right text-4">' + fmtMoney(s.amount) + '</div>' +
+      '</div>';
+    return div;
+  }
+
+  function renderSales() {
+    var view = applyFilters(sales);
+    listEl.innerHTML = "";
+    if (!view.length) { noneEl.style.display = "block"; }
+    else {
+      noneEl.style.display = "none";
+      var frag = document.createDocumentFragment();
+      view.forEach(function (s) { frag.appendChild(saleRow(s)); });
+      listEl.appendChild(frag);
+    }
+    var filteredTotal = view.reduce(function (sum, s) { return sum + s.amount; }, 0);
+    setText("filteredTotal", fmtMoney(filteredTotal));
+  }
+
+  // --- modal open/close (Bootstrap if present, manual fallback if not) ---
+  function showModal() {
+    var el = $("sale-detail");
+    if (window.jQuery && window.jQuery.fn && window.jQuery.fn.modal) {
+      window.jQuery(el).modal("show");
+      return;
+    }
+    // fallback
+    el.classList.add("show", "sb-modal-open");
+    el.style.display = "block";
+    el.removeAttribute("aria-hidden");
+    if (!document.querySelector(".sb-backdrop")) {
+      var bd = document.createElement("div");
+      bd.className = "sb-backdrop";
+      bd.addEventListener("click", hideModal);
+      document.body.appendChild(bd);
+    }
+    document.body.classList.add("modal-open");
+  }
+  function hideModal() {
+    var el = $("sale-detail");
+    if (window.jQuery && window.jQuery.fn && window.jQuery.fn.modal) {
+      window.jQuery(el).modal("hide");
+      return;
+    }
+    el.classList.remove("show", "sb-modal-open");
+    el.style.display = "none";
+    el.setAttribute("aria-hidden", "true");
+    var bd = document.querySelector(".sb-backdrop");
+    if (bd) bd.parentNode.removeChild(bd);
+    document.body.classList.remove("modal-open");
+  }
+
+  function openSaleDetail(id) {
+    var s = sales.find(function (x) { return x.id === id; });
+    if (!s) return;
+    var qty = s.qty || 1;
+    var unit = s.amount / qty;
+
+    setText("s_item", s.item);
+    setText("s_amount", fmtMoney(s.amount));
+    setText("s_date", fmtDate(s.at, "DD MMM YYYY"));
+    setText("s_unit", fmtMoney(unit));
+    setText("s_qty", qty);
+    setText("s_total", fmtMoney(s.amount));
+    setText("s_ref", s.ref);
+    setText("s_id", s.id);
+    setText("s_customer", s.customer);
+    setText("s_method", s.method);
+    setText("s_datetime", fmtDate(s.at, "DD MMM YYYY, h:mm A"));
+    setText("s_status", s.status);
+    setText("s_note", s.note);
+
+    showModal();
+  }
+
+  function initDateRange() {
+    if (typeof window.jQuery === "undefined" || !window.jQuery.fn || !window.jQuery.fn.daterangepicker) return;
+    var $jq = window.jQuery;
+    $jq("#dateRange").daterangepicker({ autoUpdateInput: false, locale: { cancelLabel: "Clear", format: "DD MMM YYYY" } });
+    $jq("#dateRange").on("apply.daterangepicker", function (ev, p) {
+      dateStart = p.startDate.startOf("day").valueOf();
+      dateEnd = p.endDate.endOf("day").valueOf();
+      this.value = p.startDate.format("DD MMM YYYY") + " - " + p.endDate.format("DD MMM YYYY");
+      renderSales();
+    });
+    $jq("#dateRange").on("cancel.daterangepicker", function () {
+      dateStart = dateEnd = null; this.value = ""; renderSales();
+    });
+  }
+
+  function init() {
+    var id = qsParam("id") || "BIZ-001";
+    biz = loadBusiness(id);
+    sales = loadSales(id);
+
+    renderHeader();
+    renderSales();
+    initDateRange();
+
+    // open popup on row click (event delegation)
+    listEl.addEventListener("click", function (e) {
+      var row = e.target.closest(".sale-item");
+      if (row) openSaleDetail(row.getAttribute("data-id"));
+    });
+
+    // close buttons / backdrop for the manual fallback path
+    document.querySelectorAll('#sale-detail [data-dismiss="modal"]').forEach(function (btn) {
+      btn.addEventListener("click", hideModal);
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") hideModal();
+    });
+
+    ["saleSearch", "minValue", "maxValue"].forEach(function (f) {
+      $(f).addEventListener("input", renderSales);
+    });
+    ["payMethod", "saleSort"].forEach(function (f) {
+      $(f).addEventListener("change", renderSales);
+    });
+    $("resetSales").addEventListener("click", function () {
+      $("filterSales").reset();
+      $("dateRange").value = "";
+      dateStart = dateEnd = null;
+      renderSales();
+    });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();
+</script>-->
+</body>
+</html>

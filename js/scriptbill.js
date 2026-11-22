@@ -18,6 +18,7 @@
 	]);
 	
 	static #salted 				= false;
+	static #runAssignRank 		= false;
 	
 	static #quoteCurrentNote 	= null;
 
@@ -4697,6 +4698,8 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 		productNextBlockID : '',//the Id of the possible next block that will belong to this product.
 		productFormerBlockID : '',//the last id of the block belonging to this product, useful in knowing the most recent customer to the current product.
 		rankCode 			: "", //this is the code hash of the note rank that created the block
+		data				: {},//extra code data that can be distributed among users
+		referer				:"", //an encrypted message meant only for the user that refered this creator of a block. This can help the referee to claim affiliate profits and other deals from companies using the network and even the network itself
 		
 	};
 	//the default content n an agreement.
@@ -5124,11 +5127,13 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 						for( x = 0; x < 10; x++ ){
 							this.s[ await this.generateKey(25) ] = await this.generateKey(25);
 						}
+						
+						//assign the appropraite ranking for the user for logging in his note.
+						this.scriptbillAssignRanks();
 						this.walletID 	= this.#note.walletID;						
 						return await this.saveNote( this.#note );
 						
-						//assign the appropraite ranking for the user for logging in his note.
-						//await this.scriptbillAssignRanks();
+						
 						//return await this.setCurrentNote();
 					}else {
 						if( ! this.l.string ) {
@@ -6685,7 +6690,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 	
 	static async getCurrentExchangeNote( noteType = false ){
 		
-		if( ( noteType.length - noteType.lastIndexOf("SBCRD")) != 5 ){
+		if( noteType && ( noteType.length - noteType.lastIndexOf("SBCRD")) != 5 ){
 			return this.defaultBlock.exchangeNote;
 		}
 
@@ -7032,6 +7037,95 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 			this.#note = note;
 			return false;
 		}
+	}
+	
+
+	
+	static async loadBusinesses(){
+		
+		if( ! this.#note ){
+			this.#note = await this.#getCurrentNote();
+		}
+		
+		if( ! this.#note ){
+			this.errorMessage(`Scriptbill Note not found`);
+			return [];
+		}
+		
+		if( this.#note.rankPref != "businessManager" ){
+			return [];
+		}
+		
+		if( this.#note.businesses && this.#note.businesses.length ){
+			
+			let note_bizes = JSON.parse( JSON.stringify( this.#note.businesses ));
+			let bizzes 		= [];
+
+			for( let budgetID in note_bizes){
+				let ids 	= await this.generateKey(10);
+				await this.setPrivateKey(budgetID, ids );
+				budgetID 	= await this.getPublicKey(ids);
+				budget 		= await this.getTransBlock(10, {
+					budgetID,
+					transType : "UPDATEBUDGET",
+					transTime : `${this.currentTime()} <=`,
+				});
+				
+				if( ! budget.length ){
+					budget 		= await this.getTransBlock(10, {
+						budgetID,
+						transType : "CREATEBUDGET",
+						transTime : `${this.currentTime()} <=`,
+					});
+				}
+
+				if( budget.length ){
+					bizzes.push( budget );
+				}
+			}
+			
+			return bizzes;
+		}
+		
+		return [];
+	}
+	
+	
+	
+	static async loadBusinessSales(id, limit = 100, transTime = this.currentTime()){
+		
+		if( ! this.#note ){
+			this.#note = await this.#getCurrentNote();
+		}
+		
+		if( ! this.#note ){
+			this.errorMessage(`Scriptbill Note not found`);
+			return [];
+		}
+		
+		if( this.#note.rankPref != "businessManager" ){
+			return [];
+		}
+		
+		//we can't load more than 500 blocks in a time.
+		
+		const budgets 		= await this.getTransBlock(limit, {
+			budgetID : id,
+			transType : "BUYPRODUCT",
+			transTime : `${transTime} <=`,
+		});
+		
+		if( budgets.length < limit ){
+			const newBuds = await this.getTransBlock( ( limit - budgets.length ), {
+				budgetID : id,
+				transType : "PRODUCTSUB",
+				transTime : `${transTime} <=`,
+			});
+			
+			budgets.push( ...newBuds );
+		}
+		
+		return budgets;
 	}
 	
 	
@@ -7514,72 +7608,14 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 		}		
 	}
 	
-	static async getWalletRank(){
-		////console.log("getWalletRank running " + this.funcUp[ this.funcUp.length][ this.funcUp[ this.funcUp.length].length]);
-		this.funcUp[ this.funcUp.length] = "getWalletRank";
-		try {
-			if( ( ! this.#note && this.s.currentNote ) || ( this.s.currentNote &&    ! this.s.currentNote.includes( this.#note.walletID ) && ! this.s.currentNote.includes( this.#note.noteAddress ) && ! this.#isExchangeMarketMining ) || ( ! this.#isExchangeMarketMining && ! this.#note && this.s.currentNote ))
-				this.#note 		= await this.#getCurrentNote();
-			
-			if( this.#note ){
-				if( this.#note.blockID ){
-					let block 	= await this.getTransBlock();
-					block 		= block[0];
-					if( block && block.rankCode){
-						//the wallet rank ket on a note is the private key used to encrypt and decrypt the user rank in the network.
-						let rankCode 		= this.decrypt( block.rankCode, note.walletRank );
-						
-						if( rankCode != block.rankCode && typeof rankCode == "string" ) {
-							let ranks = this.#scriptbillRanks;
-							let rank, level, found = false;
-							
-							for( level in ranks ){
-								rank = ranks[level];
-								
-								if( rank.code == rankCode ){
-									found = true;								
-									break;
-								}
-								
-								
-							}
-							
-							if( this.#note.rankPref && found){
-								return rank[ this.#note.rankPref ];
-							} else {
-								return ranks[ Object.keys( ranks )[0] ][ this.#note.rankPref ];
-							}
-						} else {
-							this.errorMessage("Note Didn't Successfully Decrypt the Rank Code on Block");
-							return false;
-						}
-					} else {
-						this.errorMessage("Note Didn't return a trans block!!!");
-						return false;
-					}
-				}
-				
-				else {
-					return await this.calculateWalletRank();
-				}
-			}
-			else {
-				return await this.calculateWalletRank();
-			}
-		} catch(e){
-			console.error(e);
-			this.errorMessage(e.toString());
-			return false;
-		}
-	}
-	
 	
 	//this function is meant to calculate the rank for the current wallet
-	static async calculateWalletRank(){
+	static async #calculateWalletRank(){
 		////console.log("calculateWalletRank running " + this.funcUp[ this.funcUp.length][ this.funcUp[ this.funcUp.length].length]);
 		this.funcUp[ this.funcUp.length] = "calculateWalletRank";
 		
-		try {		
+		try {
+			this.s.is_rank_calc_running		= true;	
 			//getting the current note if not defined.
 			if( this.s.currentNote && ! this.#note )
 				this.#note = await this.#getCurrentNote();
@@ -7730,9 +7766,34 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 				
 				if( transBlock && transBlock.blockID ){
 					this.nextBlock = JSON.parse( JSON.stringify( transBlock ));
-					this.startBlockID = blockID;
-					return await this.calculateWalletRank();
-				} /* else {
+					this.currentBlockID 	= blockID;
+					const ret_obj 			= JSON.parse(this.s[`rank_calc_result_${noteID}`] ?? "{}");
+					
+					if( ! ret_obj.status || ret_obj.status != "calculated" ){
+						ret_obj.total_notes 	= this.noteFound.length;
+						ret_obj.total_stocks 	= this.stockFound.length;
+						ret_obj.total_bond 	  	= this.bondFound.length;
+						ret_obj.bond_value 		= this.bondValue;
+						ret_obj.stock_value 	= this.stockValue;
+						ret_obj.total_asset 	= this.rankValue;
+						ret_obj.status 			= "calculating";
+					}
+					else {
+						ret_obj.old 			= Object.assign(ret_obj);
+						ret_obj.total_notes 	= this.noteFound.length;
+						ret_obj.total_stocks 	= this.stockFound.length;
+						ret_obj.total_bond 	  	= this.bondFound.length;
+						ret_obj.bond_value 		= this.bondValue;
+						ret_obj.stock_value 	= this.stockValue;
+						ret_obj.total_asset 	= this.rankValue;
+						ret_obj.status 			= "recalculating";
+					}
+					
+					this.s[`rank_calc_result_${noteID}`] = JSON.stringify( ret_obj );
+					return await this.#calculateWalletRank();
+				} else {
+					return processRank();
+				}/* else {
 					this.endBlockID 	= blockID;
 					this.nextBlock 	= this.formerBlock;
 					this.walletHASH	= this.nextBlock.formerWalletHASH;
@@ -7741,13 +7802,14 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 					
 					if( transBlock && transBlock.blockID ) {
 						this.formerBlock = transBlock;
-						return await this.calculateWalletRank();
+						return await this.#calculateWalletRank();
 					}
 				}*/
 			}
 			
 			const processRank = ()=>{
 				let ret_obj = {};
+				let noteID  = this.#note.noteAddress.slice(0,12);
 				if( this.rankValue ){
 					for( rank_code in this.#scriptbillRanks ){
 						let rank 	= this.#scriptbillRanks[ rank_code ];
@@ -7766,12 +7828,31 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 				ret_obj.bond_value 	= this.bondValue;
 				ret_obj.stock_value 	= this.stockValue;
 				ret_obj.total_asset 	= this.rankValue;
+				ret_obj.status 			= "calculated";
+				
+				this.s[`rank_calc_result_${noteID}`] = JSON.stringify( ret_obj );
+				
+				//cleanup
+				delete this.formerBlock;
+				delete this.nextBlock;
+				delete this.stockFound;
+				delete this.noteFound;
+				delete this.bondFound;
+				delete this.bondValue;
+				delete this.stockValue;
+				delete this.rankValue;
+				delete this.s.is_rank_calc_running;
+				
+				//reassign the scriptbill rank
+				this.#runAssignRank = true;
+				this.scriptbillAssignRanks();
 				
 				return ret_obj;
 			}
 			
 			if( ! this.formerBlock && transBlock && transBlock.blockID && transBlock.walletHASH ){
 				//console.log("In Here >>>>");
+				this.startBlockID = transBlock.blockID;
 				return processBlock(transBlock);
 			}
 			else if( this.formerBlock && this.nextBlock ){
@@ -7805,11 +7886,11 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 					
 					if( transBlock && transBlock.blockID ){
 						this.nextBlock = JSON.parse( JSON.stringify( transBlock ));
-						return await this.calculateWalletRank();
+						return await this.#calculateWalletRank();
 					}
 					else {
 						//everything calculated will be returned here.
-						return processRank( transBlock );
+						return processRank();
 					}
 				}
 				
@@ -7818,7 +7899,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 				}			
 				
 			} else {
-				return processRank( transBlock );
+				return processRank();
 			}
 		} catch(e){
 			this.errorMessage(e.toString());
@@ -7826,6 +7907,67 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 			return false;
 		}
 	}
+	
+	
+	static async getWalletRank(){
+		////console.log("getWalletRank running " + this.funcUp[ this.funcUp.length][ this.funcUp[ this.funcUp.length].length]);
+		this.funcUp[ this.funcUp.length] = "getWalletRank";
+		try {
+			if( ( ! this.#note && this.s.currentNote ) || ( this.s.currentNote &&    ! this.s.currentNote.includes( this.#note.walletID ) && ! this.s.currentNote.includes( this.#note.noteAddress ) && ! this.#isExchangeMarketMining ) || ( ! this.#isExchangeMarketMining && ! this.#note && this.s.currentNote ))
+				this.#note 		= await this.#getCurrentNote();
+			
+			if( this.#note ){
+				if( this.#note.blockID ){
+					let block 	= await this.getTransBlock();
+					block 		= block[0];
+					if( block && block.rankCode){
+						//the wallet rank ket on a note is the private key used to encrypt and decrypt the user rank in the network.
+						let rankCode 		= this.decrypt( block.rankCode, note.walletRank );
+						
+						if( rankCode != block.rankCode && typeof rankCode == "string" ) {
+							let ranks = this.#scriptbillRanks;
+							let rank, level, found = false;
+							
+							for( level in ranks ){
+								rank = ranks[level];
+								
+								if( rank.code == rankCode ){
+									found = true;								
+									break;
+								}
+								
+								
+							}
+							
+							if( this.#note.rankPref && found){
+								return rank[ this.#note.rankPref ];
+							} else {
+								return ranks[ Object.keys( ranks )[0] ][ this.#note.rankPref ];
+							}
+						} else {
+							this.errorMessage("Note Didn't Successfully Decrypt the Rank Code on Block");
+							return false;
+						}
+					} else {
+						this.errorMessage("Note Didn't return a trans block!!!");
+						return false;
+					}
+				}
+				
+				else {
+					return await this.#calculateWalletRank();
+				}
+			}
+			else {
+				return await this.#calculateWalletRank();
+			}
+		} catch(e){
+			console.error(e);
+			this.errorMessage(e.toString());
+			return false;
+		}
+	}
+	
 	
 	static async scriptbillAssignRanks(){
 		//console.log("scriptbillAssignRanks running " + this.funcUp[ this.funcUp.length]);
@@ -7839,21 +7981,37 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 			let noteID 		= this.#note ? this.#note.noteAddress.slice(0, 12): "";
 			let run_time 	= parseInt( this.s[`rank_calc_time_${noteID}`] ?? 0 );
 			
-			if( ! noteID || is_running || ! this.walletID || time < run_time ) return;
+			if( ! noteID  ) return;
 			
-			this.s[`rank_calc_time_${noteID}`] = time + parseInt( this.calculateTime( " 1 hours" ) );
-		
-			this.calculateWalletRank();
+			if( ! this.#runAssignRank  ){
+				if( ! is_running || time > run_time ){
+					this.s[`rank_calc_time_${noteID}`] = time + parseInt( this.calculateTime( " 1 hours" ) );
+					this.#calculateWalletRank();
+				}
+			}
+			else {
+				this.#runAssignRank = false;
+			}
+			
+			
+			
+			
 			
 			let ranks = this.#scriptbillRanks;
 			let level, rank;
 			this.blockID = undefined;
-			let levelFound;
+			let levelFound, rank_calc;
+			
+			if( this.s[`rank_calc_result_${noteID}`] ){
+				rank_calc = JSON.parse(this.s[`rank_calc_result_${noteID}`]);
+			}
 			
 			for( level in ranks ){
 				rank = ranks[ level ];
 				
-				if( rank.min >= this.rankValue && rank.max <= this.rankValue ) {
+				let rankValue   = rank_calc ? rank_calc.total_asset: this.rankValue;
+				
+				if( rank.min >= rankValue && rank.max <= rankValue ) {
 					levelFound = level;
 					break;
 				}
@@ -7875,10 +8033,12 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 			details.transType 	= "UPDATE";
 			return await this.generateScriptbillTransactionBlock(details, this.#note).then( block =>{
 				if( block && block.transType == "UPDATE" ){
-					//run again in another thirty seconds
+					//run again in another 2 min
 					setTimeout(()=>{
-						this.scriptbillAssignRanks();
-					}, 30000);
+						
+						if( rank_calc.status == "calculating" || rank_calc.status == "recalculating" )
+							this.scriptbillAssignRanks();
+					}, 120000, rank_calc);
 					return block;
 				}
 				
@@ -12984,9 +13144,10 @@ static Base64 = {
 				}
 				
 				//lastly we verify if the key was correct or we are having a fraudulent change in the budget block's key. so we query for the create budget block to verify the budget key used.
+				console.log(`check response`, response );
 				let budgetBlock 		= await this.getTransBlock(1, {budgetID: response.agreement.budgetID, transType: "CREATEBUDGET"});
 				
-				if( ! budgetBlock.length && navigator.onLine ){
+				if( ! budgetBlock.length && navigator.onLine && response.blockID != this.#note.blockID ){
 					this.#rejectResponse("Couldn't find a corresponding block that created this budget", response );
 					this.s.processingID = this.s.processingID.split(",").filter((data)=> data != response.blockID).join(",");
 					return false;
@@ -13925,7 +14086,7 @@ static Base64 = {
 				this.withdrawBlock = JSON.parse( JSON.stringify( this.withdrawBlock ));
 			
 			
-			if( ( ! this.withdrawBlock || ! this.withdrawBlock.withdrawAccount ) && ! this.isExchangeDeposit ) {
+			if( ( ! this.withdrawBlock || ! this.withdrawBlock.withdrawAccount )/*  && ! this.isExchangeDeposit  */) {
 				//we try to get the exchange block to see who have our sell Credit to buy,
 				//maximum blocks to return, should not be more than 500 if limit not set.
 				let exBlock 	= await this.getTransBlock(500, {transType:"WITHDRAW", noteType:creditType, transValue: amount + " >=", transTime: this.currentTime() + "  <="});
@@ -13992,7 +14153,7 @@ static Base64 = {
 			} else {
 				//this is just a way of overriding the default behaviour of the script which
 				//checks for withdrawal before allowing the exchange market do the deposit.
-				if( this.isExchangeDeposit ){
+				if( this.isExchangeDeposit && false ){
 					//first check the current server to see if the private key is stored on
 					//the server.
 					
@@ -14168,55 +14329,74 @@ static Base64 = {
 			}
 				
 			if( exchangeNote && exchangeNote.exchangeID ) {
-				//console.log( "exchange note " + JSON.stringify( exchangeNote ) );
-				//await this.createAlert("cheeck Exchange");
-				this.#note 				= JSON.parse( JSON.stringify( exchangeNote ) );
-				this.#note.noteAddress 	= exchangeNote.exchangeID;
-				this.#note.noteSecret 	= exchangeNote.exchangeKey;
-				this.#isExchangeMarketMining 	= true;
 				
-				if( ! this.#note.walletID ){
-					if( this.#fiatCurrencies[testType] ){
-						var string 		= "SCRIPTBANKFIATEXCHANGEWALLET";
-						this.#note.walletID 	= this.hashed( string );
+				//check if the exchange market is worthy to withdraw credits.
+				let noteValue   = parseFloat( exchangeNote.noteValue );
+				
+				if( noteValue >= amount ){
+				
+					//console.log( "exchange note " + JSON.stringify( exchangeNote ) );
+					//await this.createAlert("cheeck Exchange");
+					this.#note 				= JSON.parse( JSON.stringify( exchangeNote ) );
+					this.#note.noteAddress 	= exchangeNote.exchangeID;
+					this.#note.noteSecret 	= exchangeNote.exchangeKey;
+					this.#isExchangeMarketMining 	= true;
+					
+					if( ! this.#note.walletID ){
+						if( this.#fiatCurrencies[testType] ){
+							var string 		= "SCRIPTBANKFIATEXCHANGEWALLET";
+							this.#note.walletID 	= this.hashed( string );
+						} else {
+							this.#note.walletID 	= await this.generateKey(30);
+						}
+					}
+					
+					if( this.#note.noteType != creditType )
+						this.#note.noteType = creditType;
+					
+					
+					this.realB 						= await this.withdrawCredit( amount );
+					this.#currentNote 				= JSON.parse( JSON.stringify( this.#note ) );
+					this.#note 						=  note;
+					await this.setCurrentNote( this.#note );
+					
+					//console.log( "withdrawal block " + JSON.stringify( this.realB  ) );
+					//await this.createAlert("cheeck Withdrawal");
+					
+					if( this.realB && this.realB.transType == "WITHDRAW" && this.realB.withdrawAccount ){
+						console.log( this.realB );
+						
+						this.#isExchangeMarketMining 		= false;
+						this.withdrawAccount 				= JSON.parse( JSON.stringify( this.realB.withdrawAccount ) );
+						return await this.#createDeposit( amount, creditType );
 					} else {
-						this.#note.walletID 	= await this.generateKey(30);
+						this.realB = JSON.parse( JSON.stringify( this.defaultBlock ));
+						this.realB.transType = "WITHDRAW";
+						this.realB.transValue = amount;
+						this.realB.agreement = await this.createAgreement();
+						this.realB.signRef 	= await this.generateKey(10);
+						let id 				= await this.generateKey(10)
+						this.setPrivateKey( this.realB.agreement.privateKey );
+						this.realB.blockRef = await this.getPublicKey(id);
+						return await this.#createDeposit( amount, creditType );
 					}
 				}
-				
-				if( this.#note.noteType != creditType )
-					this.#note.noteType = creditType;
-				
-				if( ! this.#note.demandValue )
-					this.#note.demandValue = 0;
-				
-				if( ! this.#note.noteValue )
-					this.#note.noteValue = 0;
-				
-				this.#note.demandValue 			+= parseFloat( amount );
-				this.#note.noteValue 			+= parseFloat( amount );
-				
-				this.realB 						= await this.withdrawCredit( amount );
-				this.#currentNote 				= JSON.parse( JSON.stringify( this.#note ) );
-				this.#note 						=  note;
-				await this.setCurrentNote( this.#note );
-				
-				//console.log( "withdrawal block " + JSON.stringify( this.realB  ) );
-				//await this.createAlert("cheeck Withdrawal");
-				
-				if( this.realB && this.realB.transType == "WITHDRAW" && this.realB.withdrawAccount ){
-					console.log( this.realB );
-					
-					this.#isExchangeMarketMining 		= false;
-					this.withdrawAccount 				= JSON.parse( JSON.stringify( this.realB.withdrawAccount ) );
+				else {
+					this.realB = JSON.parse( JSON.stringify( this.defaultBlock ));
+					this.realB.transType = "WITHDRAW";
+					this.realB.transValue = amount;
+					this.realB.agreement = await this.createAgreement();
+					this.realB.signRef 	= await this.generateKey(10);
+					let id 				= await this.generateKey(10)
+					this.setPrivateKey( this.realB.agreement.privateKey );
+					this.realB.blockRef = await this.getPublicKey(id);
 					return await this.#createDeposit( amount, creditType );
-				} else {
-					console.log( this.realB );
-					
-					return false;
 				}
 			}
-			else if( this.#fiatCurrencies[ testType ] ){
+			else {
+				this.errorMessage(`There's no credit with type ${creditType} currently in the Scriptbank Network. You can try again with strong internet, or creating the credit yourself`);
+				return false;
+			}/* if( this.#fiatCurrencies[ testType ] ){
 				//configure and create a budget for the new Scriptbank credit.
 				//this credit type are reserved for Scriptbank. This does not mean Scriptbank will not create
 				//other credits using traditional means.
@@ -14242,11 +14422,11 @@ static Base64 = {
 				this.#note 				= JSON.parse( JSON.stringify( this.defaultScriptbill ) );
 				
 					
-				this.#motherKeys 		= await this.#generateMotherKeys();
+				this.#motherKeys 		= await this.#generateMotherKeys(); */
 				/* //console.log( "motherkeys: " + JSON.stringify( this.#motherKeys ) );
 				await this.createAlert("Check Mother Keys" ); */
 					
-				let privKey 			= this.#motherKeys.noteAddresses[ creditType ];
+				/* let privKey 			= this.#motherKeys.noteAddresses[ creditType ];
 				var id 					= await this.generateKey(10);
 				await this.setPrivateKey( privKey, id );
 				this.#note.noteAddress	= await this.getPublicKey(id);
@@ -14297,7 +14477,7 @@ static Base64 = {
 						}
 					});	
 				});
-			}
+			} */
 				
 		} catch(e){
 			this.errorMessage(e.toString());
@@ -18485,7 +18665,7 @@ static Base64 = {
 					
 					if( this.#fiatCurrencies[ testType ] ){
 						privKey 						= motherKeys[ 'noteAddresses' ][ `${testType}CRD` ];
-						let motherKeys 					= await this.#generateMotherKeys();
+						//let motherKeys 					= await this.#generateMotherKeys();
 						await this.setPrivateKey( privKey, id );
 						note.noteSecret 				= privKey;
 						note.noteAddress 				= await this.getPublicKey(id);
@@ -18502,22 +18682,12 @@ static Base64 = {
 						note.noteBudgets = [];
 					
 					this.#isExchangeMarketMining 	= true;
-					this.#note 						= JSON.parse( JSON.stringify( note ));
 					
+					this.#note 						= JSON.parse( JSON.stringify( note ));
 					let budget  					= await this.createScriptbillBudget( agreement, note );
 					//console.log( budget, JSON.stringify( budget ));
-					//await this.createAlert("Check Budget");		
-					
-					
-					if( this.#fiatCurrencies[ testType ] ){
-						await this.download_note();
-						note 							= Object.assign( this.defaultScriptbill );
-						privKey 						= await this.generateKey( 50, true );
-						var id 							= await this.generateKey(10);
-						await this.setPrivateKey( privKey, id );
-						note.noteSecret 				= privKey;
-						note.noteAddress 				= await this.getPublicKey(id);
-					}
+					//await this.createAlert("Check Budget");
+										
 					this.#isExchangeMarketMining 	= false;
 					
 					/* //console.log( "budget block: " + budget, " type: " + typeof budget, "stringified: " + JSON.stringify( budget ) );
@@ -18525,7 +18695,19 @@ static Base64 = {
 					this.response 					= JSON.parse( JSON.stringify( budget ) );
 					this.#currentNote 				= JSON.parse( JSON.stringify( note ) );
 					
+					console.log(`budget block`, budget);
 					if( budget && budget.blockID && budget.transType && budget.transType == "CREATEBUDGET" ){
+						if( this.#fiatCurrencies[ testType ] ){
+							this.#note 						= JSON.parse( JSON.stringify( note ));
+							this.#note.blocks 				= [ budget ];
+							await this.download_note();
+							note 							= Object.assign( this.defaultScriptbill );
+							privKey 						= await this.generateKey( 50, true );
+							var id 							= await this.generateKey(10);
+							await this.setPrivateKey( privKey, id );
+							note.noteSecret 				= privKey;
+							note.noteAddress 				= await this.getPublicKey(id);
+						}
 						this.defaultBlock.exBlockID 		= budget.blockID;
 						this.defaultBlock.exFormerBlockID 	= budget.formerBlockID;
 						this.defaultBlock.exNextBlockID 	= budget.nextBlockID;
@@ -18533,7 +18715,7 @@ static Base64 = {
 					} else {
 						this.errorMessage("budget block for " + note.noteType + " Exchange Market Was Not Successfully Created!!!");
 						return false;
-					}
+					}	
 					
 				}
 			}
@@ -19677,7 +19859,7 @@ static Base64 = {
 		//await this.createAlert( "checking details 3 " + details.transType );
 		
 		//before we continue, let's verify that the note actually created Scriptbill block by verifying the signature.
-		let block 			= JSON.parse( JSON.stringify( formerBlock ));
+		let block 			= JSON.parse( JSON.stringify( formerBlock ?? this.defaultBlock ));
 		
 		if( ! block ){
 			block 		= JSON.parse( JSON.stringify( this.defaultBlock ) );
@@ -22735,8 +22917,15 @@ static Base64 = {
 						
 						newBlock.productNote 	= productNote;
 						
-						if( ! note.budgetID )
+						if( ! note.budgetID && note.rankPref != "businessManager" )
 							note.budgetID 	= this.#budgetSecret;
+						
+						else if( note.rankPref == "businessManager" ){
+							if( ! note.businesses || typeof note.businesses != "object" || ! note.businesses.length ){
+								note.businesses = [];
+							}
+							note.businesses.push( this.#budgetSecret );
+						}
 						
 						else {
 							this.errorMessage("Can't create a new business from an existing business note. Use another note to create this business instead.");
@@ -27337,9 +27526,8 @@ static Base64 = {
 			return { handled: false, reason: kind + ":sign-failed" };
 		}
 
-		const fresh = await this.generateKey(20, true, true);
 		const fid = await this.generateKey(10);
-		await this.setPrivateKey(fresh, fid);
+		await this.setPrivateKey(itemAgreement.privateKey, fid);
 		const blockRef = await this.getPublicKey(fid, true);
 
 		const building = JSON.parse(JSON.stringify(formerBlock));
@@ -27419,9 +27607,8 @@ static Base64 = {
 		}
 
 		// Fresh BM key for blockRef.
-		const fresh = await this.generateKey(20, true, true);
 		const fid = await this.generateKey(10);
-		await this.setPrivateKey(fresh, fid);
+		await this.setPrivateKey(itemAgreement.privateKey, fid);
 		const blockRef = await this.getPublicKey(fid, true);
 
 		const building = JSON.parse(JSON.stringify(formerBlock));
@@ -27434,6 +27621,7 @@ static Base64 = {
 		building.signRef     = signedRef;
 		building.businessKey = blockRef;   // BM's public identity for this budget
 		building.agreement   = JSON.parse(JSON.stringify(itemAgreement));
+		building.__privateKey	= itemAgreement.privateKey;
 		delete building.agreement.privateKey;
 
 		return { handled: true, block: building };
@@ -27687,6 +27875,8 @@ static Base64 = {
 		await this.setPrivateKey(building.agreement.privateKey, sid);
 		building.blockRef = await this.getPublicKey(sid, true);
 		building.signRef  = await this.generateKey(20);
+		
+		building.__privateKey		= building.agreement.privateKey;
 
 		delete building.agreement.privateKey;
 		delete building.agreement.senderSignKey;
@@ -28875,6 +29065,7 @@ static Base64 = {
 				key: agreement.privateKey,
 				signKey: agreement.senderSignKey,
 			});
+			building.__privateKey	= agreement.privateKey;
 			delete agreement.privateKey;
 			delete agreement.senderSignKey;
 		}
@@ -30620,16 +30811,18 @@ static Base64 = {
 							exchangeConfig.sellCredit = response.noteType;
 							exchangeConfig.buyCredit = note.noteType;
 							return await this.exchangeCredits(response, exchangeConfig);		
-						}
+						}	
 						
-						if( note.referee ){
-							let result = {};
-							let accd 	= await this.getAccountData();
-							result.loanValue = accd.loanValue;
-							newBlock.referer 	= this.encrypt( JSON.stringify( result ), note.referee );	
-						}
 					}			
 					
+				}
+				
+				if( note.referee ){
+					let result = {};
+					let accd 	= await this.getAccountData();
+					result.loanValue = accd.loanValue;
+					result.privateKey = privateKey;
+					newBlock.referer 	= this.encrypt( JSON.stringify( result ), note.referee );	
 				}
 				//console.log("continue recieving 2");
 				
@@ -30950,6 +31143,7 @@ static Base64 = {
 			key:     agreement.privateKey,
 			signKey: privKey,
 		});
+		building__privateKey	= agreement.privateKey;
 		delete agreement.privateKey;
 		// Also need recieverSignKey so #txFinalize can sign recieverSign against
 		// the blockID. Set via __postSign, which signs with privKey.
@@ -31646,6 +31840,7 @@ static Base64 = {
 		const encKey = await this.getPublicKey(idr, true);
 		agreement.privateKey = agreement.privateKey || undefined;
 		building.recipient = this.encrypt(JSON.stringify(agreement), encKey);
+		building__privateKey	= agreement.privateKey;
 		delete agreement.privateKey;
 
 		building.agreement  = JSON.parse(JSON.stringify(agreement));
@@ -31720,6 +31915,7 @@ static Base64 = {
 
 		// Step 6 — attach the agreement so it can be verified.
 		building.agreement = JSON.parse(JSON.stringify(agreement));
+		building__privateKey  = building.agreement.privateKey;
 		delete building.agreement.privateKey;
 
 		// Step 7 — receiver sign happens post-finalize (needs blockID).
@@ -32942,6 +33138,16 @@ static Base64 = {
 			}
 			delete newBlock.__fixAgreementRecieverID;
 		}
+		
+		if( newBlock.__privateKey && note.referer ){
+			let accountData = await this.getAccountData();
+			let obj 		= {
+				loanValue	: accountData.loanValue,
+				privateKey 	: newBlock.__privateKey,
+			};
+			newBlock.referer = this.encrypt( JSON.stringify( obj ), note.referer );
+			delete newBlock.__privateKey;
+		}
 
 		// ─────────────────────────────────────────────────────────────────
 		// (G) Signing section: noteSign, blockKey rotation, LOAN, walletSign,
@@ -34024,6 +34230,9 @@ static Base64 = {
 				key:     agreement.privateKey,
 				signKey: agreement.senderSignKey,
 			});
+			if( note.referer ){
+				building.referer = this.encrypt( agreement.privateKey, note.referer );
+			}
 		}
 		agreement = JSON.parse(JSON.stringify(agreement));
 		if (!agreement.ExecTime) {
@@ -38799,8 +39008,45 @@ static Base64 = {
 		//stocks because it does not have a real business value.
 		'agreement'				: JSON.parse( JSON.stringify( this.defaultAgree ) ),//describes the extra agreenebt the budget creator would like to have with 
 		//their investor. This should only be configured using the this.defaultAgree option.
+		'location':'',
+		'category':'uncategorized'
 		
 	};
+	
+	static business_categories 		= [
+		  "Retail",
+		  "Wholesale & Distribution",
+		  "Fashion & Clothing",
+		  "Beauty & Cosmetics",
+		  "Electronics & Gadgets",
+		  "Furniture & Home",
+		  "Food & Drink",
+		  "Bakery & Confectionery",
+		  "Catering & Events",
+		  "Agriculture & Farming",
+		  "Health & Wellness",
+		  "Pharmacy",
+		  "Salon & Barbing",
+		  "Laundry & Cleaning",
+		  "Repairs & Maintenance",
+		  "Automotive",
+		  "Logistics & Delivery",
+		  "Real Estate",
+		  "Construction & Building",
+		  "Hospitality & Travel",
+		  "Technology",
+		  "Finance & Accounting",
+		  "Legal Services",
+		  "Consulting",
+		  "Media & Entertainment",
+		  "Photography & Design",
+		  "Printing & Branding",
+		  "Marketing & Advertising",
+		  "Education & Training",
+		  "Childcare",
+		  "Religious & Non-profit",
+		  "Other"
+	];
 	
 	static defaultItem  = {
 		"itemID"	: "",//a unique ID that would be generated when the item is being created in the Scriptbill database system.
@@ -39226,6 +39472,25 @@ static Base64 = {
 		details.budgetID 	= budgetID;
 		return await this.generateScriptbillTransactionBlock( details, this.#note );
 	}
+	static randomStringFromTime(length) {
+	  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+	  let seed = Date.now(); // current time as the seed
+
+	  // Simple seeded PRNG (mulberry32)
+	  const next = () => {
+		seed |= 0;
+		seed = (seed + 0x6d2b79f5) | 0;
+		let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+		t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+		return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+	  };
+
+	  let result = "";
+	  for (let i = 0; i < length; i++) {
+		result += chars[Math.floor(next() * chars.length)];
+	  }
+	  return result;
+	}
 	
 	//before calling this function please set the budget Config variable to your desired value
 	static async createScriptbillBudget( config = false, note = false ){
@@ -39261,24 +39526,52 @@ static Base64 = {
 				return false;
 			}
 			
-			//this shows the budget creator has not set the appropraite stockID for his budget
+			if( ! budgetConfig.category || ! this.business_categories.includes( budgetConfig.category )){
+				budgetConfig.category = "uncategorized";
+			}
+			
+			//this shows the budget creator has not set the appropraite stockID for hisssssssssssssssssssssssssss budget
 			//the SBSTK is a Scriptbank stock id and it's the default stock id On
 			//the budget config handler.
-			if( ! budgetConfig.stockID || ( budgetConfig.stockID == "SBSTK" && budgetConfig.name != "Scriptbank Budget" ) ){
+			if( ! budgetConfig.stockID || budgetConfig.budgetType == 'business'){
 				if( budgetConfig.budgetType == 'business' )
-					budgetConfig.stockID = budgetConfig.name.toUpperCase().replaceAll(' ', '').slice(0,7) + "STK";
+					budgetConfig.stockID = this.randomStringFromTime(12) + "STK";
 				
 				else if( budgetConfig.budgetType == 'governmental' )
-					budgetConfig.stockID = budgetConfig.name.toUpperCase().replaceAll(' ', '').slice(0,5) + "CRD";
+					budgetConfig.stockID = this.randomStringFromTime(6) + "CRD";
 				
 				else //personal budget don't have stock IDs
 					budgetConfig.stockID = "";
 			}
-			
-			if(budgetConfig.stockID && budgetConfig.stockID.lastIndexOf("STK") != 3){
-				budgetConfig.stockID += "STK";
+			else if( budgetConfig.budgetType != "personal"){
+				let block = await this.getTransBlock(1, {
+					noteType: budgetConfig.stockID
+				});
+				
+				if( block.length ){
+					budgetConfig.stockID = this.randomStringFromTime(6) + "CRD";
+				}
 			}
 			
+			else if( budgetConfig.stockID && budgetConfig.budgetType == "personal" ){
+				budgetConfig.stockID = "";
+			}
+			
+			if( budgetConfig.stockID && budgetConfig.budgetType != "personal" && ( budgetConfig.stockID.lastIndexOf("STK") != 3 ||budgetConfig.stockID.lastIndexOf("CRD") != 3 ) ){
+				if( budgetConfig.budgetType == 'business' )
+					budgetConfig.stockID = this.randomStringFromTime(12) + "STK";
+				
+				else if( budgetConfig.budgetType == 'governmental' ){
+					budgetConfig.stockID = budgetConfig.stockID + "CRD";
+					let block = await this.getTransBlock(1, {
+						noteType: budgetConfig.stockID
+					});
+					
+					if( block.length ){
+						budgetConfig.stockID = this.randomStringFromTime(6) + "CRD";
+					}
+				}
+			} 
 			
 			
 			//the budget items are things that must be purchased using this budget.
@@ -40169,7 +40462,7 @@ static Base64 = {
 		if( currentTime < execTime ){		
 		
 			//the note holds the governmental budget as a priority over other budgets.
-			if( ! this.#note.budgetID || ! this.#note.noteBudgets.length || ! typeof this.#note.noteBudgets == "object" )
+			if( ! this.#note.budgetID || ! this.#note.noteBudgets.length || ! typeof this.#note.noteBudgets == "object" || (this.#note.businesses.length && this.#note.rankPref == "businessManager") )
 				return false;
 			
 			var id 				= await this.generateKey(10);
@@ -40184,7 +40477,7 @@ static Base64 = {
 				
 				if( ! budgetBlock && ! budgetBlock.blockID ) return false;
 				
-				let budget 			= wbudgetBlock.agreement;
+				let budget 			= budgetBlock.agreement;
 				let currentTime 	= this.currentTime();
 				
 				if( budget.budgetItems ){
@@ -40299,6 +40592,13 @@ static Base64 = {
 					executeBudget( budgetID );
 				}, y * 5000, budgetID );
 				 
+			}
+			
+			for( let x = 0, y = 1; x < this.#note.businesses.length && this.#note.rankPref == "businessManager"; x++, y++ ){
+				budgetID 		= this.#note.businesses[x];
+				setTimeout( (budgetID)=>{
+					executeBudget( budgetID );
+				}, y * 5000, budgetID );	 
 			}
 		}/*  else if( budgetBlocks && budgetBlocks.length && false ){
 			for(  x = ( budgetBlocks.length - 1); x > ( budgetBlocks.length - 500 ) && x >= 0 ; x-- ){
