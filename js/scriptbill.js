@@ -7059,7 +7059,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 		if( this.#note.businesses && this.#note.businesses.length ){
 			
 			let note_bizes = JSON.parse( JSON.stringify( this.#note.businesses ));
-			let bizzes 		= [];
+			let bizzes 		= [], budget;
 
 			for( let budgetID in note_bizes){
 				let ids 	= await this.generateKey(10);
@@ -7080,7 +7080,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 				}
 
 				if( budget.length ){
-					bizzes.push( budget );
+					bizzes.push( ...budget );
 				}
 			}
 			
@@ -36993,1516 +36993,230 @@ static Base64 = {
 	//Scriptbill function is recursive, ensures that the block is gotten, even though it'this.s not stored on the server.
 	//Scriptbill way, the function allows the note to get data from the server that holds it.
 	static async getTransBlock( limit = 500, config = {}, join = "AND" ){
-		//console.log("getTransBlock running " + this.funcUp[ this.funcUp.length - 1], config );
-		this.funcUp[ this.funcUp.length] = "getTransBlock";
+		this.funcUp[ this.funcUp.length ] = "getTransBlock";
 
-		//console.log("Used variables: this.blockID " + this.blockID + " " + typeof this.blockID," this.productBlockID: " +  this.productBlockID  + " " + typeof this.productBlockID, " this.walletHASH: " +  this.walletHASH  + " " + typeof this.walletHASH, " this.transType: " +  this.transType  + " " + typeof this.transType, " this.noteTypeS: " +  this.noteTypeS  + " " + typeof this.noteTypeS," this.productID: " +  this.productID  + " " + typeof this.productID , " this.sellCredit: " +  this.sellCredit  + " " + typeof this.sellCredit , " this.buyCredit: " +  this.buyCredit  + " " + typeof this.buyCredit, " this.budgetID: " +  this.budgetID  + " " + typeof this.budgetID , " this.blockRef: " +  this.blockRef  + " " + typeof this.blockRef , " this.exBlockID: " +  this.exBlockID  + " " + typeof this.exBlockID );		
-			
-						
-		//console.log( JSON.stringify( this.#note ), "note as note" );
-				
-		/* if( ! this.#note || ! this.blockID || ! this.productBlockID || ! this.walletHASH || ! this.transType || ! this.noteTypeS || ! this.productID || ! this.sellCredit || ! this.buyCredit || ! this.budgetID || ! this.blockRef || ! this.exBlockID ) return false; */
-		
-				
-		let trans_blocks = [];
-		let trans_ids = [];
-		let blocks, blockIDs;
-		let searched 	= [];
-		
-		try {	
+		config 	= ( config && typeof config == "object" ) ? config : {};
+		join 	= ( join || "AND" ).toString().trim().toUpperCase() === "OR" ? "OR" : "AND";
+
+		/*
+		 * Every searchable field in one table.
+		 *  key   : name used in the config object
+		 *  prop  : static property used as a fallback (this.noteTypeS etc.)
+		 *  index : name used when querying local storage / the server
+		 *  field : property checked on the block itself
+		 *  range : value is written as "100 >=" style comparisons
+		 *  store : local store to query (default store when left out)
+		 */
+		const FIELDS = [
+			{ key: "blockID",        prop: "blockID",        index: "blockID",        field: "blockID" },
+			{ key: "blockRef",       prop: "blockRef",       index: "blockRef",       field: "blockRef" },
+			{ key: "noteType",       prop: "noteTypeS",      index: "noteType",       field: "noteType" },
+			{ key: "transType",      prop: "transType",      index: "transType",      field: "transType" },
+			{ key: "sellCredit",     prop: "sellCredit",     index: "noteType",       field: "noteType" },
+			{ key: "buyCredit",      prop: "buyCredit",      index: "noteType",       field: "noteType" },
+			{ key: "transValue",     prop: "transValue",     index: "transValue",     field: "transValue", range: true },
+			{ key: "noteValue",      prop: "noteValue",      index: "noteValue",      field: "noteValue",  range: true },
+			{ key: "signRef",        prop: "signRef",        index: "signRef",        field: "signRef" },
+			{ key: "referenceID",    prop: "referenceID",    index: "referenceID",    field: "referenceID" },
+			{ key: "referenceKey",   prop: "referenceKey",   index: "referenceKey",   field: "referenceKey" },
+			{ key: "splitID",        prop: "splitID",        index: "splitID",        field: "splitID" },
+			{ key: "nextSplitID",    prop: "nextSplitID",    index: "nextSplitID",    field: "nextSplitID" },
+			{ key: "budgetID",       prop: "budgetID",       index: "budgetID",       field: "budgetID" },
+			{ key: "productID",      prop: "productID",      index: "productID",      field: "productID" },
+			{ key: "transTime",      prop: "transTime",      index: "transTime",      field: "transTime",  range: true },
+			{ key: "agreeID",        prop: "agreeID",        index: "agreeID",        field: "agreeID",    store: "agreements" },
+			{ key: "productBlockID", prop: "productBlockID", index: "productBlockID", field: "productBlockID" },
+			{ key: "exBlockID",      prop: "exBlockID",      index: "exBlockID",      field: "exBlockID" },
+			{ key: "walletHASH",     prop: "walletHASH",     index: "walletHASH",     field: "walletHASH" }
+		];
+
+		const OPERATORS = { ">": "greater", "=": "equal", ">=": "greater-equal", "<": "lesser", "<=": "lesser-equal" };
+
+		const isEmpty = v => v === undefined || v === null || v === "" || ( Array.isArray( v ) && ! v.length );
+
+		const safe = async fn => {
+			try { return await fn(); }
+			catch( e ){ return null; }
+		};
+
+		//turns "100 >=" into { value: 100, typeCheck: "greater-equal" }
+		const parseRange = raw => {
+			const parts = raw.toString().trim().split( /\s+/ );
+			return { value: parseFloat( parts[0] ), typeCheck: OPERATORS[ parts[1] ] || "equal" };
+		};
+
+		const compare = ( blockValue, typeCheck, value ) => {
+			blockValue = parseFloat( blockValue );
+			if( isNaN( blockValue ) || isNaN( value ) ) return false;
+
+			switch( typeCheck ){
+				case "greater":       return blockValue >  value;
+				case "greater-equal": return blockValue >= value;
+				case "lesser":        return blockValue <  value;
+				case "lesser-equal":  return blockValue <= value;
+				default:              return blockValue == value;
+			}
+		};
+
+		//always gives back a parsed block object, or null
+		const toBlock = b => {
+			if( typeof b == "string" ){
+				if( ! this.isJsonable( b ) ) return null;
+				b = JSON.parse( b );
+			}
+			return ( b && typeof b == "object" && ! Array.isArray( b ) && b.blockID ) ? b : null;
+		};
+
+		//storage and server calls can return an array, a single block or nothing
+		const toBlockList = res => {
+			if( ! res ) return [];
+			if( typeof res == "string" ) res = this.isJsonable( res ) ? JSON.parse( res ) : null;
+			if( ! res || typeof res != "object" ) return [];
+
+			let list;
+			if( Array.isArray( res ) ) list = res;
+			else if( res.blockID ) list = [ res ];
+			else if( typeof res.length == "number" ) list = Array.from( res );
+			else list = [];
+
+			return list.map( toBlock ).filter( Boolean );
+		};
+
+		//local lookup, keeping the original 3 second settle delay
+		const fromLocal = ( ...args ) => safe( () => this.getDataPersistently( ...args ) ).then( res =>
+			new Promise( resolve => setTimeout( () => resolve( res ), 3000 ) )
+		);
+
+		//does this block satisfy this one condition?
+		const matches = ( block, c ) => {
+			if( c.def.range )
+				return c.conditions.every( cond => compare( block[ c.def.field ], cond.typeCheck, cond.value ) );
+
+			return c.values.some( v => block[ c.def.field ] == v );
+		};
+
+		//pull candidate blocks for one condition from local storage and the server
+		const fetchFor = async c => {
+			const server = this.server ? this.server : "";
+			const found  = [];
+
+			if( c.def.key == "blockID" ){
+				for( const id of c.values ){
+					found.push( ...toBlockList( await safe( () => this.resolvePersistentData( id ) ) ) );
+					if( found.length < limit )
+						found.push( ...toBlockList( await safe( () => this.getData( "blockID", id, server, "socket" ) ) ) );
+				}
+				return found;
+			}
+
+			if( c.def.range ){
+				const { value, typeCheck } = c.conditions[0];
+				found.push( ...toBlockList( await fromLocal( c.def.index, value, "transactions", typeCheck ) ) );
+				if( found.length < limit )
+					found.push( ...toBlockList( await safe( () => this.getData( [ c.def.index, "type" ], [ value, typeCheck ], server, "socket" ) ) ) );
+				return found;
+			}
+
+			for( const v of c.values ){
+				const local = c.def.store
+					? await fromLocal( c.def.index, v, c.def.store )
+					: await fromLocal( c.def.index, v );
+				found.push( ...toBlockList( local ) );
+
+				if( found.length < limit )
+					found.push( ...toBlockList( await safe( () => this.getData( c.def.index, v, server, "socket" ) ) ) );
+
+				//productBlockID also keeps a list of block IDs in local storage
+				if( c.def.key == "productBlockID" && this.l && this.l[ v ] && this.isJsonable( this.l[ v ] ) ){
+					const ids = JSON.parse( this.l[ v ] );
+					if( Array.isArray( ids ) ){
+						for( const id of ids )
+							found.push( ...toBlockList( await safe( () => this.resolvePersistentData( id ) ) ) );
+					}
+				}
+			}
+			return found;
+		};
+
+		try {
 			//sanitizing the supplied url we must be sure it's a scriptbill server and a valid url.
 			if( this.server ){
 				try {
 					this.server = new URL( this.server );
-					let resp 	= await this.getData("scriptbillPing", "TRUE", this.server.origin );
+					let resp 	= await this.getData( "scriptbillPing", "TRUE", this.server.origin );
 					if( resp && resp.isScriptbillServer && resp.isScriptbillServer == 'TRUE' ) {
 						this.server = this.server.href;
 					} else {
 						delete this.server;
 					}
 				} catch( e ){
-					//console.log("this.server: " + e);
 					delete this.server;
 				}
 			}
-			
-			if( config.blockRef || this.blockRef ){
-				if( ! config.blockRef )
-					config.blockRef 	= this.blockRef;
-				
-				blocks 		= new Promise( (resolve, reject)=>{
-					this.getDataPersistently('blockRef', config.blockRef ).then( blocks =>{
-						setTimeout(()=>{
-							resolve(blocks);
-						},3000);
-					});
-				});
-				blocks 		= await blocks;
-				blockIDs 	= [];
-				
-				if( trans_blocks.length < limit && blocks && blocks.length && typeof blocks == "object" ){
-					trans_blocks = trans_blocks.concat( blocks );
-					
-					blocks.forEach( block =>{
-						blockIDs.push( block.blockID );
-					});
-				}
-				
-				if( trans_blocks.length < limit ){ 
-				
-					blocks 		= await this.getData("blockRef", config.blockRef, this.server ? this.server : "", "socket");
-					
-					if( blocks && blocks.length && typeof blocks == "object" ){
-						blocks.forEach( block =>{
-							if( ! blockIDs.includes( block.blockID )){
-								blockIDs.push( block.blockID );
-								trans_blocks.push( block );
-							}
-						});
-					}
-				
-				}
-				
-				if( trans_ids.length < limit && blockIDs.length )
-					trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
-				
-				delete this.blockRef;
-				searched.push("blockRef");
-			}
-			if( config.noteType || this.noteTypeS ){
-				if( ! config.noteType )
-					config.noteType 	= this.noteTypeS; 
-				
-				if( searched.length && join == "AND" ){//filtering stage.
-					if( trans_blocks.length ){
-						if( typeof config.noteType != "object" )
-							config.noteType 	= [ config.noteType ];
-						
-						config.noteType.forEach( (noteType)=>{
-							trans_blocks = trans_blocks.filter( (block)=>{
-								if( typeof block == "string" && this.isJsonable( block ) )
-									block 		= JSON.parse( block );
-								
-								if( typeof block == "string" && ! this.isJsonable( block ) )
-									return false;
-								
-								return block.noteType == noteType && trans_ids.includes( block.blockID );
-								
-								
-							});
-						});
-						
-					}
-				} else {
-					//console.log("Note Typing...");
-					blocks 		= new Promise( (resolve, reject)=>{
-						this.getDataPersistently('noteType', config.noteType ).then( blocks =>{
-							setTimeout(()=>{
-								resolve(blocks);
-							},3000);
-						});
-					});
-					blocks 		= await blocks;
-					blockIDs 	= [];
-										
-					if( trans_blocks.length < limit && blocks && blocks.length && typeof blocks == "object" ) {
-						trans_blocks = trans_blocks.concat( blocks );
-						blocks.forEach( block =>{
-							blockIDs.push( block.blockID );
-						});
-					}
-					
-					if( trans_blocks.length < limit ){ 
-					
-						blocks 	= await this.getData("noteType", config.noteType, this.server ? this.server : "", "socket");
-						
-						if( blocks && blocks.length && typeof blocks == "object" ){
-							blocks.forEach( block =>{
-								if( ! blockIDs.includes( block.blockID )){
-									blockIDs.push( block.blockID );
-									trans_blocks.push( block );
-								}
-							});
-						}
-					
-					}
-								
-					if( blockIDs.length )
-						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
-				}
-				
-				
-				/* //console.log( "block IDs: " + JSON.stringify( trans_ids ) );
-				await this.createAlert("check Block IDs" ); */
-							
-				delete this.noteTypeS;
-				searched.push("noteTypeS");
-			}
-			if( config.transType || this.transType ){
-				if( ! config.transType )
-					config.transType 	= this.transType;
-				
-				if( searched.length && join == "AND" ){
-					if( trans_blocks.length ){
-						if( typeof config.transType != "object" )
-							config.transType 	= [ config.transType ];
-						config.transType.forEach( (transType)=>{
-							trans_blocks = trans_blocks.filter( (block)=>{
-								if( typeof block == "string" && this.isJsonable( block ) )
-									block 		= JSON.parse( block );
-								
-								if( typeof block == "string" && ! this.isJsonable( block ) )
-									return false;
-								
-								return block.transType == transType && trans_ids.includes( block.blockID );
-								
-								
-							});
-						});
-						
-					}
-				} else {
-					blocks 		= new Promise( (resolve, reject)=>{
-						this.getDataPersistently('transType', config.transType ).then( blocks =>{
-							//console.log("blocks",blocks);
-							setTimeout(()=>{
-								//console.log("blocks 2",blocks, config.transType);
-								resolve(blocks);
-							},3000);
-						});
-					});
-					blocks 		= await blocks;
-					blockIDs	= [];
-					
-					if( trans_blocks.length < limit && blocks && blocks.length && typeof blocks == "object" ) {
-						trans_blocks = trans_blocks.concat( blocks );
-						blocks.forEach( block =>{
-							blockIDs.push( block.blockID );
-						});
-					}
-					//console.log( "check blocks", blocks );
-					if( trans_blocks.length < limit ){ 
-					
-						blocks 	= await this.getData("transType", config.transType, this.server ? this.server : "", "socket");
-						//console.log( "check blocks", blocks );
-						if( blocks && blocks.length && typeof blocks == "object" ){
-							blocks.forEach( block =>{
-								if( ! blockIDs.includes( block.blockID )){
-									blockIDs.push( block.blockID );
-									trans_blocks.push( block );
-								}
-							});
-						}
-					
-					}
-								
-					if( blockIDs.length )
-						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
-					
-				}
-				/* //console.log( "block IDs: " + JSON.stringify( trans_ids ) );	
-				await this.createAlert("check Block IDs" ); */
-							
-				delete this.transType;
-				searched.push("transType");
-			}
-			if( this.sellCredit || config.sellCredit ){
-				
-				if( ! config.sellCredit )
-					config.sellCredit 	= this.sellCredit;
-				
-				if( searched.length && join == "AND" ){
-					if( trans_blocks.length ){
-						if( typeof config.sellCredit != "object" )
-							config.sellCredit 	= [ config.sellCredit ];
-						config.sellCredit.forEach( (sellCredit)=>{
-							trans_blocks = trans_blocks.filter( (block)=>{
-								if( typeof block == "string" && this.isJsonable( block ) )
-									block 		= JSON.parse( block );
-								
-								if( typeof block == "string" && ! this.isJsonable( block ) )
-									return false;
-								
-								return block.noteType == sellCredit && trans_ids.includes( block.blockID );
-								
-								
-							});
-						});
-						
-					}
-				} else {
-					blocks 		= new Promise( (resolve, reject)=>{
-						this.getDataPersistently('noteType', config.sellCredit ).then( blocks =>{
-							setTimeout(()=>{
-								resolve(blocks);
-							},3000);
-						});
-					});
-					blocks 		= await blocks;
-					blockIDs 	= [];
-					
-					if( trans_blocks.length < limit && blocks && blocks.length && typeof blocks == "object" ) {
-						trans_blocks = trans_blocks.concat( blocks );
-						blocks.forEach( block =>{
-							blockIDs.push( block.blockID );
-						});
-					}
-					
-					if( trans_blocks.length < limit ){ 
-					
-						blocks 	= await this.getData("noteType", config.sellCredit, this.server ? this.server : "", "socket");
-						
-						if( blocks && blocks.length && typeof blocks == "object" ){ 
-							blocks.forEach( block =>{
-								if( ! blockIDs.includes( block.blockID )){
-									blockIDs.push( block.blockID );
-									trans_blocks.push( block );
-								}
-							});
-						}
-					
-					}			
-								
-					if( blockIDs.length )
-						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
-				
-				}
-				delete this.sellCredit;
-				searched.push("sellCredit");
-			}
-			if( config.buyCredit || this.buyCredit ){
-				
-				if( ! config.buyCredit )
-					config.buyCredit 	= this.buyCredit;
-				
-				if( searched.length && join == "AND"){
-					if( trans_blocks.length ){
-						if( typeof config.buyCredit != "object" )
-							config.buyCredit 	= [ config.buyCredit ];
-						config.buyCredit.forEach( (buyCredit)=>{
-							trans_blocks = trans_blocks.filter( (block)=>{
-								if( typeof block == "string" && this.isJsonable( block ) )
-									block 		= JSON.parse( block );
-								
-								if( typeof block == "string" && ! this.isJsonable( block ) )
-									return false;
-								
-								return block.noteType == buyCredit && trans_ids.includes( block.blockID );
-								
-								
-							});
-						});
-						
-					}
-				} else {
-					blocks 		= new Promise( (resolve, reject)=>{
-						this.getDataPersistently('noteType', config.buyCredit ).then( blocks =>{
-							setTimeout(()=>{
-								resolve(blocks);
-							},3000);
-						});
-					});
-					blocks 		= await blocks;
-					blockIDs 	= [];
-					
-					if( trans_blocks.length < limit && blocks ) {
-						trans_blocks = trans_blocks.concat( blocks );
-						if( blocks && blocks.length && typeof blocks == "object" ){
-							blocks.forEach( block =>{
-								blockIDs.push( block.blockID );
-							});
-						}
-					}
-					
-					if( trans_blocks.length < limit ){ 
-					
-						blocks 	= await this.getData("noteType", this.buyCredit, this.server ? this.server : "", "socket");
-						
-						if( blocks && blocks.length && typeof blocks == "object" ){
-							blocks.forEach( block =>{
-								if( ! blockIDs.includes( block.blockID )){
-									blockIDs.push( block.blockID );
-									trans_blocks.push( block );
-								}
-							});
-						}
-					
-					}
-					
-					if( blockIDs.length )
-						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
-					
-				}
 
-				delete this.buyCredit;
-				searched.push("buyCredit");
-				
-			}
-			if( config.transValue || this.transValue ){
-				
-				if( ! config.transValue )
-					config.transValue 	= this.transValue;
-				
-				let trans 		= config.transValue.toString().split(" ");
-				config.transValue = parseFloat( trans[0] );
-				let transCheck  = trans[1];
-				let typeCheck;
-				
-				if( transCheck == ">" )
-					typeCheck  = "greater";
-				
-				else if( transCheck == "=" )
-					typeCheck  = "equal";
-				
-				else if( transCheck == ">=" )
-					typeCheck  = "greater-equal";
-				
-				else if( transCheck == "<" )
-					typeCheck  = "lesser";
-				
-				else if( transCheck == "<=" )
-					typeCheck  = "lesser-equal";
-				
-				else
-					typeCheck 	= "equal";
-				
-				if( searched.length && join == "AND" ){
-					if( trans_blocks.length ){
-						if( typeof config.transValue != "object" )
-							config.transValue 	= [ config.transValue ];
-						
-						config.transValue.forEach( (transValue)=>{
-							trans_blocks = trans_blocks.filter( (block)=>{
-								if( typeof block == "string" && this.isJsonable( block ) )
-									block 		= JSON.parse( block );
-								
-								if( typeof block == "string" && ! this.isJsonable( block ) )
-									return false;
-								
-								if( ! trans_ids.includes( block.blockID ) ) return false;
-								
-								if( transCheck == "equal" )							
-									return block.transValue == transValue;
-								
-								if( transCheck == "greater" )
-									return block.transValue > transValue;
-								
-								if( transCheck == "greater-equal" )
-									return block.transValue >= transValue;
-								
-								if( transCheck == "lesser" )
-									return block.transValue < transValue;
-								
-								if( transCheck == "lesser-equal" )
-									return block.transValue <= transValue;
-								
-								
-							});
-						});
-						
-					}
+			//collect every condition that was asked for, from config first, then the static fallback
+			const criteria = [];
+
+			for( const def of FIELDS ){
+				let raw = config[ def.key ];
+				if( isEmpty( raw ) ) raw = this[ def.prop ];
+				delete this[ def.prop ];
+
+				if( isEmpty( raw ) ) continue;
+
+				const values = Array.isArray( raw ) ? raw : [ raw ];
+
+				if( def.range ){
+					const conditions = values.map( parseRange ).filter( c => ! isNaN( c.value ) );
+					if( conditions.length ) criteria.push( { def, values, conditions } );
 				} else {
-					blocks 		= new Promise( (resolve, reject)=>{
-						this.getDataPersistently('transValue', config.transValue, "transactions", typeCheck ).then( blocks =>{
-							setTimeout(()=>{
-								resolve(blocks);
-							},3000);
-						});
-					});
-					blocks 		= await blocks;
-					blockIDs 	= [];
-					
-					if( trans_blocks.length < limit && blocks ) {
-						trans_blocks = trans_blocks.concat( blocks );
-						if( blocks && blocks.length && typeof blocks == "object" ){
-							blocks.forEach( block =>{
-								blockIDs.push( block.blockID );
-							});
-						}
-					}
-					
-					if( trans_blocks.length < limit ){ 
-					
-						blocks = await this.getData(["transValue", "type"], [config.transValue, typeCheck ], this.server ? this.server : "", "socket");
-						
-						if( blocks && blocks.length && typeof blocks == "object" ){
-							blocks.forEach( block =>{
-								if( ! blockIDs.includes( block.blockID )){
-									blockIDs.push( block.blockID );
-									trans_blocks.push( block );
-								}
-							});
-						}
-					}
-					
-				}	
-				delete this.transValue;
-				searched.push("transValue");
-							
-				if( blockIDs.length )
-					trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
-				
-			}
-			if( config.noteValue || this.noteValue ){
-				
-				if( ! config.noteValue )
-					config.noteValue 	= this.noteValue;
-				
-				let trans = config.noteValue.split(" ");
-				config.noteValue = parseFloat( trans[0] );
-				let transCheck  = trans[1];
-				let typeCheck;
-				
-				if( transCheck == ">" )
-					typeCheck  = "greater";
-				
-				else if( transCheck == "=" )
-					typeCheck  = "equal";
-				
-				else if( transCheck == ">=" )
-					typeCheck  = "greater-equal";
-				
-				else if( transCheck == "<" )
-					typeCheck  = "lesser";
-				
-				else if( transCheck == "<=" )
-					typeCheck  = "lesser-equal";
-				
-				else
-					typeCheck 	= "equal";
-				
-				
-				if( searched.length && join == "AND"){
-					if( trans_blocks.length ){
-						if( typeof config.noteValue != "object" )
-							config.noteValue 	= [ config.noteValue ];
-						
-						config.noteValue.forEach( (noteValue)=>{
-							trans_blocks = trans_blocks.filter( (block)=>{
-								if( typeof block == "string" && this.isJsonable( block ) )
-									block 		= JSON.parse( block );
-								
-								if( typeof block == "string" && ! this.isJsonable( block ) )
-									return false;
-								
-								if( ! trans_ids.includes( block.blockID ) ) return false;
-								
-								if( transCheck == "equal" )							
-									return block.noteValue == noteValue;
-								
-								if( transCheck == "greater" )
-									return block.noteValue > noteValue;
-								
-								if( transCheck == "greater-equal" )
-									return block.noteValue >= noteValue;
-								
-								if( transCheck == "lesser" )
-									return block.noteValue < noteValue;
-								
-								if( transCheck == "lesser-equal" )
-									return block.noteValue <= noteValue;
-								
-								
-							});
-						});
-						
-					}
-				} else {
-					blocks 		= new Promise( (resolve, reject)=>{
-						this.getDataPersistently('noteValue', config.noteValue, "transactions", typeCheck ).then( blocks =>{
-							setTimeout(()=>{
-								resolve(blocks);
-							},3000);
-						});
-					});
-					blocks 		= await blocks;
-					blockIDs 	= [];
-					
-					if( trans_blocks.length < limit && blocks ) {
-						trans_blocks = trans_blocks.concat( blocks );				
-						if( blocks && blocks.length && typeof blocks == "object" ){
-							blocks.forEach( block =>{
-								blockIDs.push( block.blockID );
-							});
-						}
-					}
-					
-					if( trans_blocks.length < limit ){ 
-					
-						blocks = await this.getData(["noteValue", "type"], [config.noteValue, typeCheck ], this.server ? this.server : "", "socket");
-						
-						if( blocks && blocks.length && typeof blocks == "object" ){
-							blocks.forEach( block =>{
-								if( ! blockIDs.includes( block.blockID )){
-									blockIDs.push( block.blockID );
-									trans_blocks.push( block );
-								}
-							});
-						}
-					}
-					if( blockIDs.length )
-						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );				
-					
+					criteria.push( { def, values } );
 				}
-				delete this.noteValue;
-				searched.push("noteValue");				
-				
-			}
-			if( config.signRef || this.signRef ){
-				
-				if( ! config.signRef )
-					config.signRef 		= this.signRef;
-				
-				if( searched.length && join == "AND"){
-					if( trans_blocks.length ){
-						if( typeof config.signRef != "object" )
-							config.signRef 	= [ config.signRef ];
-						
-						config.signRef.forEach( (signRef)=>{
-							trans_blocks = trans_blocks.filter( (block)=>{
-								if( typeof block == "string" && this.isJsonable( block ) )
-									block 		= JSON.parse( block );
-								
-								if( typeof block == "string" && ! this.isJsonable( block ) )
-									return false;
-								
-								return block.signRef == signRef && trans_ids.includes( block.blockID );
-								
-								
-							});
-						});
-						
-					}
-				} else {
-					blocks 		= new Promise( (resolve, reject)=>{
-						this.getDataPersistently('signRef', config.signRef ).then( blocks =>{
-							setTimeout(()=>{
-								resolve(blocks);
-							},3000);
-						});
-					});
-					blocks 		= await blocks;
-					blockIDs 	= [];
-					
-					if( trans_blocks.length < limit && blocks ) {
-						trans_blocks = trans_blocks.concat( blocks );
-						if( blocks && blocks.length && typeof blocks == "object" ){
-							blocks.forEach( block =>{
-								blockIDs.push( block.blockID );
-							});
-						}
-					}
-					
-					if( trans_blocks.length < limit ){ 
-					
-						blocks 	= await this.getData("signRef", config.signRef, this.server ? this.server : "", "socket");
-						
-						if( blocks && blocks.length && typeof blocks == "object" ){
-							blocks.forEach( block =>{
-								if( ! blockIDs.includes( block.blockID )){
-									blockIDs.push( block.blockID );
-									trans_blocks.push( block );
-								}
-							});
-						}
-					}
-								
-					if( blockIDs.length )
-						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
-					
-				}
-				delete this.signRef;
-				searched.push("signRef");
-			}
-			if( config.referenceID || this.referenceID ){
-				
-				if( ! config.referenceID )
-					config.referenceID 		= this.referenceID;
-				
-				if( searched.length && join == "AND" ){
-					if( trans_blocks.length ){
-						if( typeof config.referenceID != "object" )
-							config.referenceID 	= [ config.referenceID ];
-						
-						config.referenceID.forEach( (referenceID)=>{
-							trans_blocks = trans_blocks.filter( (block)=>{
-								if( typeof block == "string" && this.isJsonable( block ) )
-									block 		= JSON.parse( block );
-								
-								if( typeof block == "string" && ! this.isJsonable( block ) )
-									return false;
-								
-								return block.referenceID == referenceID && trans_ids.includes( block.blockID );	
-							});
-						});					
-					}
-				} else { 
-					blocks 		= new Promise( (resolve, reject)=>{
-						this.getDataPersistently('referenceID', config.referenceID ).then( blocks =>{
-							setTimeout(()=>{
-								resolve(blocks);
-							},3000);
-						});
-					});
-					blocks 		= await blocks;
-					blockIDs 	= [];
-					
-					if( trans_blocks.length < limit && blocks ) {
-						trans_blocks = trans_blocks.concat( blocks );
-						if( blocks && blocks.length && typeof blocks == "object" ){
-							blocks.forEach( block =>{
-								blockIDs.push( block.blockID );
-							});
-						}
-					}
-					
-					if( trans_blocks.length < limit ){ 
-					
-						blocks 	= await this.getData("referenceID", config.referenceID, this.server ? this.server : "", "socket");
-						
-						if( blocks && blocks.length && typeof blocks == "object" ){
-							blocks.forEach( block =>{
-								if( ! blockIDs.includes( block.blockID )){
-									blockIDs.push( block.blockID );
-									trans_blocks.push( block );
-								}
-							});
-						}
-					}
-								
-					if( blockIDs.length )
-						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
-					
-				}
-				delete this.referenceID;
-				searched.push("referenceID");
-			}
-			
-			if( config.referenceKey || this.referenceKey ){
-				
-				if( ! config.referenceKey )
-					config.referenceKey 		= this.referenceKey;
-				
-				if( searched.length && join == "AND" ){
-					if( trans_blocks.length ){
-						if( typeof config.referenceKey != "object" )
-							config.referenceKey 	= [ config.referenceKey ];
-						
-						config.referenceKey.forEach( (referenceKey)=>{
-							trans_blocks = trans_blocks.filter( (block)=>{
-								if( typeof block == "string" && this.isJsonable( block ) )
-									block 		= JSON.parse( block );
-								
-								if( typeof block == "string" && ! this.isJsonable( block ) )
-									return false;
-								
-								return block.referenceKey == referenceKey && trans_ids.includes( block.blockID );	
-							});
-						});					
-					}
-				} else {	
-					blocks 		= new Promise( (resolve, reject)=>{
-						this.getDataPersistently('referenceKey', config.referenceKey ).then( blocks =>{
-							setTimeout(()=>{
-								resolve(blocks);
-							},3000);
-						});
-					});
-					blocks = await blocks;
-					blockIDs 	= [];
-					
-					if( trans_blocks.length < limit && blocks ) {
-						trans_blocks = trans_blocks.concat( blocks );
-						if( blocks && blocks.length && typeof blocks == "object" ){
-							blocks.forEach( block =>{
-								blockIDs.push( block.blockID );
-							});
-						}
-					}
-					
-					if( trans_blocks.length < limit ){ 
-					
-						blocks 	= await this.getData("referenceKey", config.referenceKey, this.server ? this.server : "", "socket");
-						
-						if( blocks && blocks.length && typeof blocks == "object" ){
-							blocks.forEach( block =>{
-								if( ! blockIDs.includes( block.blockID )){
-									blockIDs.push( block.blockID );
-									trans_blocks.push( block );
-								}
-							});
-						}
-					}
-								
-					if( blockIDs.length )
-						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
-					
-				}
-				delete this.referenceKey;
-				searched.push("referenceKey");
-			}
-			
-			if( config.splitID || this.splitID ){
-				
-				if( ! config.splitID )
-					config.splitID 		= this.splitID;
-				
-				if( searched.length && join == "AND" ){
-					if( trans_blocks.length ){
-						if( typeof config.splitID != "object" )
-							config.splitID 	= [ config.splitID ];
-						
-						config.splitID.forEach( (splitID)=>{
-							trans_blocks = trans_blocks.filter( (block)=>{
-								if( typeof block == "string" && this.isJsonable( block ) )
-									block 		= JSON.parse( block );
-								
-								if( typeof block == "string" && ! this.isJsonable( block ) )
-									return false;
-								
-								return block.splitID == splitID && trans_ids.includes( block.blockID );	
-							});
-						});					
-					}
-				} else { 
-					blocks 		= new Promise( (resolve, reject)=>{
-						this.getDataPersistently('splitID', config.splitID ).then( blocks =>{
-							setTimeout(()=>{
-								resolve(blocks);
-							},3000);
-						});
-					});
-					blocks = await blocks;
-					blockIDs 	= [];
-					
-					if( trans_blocks.length < limit && blocks ) {
-						trans_blocks = trans_blocks.concat( blocks );
-						if( blocks && blocks.length && typeof blocks == "object" ){
-							blocks.forEach( block =>{
-								blockIDs.push( block.blockID );
-							});
-						}
-					}
-					
-					if( trans_blocks.length < limit ){ 
-					
-						blocks 	= await this.getData("splitID", config.splitID, this.server ? this.server : "", "socket");
-						
-						if( blocks && blocks.length && typeof blocks == "object" ){
-							blocks.forEach( block =>{
-								if( ! blockIDs.includes( block.blockID )){
-									blockIDs.push( block.blockID );
-									trans_blocks.push( block );
-								}
-							});
-						}
-					}
-								
-					if( blockIDs.length )
-						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
-					
-				}
-				delete this.splitID;
-				searched.push("splitID");
 			}
 
-			if( config.nextSplitID || this.nextSplitID ){
-				
-				if( ! config.nextSplitID )
-					config.nextSplitID 		= this.nextSplitID;
-				
-				if( searched.length && join == "AND" ){
-					if( trans_blocks.length ){
-						if( typeof config.nextSplitID != "object" )
-							config.nextSplitID 	= [ config.nextSplitID ];
-						
-						config.nextSplitID.forEach( (nextSplitID)=>{
-							trans_blocks = trans_blocks.filter( (block)=>{
-								if( typeof block == "string" && this.isJsonable( block ) )
-									block 		= JSON.parse( block );
-								
-								if( typeof block == "string" && ! this.isJsonable( block ) )
-									return false;
-								
-								return block.nextSplitID == nextSplitID && trans_ids.includes( block.blockID );	
-							});
-						});					
-					}
-				} else { 
-					blocks 		= new Promise( (resolve, reject)=>{
-						this.getDataPersistently('nextSplitID', config.nextSplitID ).then( blocks =>{
-							setTimeout(()=>{
-								resolve(blocks);
-							},3000);
-						});
-					});
-					blocks = await blocks;
-					blockIDs 	= [];
-					
-					if( trans_blocks.length < limit && blocks ) {
-						trans_blocks = trans_blocks.concat( blocks );
-						if( blocks && blocks.length && typeof blocks == "object" ){
-							blocks.forEach( block =>{
-								blockIDs.push( block.blockID );
-							});
-						}
-					}
-					
-					if( trans_blocks.length < limit ){ 
-					
-						blocks 	= await this.getData("splitID", config.splitID, this.server ? this.server : "", "socket");
-						
-						if( blocks && blocks.length && typeof blocks == "object" ){
-							blocks.forEach( block =>{
-								if( ! blockIDs.includes( block.blockID )){
-									blockIDs.push( block.blockID );
-									trans_blocks.push( block );
-								}
-							});
-						}
-					}
-								
-					if( blockIDs.length )
-						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
-					
-				}
-				delete this.splitID;
-				searched.push("splitID");
-			}
-			if( config.budgetID || this.budgetID ){
-				
-				if( ! config.budgetID )
-					config.budgetID 	= this.budgetID;
-				
-				if( searched.length  && join == "AND" ){
-					if( trans_blocks.length ){
-						if( typeof config.budgetID != "object" )
-							config.budgetID 	= [ config.budgetID ];
-						
-						//console.log( "check this block ", trans_blocks );
-						
-						config.budgetID.forEach( (budgetID)=>{
-							trans_blocks = trans_blocks.filter( (block)=>{
-								if( typeof block == "string" && this.isJsonable( block ) )
-									block 		= JSON.parse( block );
-								
-								if( typeof block == "string" && ! this.isJsonable( block ) )
-									return false;
-								
-								return block.budgetID == budgetID && trans_ids.includes( block.blockID );				
-							});
-						});
-						
-						//console.log( "check this block after ", trans_blocks );
-						
-					}
-				} else { 
-					//let note = JSON.parse( sessionStorage.currentNote );
-					//let block = await Scriptbill.getTransBlock(10, {budgetID:note.budgetID});
-					blocks 		= new Promise( (resolve, reject)=>{
-						this.getDataPersistently('budgetID', config.budgetID ).then( blocks =>{
-							setTimeout(()=>{
-								resolve(blocks);
-							},3000);
-						});
-					});
-					blocks = await blocks;
-					blockIDs 	= [];
-					if( trans_blocks.length < limit && blocks ) {
-						trans_blocks = trans_blocks.concat( blocks );
-						if( blocks && blocks.length && typeof blocks == "object" ){
-							blocks.forEach( block =>{
-								blockIDs.push( block.blockID );
-							});
-						}
-					}
-					
-					if( trans_blocks.length < limit ){ 
-					
-						blocks 	= await this.getData("budgetID", config.budgetID, this.server ? this.server : "", "socket");
-						
-						if( blocks && blocks.length && typeof blocks == "object" ){
-							blocks.forEach( block =>{
-								if( ! blockIDs.includes( block.blockID )){
-									blockIDs.push( block.blockID );
-									trans_blocks.push( block );
-								}
-							});
-						}
-					}			
-								
-					if( blockIDs.length )
-						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
-					
-				}
-				delete this.budgetID;
-				searched.push("budgetID");
-				
-			}
-			if( config.productID || this.productID ){
-				
-				if( ! config.productID )
-					config.productID 	= this.productID;
-				
-				if( searched.length && join == "AND" ){
-					if( trans_blocks.length ){
-						if( typeof config.productID != "object" )
-							config.productID 	= [ config.productID ];
-						
-						config.productID.forEach( (productID)=>{
-							trans_blocks = trans_blocks.filter( (block)=>{
-								if( typeof block == "string" && this.isJsonable( block ) )
-									block 		= JSON.parse( block );
-								
-								if( typeof block == "string" && ! this.isJsonable( block ) )
-									return false;
-								
-								return block.productID == productID && trans_ids.includes( block.blockID );
-								
-								
-							});
-						});
-						
-					}
-				} else { 
-					blocks 		= new Promise( (resolve, reject)=>{
-						this.getDataPersistently('productID', config.productID ).then( blocks =>{
-							setTimeout(()=>{
-								resolve(blocks);
-							},3000);
-						});
-					});
-					blocks 		= await blocks;
-					blockIDs 	= [];
-					
-					if( trans_blocks.length < limit && blocks ) {
-						trans_blocks = trans_blocks.concat( blocks );
-						if( blocks && blocks.length && typeof blocks == "object" ){
-							blocks.forEach( block =>{
-								blockIDs.push( block.blockID );
-							});
-						}
-					}
-					
-					if( trans_blocks.length < limit ){ 
-					
-						blocks 	= await this.getData("productID", config.productID, this.server ? this.server : "", "socket");
-						
-						if( blocks && blocks.length && typeof blocks == "object" ){
-							blocks.forEach( block =>{
-								if( ! blockIDs.includes( block.blockID )){
-									blockIDs.push( block.blockID );
-									trans_blocks.push( block );
-								}
-							});
-						}
-					}			
-								
-					if( blockIDs.length )
-						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
-					
-				}
-				delete this.productID;
-				searched.push("productID");
-			}
-			if( config.transTime || this.transTime ){
-				
-				if( ! config.transTime )
-					config.transTime 	= this.transTime;
-				
-				let trans = config.transTime.toString().split(" ");
-				config.transTime = parseFloat( trans[0] );
-				let transCheck  = trans[1];
-				let typeCheck;
-				
-				if( transCheck == ">" )
-					typeCheck  = "greater";
-				
-				else if( transCheck == "=" )
-					typeCheck  = "equal";
-				
-				else if( transCheck == ">=" )
-					typeCheck  = "greater-equal";
-				
-				else if( transCheck == "<" )
-					typeCheck  = "lesser";
-				
-				else if( transCheck == "<=" )
-					typeCheck  = "lesser-equal";
-				
-				else
-					typeCheck 	= "equal";
-								
-				if( searched.length && join == "AND" ){
-					if( trans_blocks.length ){
-						if( typeof config.transTime != "object" )
-							config.transTime 	= [ config.transTime ];
-						
-						config.transTime.forEach( (transTime)=>{
-							trans_blocks = trans_blocks.filter( (block)=>{
-								if( typeof block == "string" && this.isJsonable( block ) )
-									block 		= JSON.parse( block );
-								
-								if( typeof block == "string" && ! this.isJsonable( block ) )
-									return false;
-								
-								if( ! trans_ids.includes( block.blockID ) ) return false;
-								
-								if( typeCheck == "equal" )							
-									return block.transTime == transTime;
-								
-								if( typeCheck == "greater" )
-									return block.transTime > transTime;
-								
-								if( typeCheck == "greater-equal" )
-									return block.transTime >= transTime;
-								
-								if( typeCheck == "lesser" )
-									return block.transTime < transTime;
-								
-								if( typeCheck == "lesser-equal" )
-									return block.transTime <= transTime;
-								
-								
-							});
-						});
-						
-					}
-				} else {
-					blocks 		= new Promise( (resolve, reject)=>{
-						this.getDataPersistently('transTime', config.transTime, "transactions", typeCheck ).then( blocks =>{
-							setTimeout(()=>{
-								resolve(blocks);
-							},3000);
-						});
-					});
-					blocks 		= await blocks;
-					
-					
-					blockIDs 	= [];
-					
-					if( trans_blocks.length < limit && blocks ) {
-						trans_blocks = trans_blocks.concat( blocks );
-						if( blocks && blocks.length && typeof blocks == "object" ){
-							blocks.forEach( block =>{
-								blockIDs.push( block.blockID );
-							});
-						}
-					}
-					
-					if( trans_blocks.length < limit && blocks )
-						trans_blocks = trans_blocks.concat( blocks );
-					
-					if( trans_blocks.length < limit ){ 
-					
-						blocks = await this.getData(["transTime", "type"], [config.transTime, typeCheck ], this.server ? this.server : "", "socket");
-						
-						if( blocks && blocks.length && typeof blocks == "object" ){
-							blocks.forEach( block =>{
-								if( ! blockIDs.includes( block.blockID )){
-									blockIDs.push( block.blockID );
-									trans_blocks.push( block );
-								}
-							});
-						}
-					}							
-								
-					if( blockIDs.length )
-						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
-					
-				}
-				delete this.transTime;
-				searched.push("transTime");
-				
-			}
-			if( config.agreeID || this.agreeID ){
-				
-				if( ! config.agreeID )
-					config.agreeID 		= this.agreeID;
-				
-				if( searched.length && join == "AND" ){
-					if( trans_blocks.length ){
-						if( typeof config.agreeID != "object" )
-							config.agreeID 	= [ config.agreeID ];
-						
-						config.agreeID.forEach( (agreeID)=>{
-							trans_blocks = trans_blocks.filter( (block)=>{
-								if( typeof block == "string" && this.isJsonable( block ) )
-									block 		= JSON.parse( block );
-								
-								if( typeof block == "string" && ! this.isJsonable( block ) )
-									return false;
-								
-								return block.agreeID == agreeID && trans_ids.includes( block.blockID );
-								
-								
-							});
-						});
-						
-					}
-				} else { 
-					blocks 		= new Promise( (resolve, reject)=>{
-						this.getDataPersistently('agreeID', config.agreeID, "agreements" ).then( blocks =>{
-							setTimeout(()=>{
-								resolve(blocks);
-							},3000);
-						});
-					});
-					blocks 		= await blocks;
-					blockIDs 	= [];
-					
-					if( trans_blocks.length < limit && blocks ) {
-						trans_blocks = trans_blocks.concat( blocks );
-						if( blocks && blocks.length && typeof blocks == "object" ){
-							blocks.forEach( block =>{
-								blockIDs.push( block.blockID );
-							});
-						}
-					}
-					
-					if( trans_blocks.length < limit ){ 
-					
-						blocks 	= await this.getData("agreeID", config.agreeID, this.server ? this.server : "", "socket");
-						
-						if( blocks && blocks.length && typeof blocks == "object" ){
-							blocks.forEach( block =>{
-								if( ! blockIDs.includes( block.blockID )){
-									blockIDs.push( block.blockID );
-									trans_blocks.push( block );
-								}
-							});
-						}
-					}
-								
-					if( blockIDs.length )
-						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
-					
-				}
-				delete this.agreeID;
-				searched.push("agreeID");
-			}
-			//this will only return a single block or id
-			if( config.productBlockID || this.productBlockID ){
-				
-				if( ! config.productBlockID )
-					config.productBlockID = this.productBlockID;
-				
-				if( searched.length && join == "AND" ){
-					if( trans_blocks.length ){
-						if( typeof config.productBlockID != "object" )
-							config.productBlockID 	= [ config.productBlockID ];
-						
-						config.productBlockID.forEach( (productBlockID)=>{
-							trans_blocks = trans_blocks.filter( (block)=>{
-								if( typeof block == "string" && this.isJsonable( block ) )
-									block 		= JSON.parse( block );
-								
-								if( typeof block == "string" && ! this.isJsonable( block ) )
-									return false;
-								
-								return block.productBlockID == productBlockID && trans_ids.includes( block.blockID );
-								
-								
-							});
-						});
-						
-					}
-				} else { 
-					blocks 		= new Promise( (resolve, reject)=>{
-						this.getDataPersistently('productBlockID', config.productBlockID ).then( blocks =>{
-							setTimeout(()=>{
-								resolve(blocks);
-							},3000);
-						});
-					});
-					blocks 		= await blocks;					
-					blockIDs 	= [];
-								
-					if( blocks.length ){
-						trans_blocks = trans_blocks.concat( blocks );
-						if( blocks && blocks.length && typeof blocks == "object" ){
-							blocks.forEach( block =>{
-								blockIDs.push( block.blockID );
-							});
-						}
-					}			
-					else { 
-					
-						blocks 	= await this.getData("productBlockID", config.productBlockID, this.server ? this.server : "", "socket");
-						
-						if( blocks && blocks.blockID ){
-							trans_blocks.push( blocks );
-							blockIDs.push( blocks.blockID );
-						}				
-						else if( blocks && blocks.length && typeof blocks == "object") {
-							trans_blocks.concat( blocks );
-							blocks.forEach( block =>{
-								blockIDs.push( block.blockID );
-							});
-						}
-					
-					}
-					
-					
-					blockIDs = JSON.parse( this.l[ config.productBlockID ] ?? "[]" );							
-					
-
-					if( blockIDs.length )
-						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
-					
-				}
-				delete this.productBlockID;
-				searched.push("productBlockID");
-			}
-			if( config.exBlockID || this.exBlockID ){
-				
-				if( ! config.exBlockID )
-					config.exBlockID 	= this.exBlockID;
-				
-				if( searched.length && join == "AND" ){
-					if( trans_blocks.length ){
-						if( typeof config.exBlockID != "object" )
-							config.exBlockID 	= [ config.exBlockID ];
-						
-						config.exBlockID.forEach( (exBlockID)=>{
-							trans_blocks = trans_blocks.filter( (block)=>{
-								if( typeof block == "string" && this.isJsonable( block ) )
-									block 		= JSON.parse( block );
-								
-								if( typeof block == "string" && ! this.isJsonable( block ) )
-									return false;
-								
-								return block.exBlockID == exBlockID && trans_ids.includes( block.blockID );
-								
-								
-							});
-						});
-						
-					}
-				} else { 
-					blocks 		= new Promise( (resolve, reject)=>{
-						this.getDataPersistently('exBlockID', config.exBlockID ).then( blocks =>{
-							setTimeout(()=>{
-								resolve(blocks);
-							},3000);
-						});
-					});
-					blocks 		= await blocks;
-					blockIDs 	= [];
-					
-					if(  blocks && blocks.length && typeof blocks == "object" ){
-						trans_blocks = trans_blocks.concat( blocks );
-						if( blocks && blocks.length && typeof blocks == "object" ){
-							blocks.forEach( block =>{
-								blockIDs.push( block.blockID );
-							});
-						}
-					}
-					
-					else { 
-					
-						blocks 	= await this.getData("exBlockID", config.exBlockID, this.server ? this.server : "", "socket");
-						
-						if( blocks && blocks.blockID ){
-							trans_blocks.push( blocks );
-							blockIDs.push( blocks.blockID );
-						}				
-						else if( blocks && blocks.length && typeof blocks == "object" ) {
-							trans_blocks.concat( blocks );
-							blocks.forEach( block =>{
-								blockIDs.push( block.blockID );
-							});
-						}
-					
-					}
-					
-					if( blockIDs.length )
-						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
-							
-				}
-				delete this.exBlockID;
-				searched.push("exBlockID");				
-			}
-			if( config.walletHASH || this.walletHASH ){
-				
-				if( ! config.walletHASH	)
-					config.walletHASH 		= this.walletHASH;
-				
-				if( searched.length && join == "AND" ){
-					if( trans_blocks.length ){
-						if( typeof config.walletHASH != "object" )
-							config.walletHASH 	= [ config.walletHASH ];
-						
-						config.walletHASH.forEach( (walletHASH)=>{
-							trans_blocks = trans_blocks.filter( (block)=>{
-								if( typeof block == "string" && this.isJsonable( block ) )
-									block 		= JSON.parse( block );
-								
-								if( typeof block == "string" && ! this.isJsonable( block ) )
-									return false;
-								
-								return block.walletHASH == walletHASH && trans_ids.includes( block.blockID );
-								
-								
-							});
-						});
-						
-					}
-				} else { 
-					blocks 		= new Promise( (resolve, reject)=>{
-						this.getDataPersistently('walletHASH', config.walletHASH ).then( blocks =>{
-							setTimeout(()=>{
-								resolve(blocks);
-							},3000);
-						});
-					});
-					blocks 		= await blocks;
-					//reset the blockIDs array here
-					blockIDs 	= [];
-					
-					if( blocks && blocks.length && typeof blocks == "object" ){
-						trans_blocks = trans_blocks.concat( blocks );
-						
-						if( blocks && blocks.length && typeof blocks == "object" ){
-							blocks.forEach( block =>{
-								blockIDs.push( block.blockID );
-							});
-						}
-					}
-					else { 
-					
-						blocks 	= await this.getData("walletHASH", config.walletHASH, this.server ? this.server : "", "socket");
-						
-						if( blocks && blocks.blockID ){
-							trans_blocks.push( blocks );
-							blockIDs.push( blocks.blockID );
-						}
-						
-						else if( blocks && blocks && blocks.length && typeof blocks == "object" ){
-							trans_blocks.concat( blocks );
-							blocks.forEach( block =>{
-								blockIDs.push( block.blockID );
-							});
-						}
-					}
-					
-					
-					if( blockIDs.length )
-						trans_ids = Array.from( new Set( trans_ids.concat( blockIDs ) ) );
-					
-				}
-							
-				delete this.walletHASH;
-				searched.push("walletHASH");			
-				
-			}
-			
-			if( trans_blocks.length == 0 && searched.length < 1 ){
-				//console.log( "test blocks", trans_blocks );
-				if( this.#note && ! this.blockID )
-					this.blockID = this.#note.blockID;
-			}
-			
-			if( config.blockID || this.blockID ){
-				
-				if( ! config.blockID )
-					config.blockID 		= this.blockID;
-				
-				if( searched.length && join == "AND" ){
-					if( trans_blocks.length ){
-						if( typeof config.blockID != "object" )
-							config.blockID 	= [ config.blockID ];
-						
-						config.blockID.forEach( (blockID)=>{
-							trans_blocks = trans_blocks.filter( (block)=>{
-								if( typeof block == "string" && this.isJsonable( block ) )
-									block 		= JSON.parse( block );
-								
-								if( typeof block == "string" && ! this.isJsonable( block ) )
-									return false;
-								
-								return block.blockID == blockID && trans_ids.includes( block.blockID );
-								
-								
-							});
-						});
-						
-					}
-				} else {
-					//console.log( typeof config.blockID, "transblock getting" );
-					
-					if( typeof config.blockID == "string" )
-						blocks 		= await this.resolvePersistentData( config.blockID );
-					
-					else {
-						if( config.blockID.length ){
-							if( typeof blocks != "object" || ! blocks.length )
-								blocks = [];
-							
-							for( let r = 0; r < config.blockID.length; r++ ){
-								blocks.push( await this.resolvePersistentData( config.blockID[r]) );
-							}
-						}
-					}
-					// //console.log("blocks: " + blocks);
-					// await this.createAlert("blocking");
-					if( trans_blocks.length < limit && blocks )
-						trans_blocks = trans_blocks.concat( blocks );
-					
-					if( trans_blocks.length < limit ){ 
-						if( typeof config.blockID == "string" )
-							blocks 	= await this.getData("blockID", config.blockID, this.server ? this.server : "", "socket");
-						
-						else {
-							if( config.blockID.length ){
-								if( typeof blocks != "object" || ! blocks.length )
-									blocks = [];
-								
-								for( let r = 0; r < config.blockID.length; r++ ){
-									blocks.push( await this.getData("blockID", config.blockID[r], this.server ? this.server : "", "socket") );
-								}
-							}
-						}
-						
-						if( trans_blocks.length < limit && blocks )
-							trans_blocks = trans_blocks.concat( blocks );
-					
-					}
-					
-					//blockIDs = this.l[ this.blockID ];
-										
-								
-					if( blocks && trans_blocks.length < limit )
-						trans_blocks.push( blocks );
-					
-					if( trans_ids.length < limit )
-						trans_ids.push( this.blockID );
-				
-				
-				}
-				delete this.blockID;
-				
+			//nothing asked for: fall back to the current note's block
+			if( ! criteria.length && this.#note && this.#note.blockID ){
+				criteria.push( { def: FIELDS[0], values: [ this.#note.blockID ] } );
 			}
 
-			/* trans_blocks = trans_blocks.filter( block =>{
-				return trans_ids.includes( block.blockID );
-			}); */
-			
-			/* if( ( trans_blocks.length == 1 && trans_blocks[0].blockID == "" && this.#note && this.l[ this.#note.noteAddress + "_current_block"] && this.isJsonable( this.l[ this.#note.noteAddress + "_current_block"] ) ) || ! trans_blocks.length ){
-				trans_blocks.splice(0,1);
-				trans_blocks.push( JSON.parse( this.l[ this.#note.noteAddress + "_current_block"] ) );
-			} */
-					
-			//always returns an array of values or blocks.
-			trans_blocks  = Array.from( new Set(trans_blocks) );
-			return trans_blocks;	
-		} catch(e){
-			this.errorMessage(e.toString());
-			console.error(e);
+			if( ! criteria.length ) return [];
+
+			let pool = [];
+
+			if( join == "AND" ){
+				/*
+				 * Fetch from one condition only (the most selective one we have),
+				 * then keep just the blocks that pass EVERY condition.
+				 */
+				const seed = criteria.find( c => c.def.key == "blockID" )
+						  || criteria.find( c => ! c.def.range )
+						  || criteria[0];
+
+				pool = await fetchFor( seed );
+				pool = pool.filter( block => criteria.every( c => matches( block, c ) ) );
+			} else {
+				//OR: fetch for every condition, keep blocks that pass AT LEAST ONE
+				for( const c of criteria ){
+					pool.push( ...await fetchFor( c ) );
+				}
+				pool = pool.filter( block => criteria.some( c => matches( block, c ) ) );
+			}
+
+			//remove duplicates by blockID (a Set can't do this for objects)
+			const unique = new Map();
+			for( const block of pool ){
+				if( ! unique.has( block.blockID ) ) unique.set( block.blockID, block );
+			}
+
+			//always returns an array of blocks.
+			return Array.from( unique.values() ).slice( 0, limit );
+
+		} catch( e ){
+			this.errorMessage( e.toString() );
+			console.error( e );
 			return [ this.defaultBlock ];
-		}		
+		}
 	}
-
 		
 	static async getTransactions( callback ){
 		//console.log("getTransactions running " + this.funcUp[ this.funcUp.length] );
@@ -38980,8 +37694,8 @@ static Base64 = {
 		"budgetID"				: "",//the public Key of the Budget,the private ke would be set on the note with the block ID where the budget is kept.
 		"sleepingPartner" 		: "percent-low", //this is the description for a sleeping investor.
 		"workingPartner"		: "perent-high", //this is the description for a working investor.
-		"sleepingPartnerShare"	: 0.1, //this is the rate that describes the sleepig investor share.
-		"workingPartnerShare"	: 0.1, //this is the rate that describes the sleepig investor share.
+		"sleepingPartnerShare"	: 0.5, //this is the rate that describes the sleepig investor share.
+		"workingPartnerShare"	: 0.5, //this is the rate that describes the sleepig investor share.
 		"budgetItems"			: [],//items that are in the budget that constitute the budget
 		"budgetSign"			: "", //the signature on the budget
 		"budgetRef"				: "",//reference to the budget signature.

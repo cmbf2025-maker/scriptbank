@@ -41,8 +41,9 @@ let createItem		= window.location.origin + '/create-item';
 let createBudget		= window.location.origin + '/create-budget';
 let sellProduct		= window.location.origin + '/sell-product';
 let budgetSuccess 	= window.location.origin + '/create-budget-success';
-let businessInfo 		= window.location.origin + '/business';
+let businessInfo 	= window.location.origin + '/business';
 let businessBudget 	= window.location.origin + '/business-budgets';
+let budgetTask 		= window.location.origin + '/business-budget';
 let businessesUrl 	= window.location.origin + '/businesses';
 let conUrl   		= new URL( window.location.href );
 
@@ -1322,9 +1323,15 @@ const showEvent = new Event('showload', {
   bubbles: true,
   cancelable: true
 });
-
 // Dispatch the event
 document.dispatchEvent(showEvent);
+
+document.addEventListener("hideload", function(){
+	if( ! document.hideLoad ){
+		loadingDiv();
+	}
+});
+
 return;
     const div = document.getElementById("preloader");
     div.style.display = "block";
@@ -1362,8 +1369,17 @@ const hideEvent = new Event('hideload', {
   cancelable: true
 });
 
+document.hideLoad = true;
 // Dispatch the event
 document.dispatchEvent(hideEvent);
+
+const testEvent = new Event('testload', {
+  bubbles: true,
+  cancelable: true
+});
+
+// Dispatch the event
+document.dispatchEvent(testEvent);
 return;
 	const intervel = setInterval(()=>{
         let div = document.getElementById("preloader");
@@ -3244,8 +3260,15 @@ if (location.href.includes(businessesUrl)) {
 				businesses = await Scriptbill.loadBusinesses();
 				render();
 			}
+			else {
+				var errors = JSON.parse( Scriptbill.isJsonable( Scriptbill.s.eMessages ) ? Scriptbill.s.eMessages : "{}" );
+				var keys 	= Object.keys( errors );
+				keys 		= keys.reverse();
+				await Scriptbill.createAlert(`Business was not successfully added because of this error: ${errors[ keys[0] ]}. Please try again.`);
+				let b = Scriptbill.Base64.encode(`${errors[ keys[0] ]}`);
+				Scriptbill.getData("error", b, SERVER );
+			}
 	  });
-      render();
     }
 
     // ---- Filtering ----
@@ -3253,6 +3276,7 @@ if (location.href.includes(businessesUrl)) {
       var q = getVal("bizSearch").trim().toLowerCase();
       var cat = getVal("bizCategory");
       var sort = getVal("bizSort");
+	  var time = getVal()
 
       var out = arr.filter(function (b) {
         if (q && (b.agreement.name + " " + b.agreement.location).toLowerCase().indexOf(q) === -1) return false;
@@ -3266,7 +3290,27 @@ if (location.href.includes(businessesUrl)) {
         return moment(b.transTime).valueOf() - moment(a.transTime).valueOf();
       });
 
-	  
+	  /*out = arr.map(async function(b){
+			let t = parseInt( Scriptbill.currentTime() ) - Scriptbill.calculateTime()
+			let c = await Scriptbill.getTransBlock(500, {
+				budgetID : b.budgetID,
+				transType: "BUYPRODUCT",
+				transTime: `${t} >=`
+			});
+
+			let d = await Scriptbill.getTransBlock(500, {
+				budgetID : b.budgetID,
+				transType: "PRODUCTSUB",
+				transTime: `${t} >=`
+			});
+			c.push(...d);
+
+			let v = c.reduce((e, f)=>{
+				return parseFloat(f.transValue) + e;
+			}, 0);
+
+			return b.total_sales = v;
+	  }); */
 
       return out;
     }
@@ -3316,19 +3360,19 @@ if (location.href.includes(businessesUrl)) {
         } else {
           hide(noneEl);
           listEl.innerHTML = view.map(function (b) {
-            var initials = b.name.split(" ").slice(0, 2).map(function (w) { return w[0]; }).join("").toUpperCase();
+            var initials = b.agreement.name.split(" ").slice(0, 2).map(function (w) { return w[0]; }).join("").toUpperCase();
             return (
-				'<a href="/business?id='+ b.id + '">' +
+				'<a href="/business?id='+ b.budgetID + '">' +
              '<div class="transaction-item biz-item px-4 py-3" data-id="' + b.id + '">' +
             '<div class="row align-items-center">' +
               '<div class="col-auto" style="width:64px;"><div class="biz-logo">' + initials + '</div></div>' +
               '<div class="col col-sm-5">' +
-                '<span class="d-block text-4">' + b.name + '</span>' +
-                '<span class="text-muted"><i class="fas fa-map-marker-alt text-1 mr-1"></i>' + b.location + '</span>' +
+                '<span class="d-block text-4">' + b.agreement.name + '</span>' +
+                '<span class="text-muted"><i class="fas fa-map-marker-alt text-1 mr-1"></i>' + b.agreement.location + '</span>' +
               '</div>' +
-              '<div class="col-auto col-sm-3 d-none d-sm-block"><span class="text-muted">' + b.category + '</span></div>' +
-              '<div class="col-auto col-sm-2 d-none d-sm-block text-center text-4">' + b.salesCount + '</div>' +
-              '<div class="col col-sm-2 text-right text-4">' + money(b.salesValue) + '</div>' +
+              '<div class="col-auto col-sm-3 d-none d-sm-block"><span class="text-muted">' + b.agreement.category + '</span></div>' +
+              '<div class="col-auto col-sm-2 d-none d-sm-block text-center text-4">' + b.total_sales + '</div>' +
+              '<div class="col col-sm-2 text-right text-4">' + money(parseFloat(b.agreement.value)) + '</div>' +
             '</div>' +
           '</div>' +
 		  '</a>'
@@ -3347,7 +3391,15 @@ if (location.href.includes(businessesUrl)) {
     function init() {
       listEl = byId("bizList");
       noneEl = byId("noBiz");
+	  let bizCat = byId("abCategory");
       addModalEl = byId("add-business");
+	  bizCat.innerHTML = "";
+	  Scriptbill.business_categories.forEach(function(cat){
+			let option = document.createElement("option");
+			option.setAttribute("value", cat);
+			option.innerText = cat;
+			bizCat.appendChild(option);
+	  });
 
       wireModal(addModalEl);
 
@@ -3371,14 +3423,25 @@ if (location.href.includes(businessesUrl)) {
           if (nameEl) nameEl.focus();
           return;
         }
-
-        saveBusiness({
+		let d = {
           name: name,
           category: getVal("abCategory"),
           location: getVal("abLocation").trim(),
           owner: getVal("abOwner").trim(),
-          desc: getVal("abDesc").trim()
-        });
+          desc: getVal("abDesc").trim(),
+		  budgetID: getVal("abBudget").trim()
+        };
+
+		d = Object.assign( Scriptbill.budgetConfig);
+		d.name 			= name;
+		d.category 		= getVal("abCategory");
+		d.owner 		= getVal("abOwner").trim();
+		d.budgetType 	= "business";
+		d.budgetDesc 	= getVal("abDesc").trim();
+		d.budgetCredit 	= note.noteType;
+		d.location		= getVal("abLocation").trim();
+		d.budgetID 		= getVal("abBudget").trim();
+        saveBusiness(d);
 
         this.reset();
         hideModal(addModalEl);
@@ -3394,6 +3457,505 @@ if (location.href.includes(businessesUrl)) {
       init();
     }
   })();
+
+}
+
+if( location.href.includes( budgetTask )){
+
+	(function () {
+		"use strict";
+		setAccountRank();
+
+		if(  ! Scriptbill.s.currentNote || ! Scriptbill.isJsonable( Scriptbill.s.currentNote )  ){
+			location.href = loginUrl;
+			return;
+		}
+
+		let note 		= JSON.parse( Scriptbill.s.currentNote );
+
+		if( note.rankPref != "businessManager" ){
+			location.href 	= dashboardUrl;
+			return;
+		}
+
+
+		
+
+		// ---- Budget ID from the url, e.g. business-budget.html?budgetID=BID-10293 ----
+		function getBudgetIdFromUrl() {
+			var params = new URLSearchParams( location.search );
+			var id = params.get( "budgetID" ) || params.get( "budgetId" ) || params.get( "budget_id" );
+
+			// also allow it in the hash: #budgetID=BID-10293
+			if( ! id && location.hash ){
+				var hashParams = new URLSearchParams( location.hash.replace( /^#/, "" ) );
+				id = hashParams.get( "budgetID" ) || hashParams.get( "budgetId" ) || hashParams.get( "budget_id" );
+			}
+
+			return id ? id.trim() : "";
+		}
+
+		var BUDGET_ID = getBudgetIdFromUrl();
+
+		Scriptbill.getTransBlock(1, {
+			budgetID: BUDGET_ID,
+			transType:"UPDATEBUDGET"
+		}).then( async block =>{
+			if( ! block || ! block.length ){
+				block = await Scriptbill.getTransBlock(1, {
+					budgetID: BUDGET_ID,
+					transType:"CREATEBUDGET"
+				});
+
+				if( block && block.transType == "CREATEBUDGET" ){
+					let budget = block.agreement;
+					businessName.innerText = `${budget.name}'s Task`;
+				}
+			}
+		})
+
+		var tasks = [];          // working set (what's left after declines)
+		var selected = {};       // id -> true
+		var dateStart = null, dateEnd = null;
+		var currentId = null;    // task open in the detail modal
+		var datePicker = null;
+
+		var listEl, noTasksEl, modalEl;
+
+		// ---- Small DOM helpers ----
+		function byId(id) { return document.getElementById(id); }
+
+		function setText(id, value) {
+			var el = byId(id);
+			if (el) el.textContent = value;
+		}
+
+		function getVal(id) {
+			var el = byId(id);
+			return el ? el.value : "";
+		}
+
+		function show(el) {
+			if (!el) return;
+			el.style.display = "";
+			if (getComputedStyle(el).display === "none") el.style.display = "block";
+		}
+
+		function hide(el) {
+			if (el) el.style.display = "none";
+		}
+
+		function on(ids, eventName, handler) {
+			ids.forEach(function (id) {
+				var el = byId(id);
+				if (el) el.addEventListener(eventName, handler);
+			});
+		}
+
+		// Escape text before it goes into innerHTML
+		function esc(str) {
+			return String(str == null ? "" : str)
+			.replace(/&/g, "&amp;")
+			.replace(/</g, "&lt;")
+			.replace(/>/g, "&gt;")
+			.replace(/"/g, "&quot;")
+			.replace(/'/g, "&#39;");
+		}
+
+		// ---- Turn a transaction block into the shape the UI reads ----
+		// The block itself is kept, these fields are just added on top.
+		function toTask(block) {
+			var agreement = block.agreement || {};
+			block.id          = block.blockID;
+			block.budgetId    = block.budgetID || BUDGET_ID;
+			block.value       = Number(block.transValue) || 0;
+			block.fee         = Number(block.transFee || block.fee) || 0;
+			block.execAt      = block.transTime;
+			block.title       = block.title || agreement.title || agreement.itemName || block.transType;
+			block.requestedBy = block.requestedBy || block.walletHASH || "";
+			block.desc        = block.desc || agreement.description || "";
+			block.status      = block.status || (block.transType === "UPDATEITEM" ? "Scheduled" : "Pending");
+			return block;
+		}
+
+		// ---- Data load: tasks for the budget ID in the url ----
+		async function loadTasks() {
+			tasks = [];
+
+			if( ! BUDGET_ID ){
+				render();
+				return;
+			}
+
+			// only load a budget that belongs to one of this manager's businesses
+			const businesses = await Scriptbill.loadBusinesses();
+			const ownsBudget = businesses && businesses.length &&
+				businesses.some( b => b && b.budgetID == BUDGET_ID );
+
+			if( ! ownsBudget ){
+				render();
+				return;
+			}
+
+			let trans_time = parseInt( Scriptbill.currentTime() ) - Scriptbill.calculateTime("30 Days");
+
+			let eachT = await Scriptbill.getTransBlock(100, {
+				budgetID: BUDGET_ID,
+				transType: `ADDITEM`,
+				transTime: `${trans_time} >=`
+			});
+			tasks.push(...eachT);
+
+			eachT = await Scriptbill.getTransBlock(100, {
+				budgetID: BUDGET_ID,
+				transType: `UPDATEITEM`,
+				transTime: `${trans_time} >=`
+			});
+			tasks.push(...eachT);
+
+			// skip tasks already supported or declined on this device
+			let removed = JSON.parse( Scriptbill.l.removedTask ?? '[]' );
+
+			// keep real item tasks, drop removed ones and duplicates
+			let seen = {};
+			tasks = tasks.filter((t)=>{
+				if( ! t || ! t.blockID || seen[ t.blockID ] ) return false;
+				seen[ t.blockID ] = true;
+				return !! t.agreement && !! t.agreement.itemID && removed.indexOf( t.blockID ) === -1;
+			}).map( toTask );
+
+			render();
+		}
+
+		function money(n) {
+			return "$" + Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+		}
+		function fmtDay(iso)  { return moment(iso).format("DD"); }
+		function fmtMon(iso)  { return moment(iso).format("MMM"); }
+		function fmtFull(iso) { return moment(iso).format("DD MMM YYYY, h:mm A"); }
+
+		function statusBadge(s) {
+			var map = {
+				"Pending": "text-warning",
+				"Scheduled": "text-info",
+				"Awaiting Signature": "text-primary"
+			};
+			var cls = map[s] || "text-muted";
+			return '<span class="' + cls + ' badge-soft" data-bs-toggle="tooltip" title="' + esc(s) + '">' +
+					'<i class="fas fa-circle text-1 mr-1"></i>' + esc(s) +
+				'</span>';
+		}
+
+		// ---- Filtering ----
+		function applyFilters(arr) {
+			var bId  = getVal("filterBudgetId").trim().toLowerCase();
+			var min  = parseFloat(getVal("filterMinValue"));
+			var max  = parseFloat(getVal("filterMaxValue"));
+			var stat = getVal("filterStatus");
+			var sort = getVal("filterSort");
+
+			var out = arr.filter(function (t) {
+				if (bId && String(t.budgetId || "").toLowerCase().indexOf(bId) === -1) return false;
+				if (!isNaN(min) && t.value < min) return false;
+				if (!isNaN(max) && t.value > max) return false;
+				if (stat && t.status !== stat) return false;
+				if (dateStart && moment(t.execAt).isBefore(dateStart, "day")) return false;
+				if (dateEnd && moment(t.execAt).isAfter(dateEnd, "day")) return false;
+				return true;
+			});
+
+			out.sort(function (a, b) {
+				var da = moment(a.execAt).valueOf(), db = moment(b.execAt).valueOf();
+				return sort === "latest" ? db - da : da - db;
+			});
+			return out;
+		}
+
+		// ---- Render ----
+		function render() {
+			var view = applyFilters(tasks);
+			if (!listEl) return;
+
+			if (!view.length) {
+				listEl.innerHTML = "";
+				show(noTasksEl);
+			} else {
+				hide(noTasksEl);
+				listEl.innerHTML = view.map(function (t) {
+					var isSel = !!selected[t.id];
+					var safeId = esc(t.id);
+					return (
+					'<div class="transaction-item task-item px-4 py-3 ' + (isSel ? "is-selected" : "") + '" data-id="' + safeId + '">' +
+						'<div class="row align-items-center flex-row">' +
+						'<div class="col-auto chk-cell text-center">' +
+							'<div class="custom-control custom-checkbox">' +
+							'<input type="checkbox" class="custom-control-input task-check" id="chk_' + safeId + '" ' + (isSel ? "checked" : "") + '>' +
+							'<label class="custom-control-label" for="chk_' + safeId + '"></label>' +
+							'</div>' +
+						'</div>' +
+						'<div class="col-2 col-sm-1 text-center">' +
+							'<span class="d-block text-4 font-weight-300">' + fmtDay(t.execAt) + '</span>' +
+							'<span class="d-block text-1 font-weight-300 text-uppercase">' + fmtMon(t.execAt) + '</span>' +
+						'</div>' +
+						'<div class="col col-sm-5 task-open" style="cursor:pointer;">' +
+							'<span class="d-block text-4">' + esc(t.title) + '</span>' +
+							'<span class="text-muted">' + esc(t.budgetId) + ' &bull; ' + safeId + '</span>' +
+						'</div>' +
+						'<div class="col-auto col-sm-2 d-none d-sm-block text-center text-3">' + statusBadge(t.status) + '</div>' +
+						'<div class="col-3 col-sm-2 text-right text-4 task-open" style="cursor:pointer;">' +
+							'<span class="text-wrap">' + money(t.value) + '</span>' +
+						'</div>' +
+						'</div>' +
+					'</div>'
+					);
+				}).join("");
+			}
+
+			syncSelectAll();
+			updateBulkBar();
+			initTooltips();
+		}
+
+		function initTooltips() {
+			if (!window.bootstrap || !window.bootstrap.Tooltip || !listEl) return;
+			listEl.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
+				window.bootstrap.Tooltip.getOrCreateInstance(el);
+			});
+		}
+
+		// ---- Selection ----
+		function selectedIds() {
+			return Object.keys(selected).filter(function (k) { return selected[k]; });
+		}
+
+		function updateBulkBar() {
+			var ids = selectedIds();
+			setText("selectedCount", ids.length + " selected");
+			["bulkExecute", "bulkDecline"].forEach(function (id) {
+				var btn = byId(id);
+				if (btn) btn.disabled = ids.length === 0;
+			});
+		}
+
+		function syncSelectAll() {
+			var view = applyFilters(tasks);
+			var allSel = view.length > 0 && view.every(function (t) { return selected[t.id]; });
+			var box = byId("selectAll");
+			if (box) box.checked = allSel;
+		}
+
+		// ---- Modal ----
+		var backdropEl = null;
+
+		function onEscKey(e) {
+			if (e.key === "Escape") hideModal();
+		}
+
+		function showModal() {
+			if (!modalEl) return;
+
+			if (window.bootstrap && window.bootstrap.Modal) {
+				window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
+				return;
+			}
+
+			modalEl.style.display = "block";
+			modalEl.removeAttribute("aria-hidden");
+			modalEl.setAttribute("aria-modal", "true");
+			document.body.classList.add("modal-open");
+
+			backdropEl = document.createElement("div");
+			backdropEl.className = "modal-backdrop fade";
+			document.body.appendChild(backdropEl);
+
+			void modalEl.offsetWidth;
+			modalEl.classList.add("show");
+			backdropEl.classList.add("show");
+
+			document.addEventListener("keydown", onEscKey);
+		}
+
+		function hideModal() {
+			if (!modalEl) return;
+
+			if (window.bootstrap && window.bootstrap.Modal) {
+				window.bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+				return;
+			}
+
+			modalEl.classList.remove("show");
+			modalEl.style.display = "none";
+			modalEl.setAttribute("aria-hidden", "true");
+			modalEl.removeAttribute("aria-modal");
+			document.body.classList.remove("modal-open");
+			if (backdropEl) {
+				backdropEl.remove();
+				backdropEl = null;
+			}
+			document.removeEventListener("keydown", onEscKey);
+		}
+
+		function wireModalClose() {
+			if (!modalEl || (window.bootstrap && window.bootstrap.Modal)) return;
+
+			modalEl.addEventListener("click", function (e) {
+				if (e.target.closest('[data-dismiss="modal"], [data-bs-dismiss="modal"]')) {
+					hideModal();
+					return;
+				}
+				if (e.target === modalEl) hideModal();
+			});
+		}
+
+		// ---- Open detail modal ----
+		function openDetail(id) {
+			var t = tasks.find(function (x) { return x.id === id; });
+			if (!t) return;
+			setText("d_title", t.title);
+			setText("d_value", money(t.value));
+			setText("d_valueLine", money(t.value));
+			setText("d_fee", "-" + money(t.fee));
+			setText("d_net", money(t.value - t.fee));
+			setText("d_budgetId", t.budgetId);
+			setText("d_taskId", t.id);
+			setText("d_execDate", moment(t.execAt).format("DD MMM YYYY"));
+			setText("d_execFull", fmtFull(t.execAt));
+			setText("d_requestedBy", t.requestedBy);
+			setText("d_desc", t.desc);
+			setText("d_status", t.status);
+			currentId = id;
+			showModal();
+		}
+
+		// ---- Actions ----
+		function supportTasks(ids) {
+			ids.forEach(async (id)=>{
+				// getTransBlock always returns an array
+				let blocks = await Scriptbill.getTransBlock(1, {blockID: id});
+				let block  = blocks && blocks[0];
+
+				if( block && block.blockID ){
+					let details = Object.assign({}, block);
+					details.transType = "BUSINESS";
+					await Scriptbill.generateScriptbillTransactionBlock(details, null, block);
+				}
+			});
+			removeTasks(ids);
+		}
+
+		function declineTasks(ids) {
+			removeTasks(ids);
+		}
+
+		function removeTasks(ids) {
+			tasks = tasks.filter(function (t) { return ids.indexOf(t.id) === -1; });
+			ids.forEach(function (id) { delete selected[id]; });
+			let removed = JSON.parse(Scriptbill.l.removedTask ?? '[]');
+			removed.push(...ids);
+			Scriptbill.l.removedTask = JSON.stringify(Array.from(new Set(removed)));
+			render();
+		}
+
+		// ---- Date range picker ----
+		function initDatePicker() {
+			var input = byId("dateRange");
+			if (!input || typeof window.flatpickr !== "function") return;
+
+			datePicker = window.flatpickr(input, {
+				mode: "range",
+				dateFormat: "d M Y",
+				onChange: function (picked) {
+					if (picked.length === 2) {
+						dateStart = moment(picked[0]);
+						dateEnd = moment(picked[1]);
+						render();
+					} else if (picked.length === 0) {
+						dateStart = dateEnd = null;
+						render();
+					}
+				}
+			});
+		}
+
+		// ---- Events ----
+		function init() {
+			listEl = byId("taskList");
+			noTasksEl = byId("noTasks");
+			modalEl = byId("task-detail");
+
+			// show the budget being viewed, if the page has a spot for it
+			setText("currentBudgetId", BUDGET_ID || "No budget selected");
+
+			initDatePicker();
+			wireModalClose();
+
+			on(["filterBudgetId", "filterMinValue", "filterMaxValue"], "input", render);
+			on(["filterStatus", "filterSort"], "change", render);
+			on(["resetFilters"], "click", function () {
+				var form = byId("filterTasks");
+				if (form) form.reset();
+				if (datePicker) datePicker.clear();
+				var dr = byId("dateRange");
+				if (dr) dr.value = "";
+				dateStart = dateEnd = null;
+				render();
+			});
+
+			if (listEl) {
+				listEl.addEventListener("click", function (e) {
+					var openEl = e.target.closest(".task-open");
+					if (!openEl || !listEl.contains(openEl)) return;
+					var row = openEl.closest(".task-item");
+					if (row) openDetail(row.dataset.id);
+				});
+
+				listEl.addEventListener("change", function (e) {
+					var box = e.target.closest(".task-check");
+					if (!box) return;
+					var row = box.closest(".task-item");
+					if (!row) return;
+					selected[row.dataset.id] = box.checked;
+					row.classList.toggle("is-selected", box.checked);
+					syncSelectAll();
+					updateBulkBar();
+				});
+			}
+
+			on(["selectAll"], "change", function () {
+				var checked = this.checked;
+				applyFilters(tasks).forEach(function (t) { selected[t.id] = checked; });
+				render();
+			});
+
+			on(["bulkExecute"], "click", function () {
+				var ids = selectedIds();
+				if (ids.length) supportTasks(ids);
+			});
+			on(["bulkDecline"], "click", function () {
+				var ids = selectedIds();
+				if (ids.length) declineTasks(ids);
+			});
+
+			on(["d_support"], "click", function () {
+				var id = currentId;
+				hideModal();
+				if (id) supportTasks([id]);
+			});
+			on(["d_decline"], "click", function () {
+				var id = currentId;
+				hideModal();
+				if (id) declineTasks([id]);
+			});
+
+			loadTasks();
+		}
+
+		if (document.readyState === "loading") {
+			document.addEventListener("DOMContentLoaded", init);
+		} else {
+			init();
+		}
+	})();
 
 }
 
@@ -3866,9 +4428,10 @@ if( location.href.includes( businessBudget )){
 
 }
 
-if( location.href.includes( `businessInfo` ) ){
+if( location.href.includes( businessInfo ) ){
 
 	(function () {
+		loadingDiv();
 	"use strict";
 
 	if(  ! Scriptbill.s.currentNote || ! Scriptbill.isJsonable( Scriptbill.s.currentNote ) ){
@@ -3876,9 +4439,9 @@ if( location.href.includes( `businessInfo` ) ){
 		return;
 	}
 
-	let note 		= JSON.parse( Scriptbil.s.currentNote );
+	let note 		= JSON.parse( Scriptbill.s.currentNote );
 
-	if( ! note.rankPref != "businessManager"){
+	if( note.rankPref != "businessManager"){
 		location.href 	= dashboardUrl;
 		return;
 	}
@@ -3937,6 +4500,8 @@ if( location.href.includes( `businessInfo` ) ){
     ]
   };
 
+
+
   var biz = null, sales = [], dateStart = null, dateEnd = null;
   var listEl = $("salesList"), noneEl = $("noSales");
 
@@ -3967,16 +4532,16 @@ if( location.href.includes( `businessInfo` ) ){
 
   function renderHeader() {
     if (!biz) { setText("bizName", "Business not found"); setText("bizInitials", "!"); return; }
-    setText("bizInitials", initials(biz.name));
-    setText("bizName", biz.name);
-    setText("bizLocation", biz.location);
-    setText("bizCategory", biz.category);
-    setText("bizDesc", biz.desc);
-    setText("bizOwner", biz.owner);
-    setText("bizId", biz.id);
-    setText("bizAdded", fmtDate(biz.addedAt, "DD MMM YYYY"));
+    setText("bizInitials", initials(biz.agreement.name));
+    setText("bizName", biz.agreement.name);
+    setText("bizLocation", biz.agreement.location);
+    setText("bizCategory", biz.agreement.category);
+    setText("bizDesc", biz.agreement.budgetDesc);
+    setText("bizOwner", biz.agreement.owner);
+    setText("bizId", biz.budgetID);
+    setText("bizAdded", fmtDate(new Date( parseInt( biz.transTime ) ).toISOString(), "DD MMM YYYY"));
 
-    var total = sales.reduce(function (s, x) { return s + x.amount; }, 0);
+    var total = sales.reduce(function (s, x) { return s + parseFloat( x.transValue ); }, 0);
     setText("totalValue", fmtMoney(total));
     setText("salesCount", sales.length);
     setText("avgSale", fmtMoney(sales.length ? total / sales.length : 0));
@@ -3995,19 +4560,19 @@ if( location.href.includes( `businessInfo` ) ){
 
     var out = arr.filter(function (s) {
       if (q && (s.item + " " + s.ref).toLowerCase().indexOf(q) === -1) return false;
-      if (!isNaN(min) && s.amount < min) return false;
-      if (!isNaN(max) && s.amount > max) return false;
+      if (!isNaN(min) && s.transValue < min) return false;
+      if (!isNaN(max) && s.transValue > max) return false;
       if (pay && s.method !== pay) return false;
-      if (dateStart && timeValue(s.at) < dateStart) return false;
-      if (dateEnd && timeValue(s.at) > dateEnd) return false;
+      if (dateStart && timeValue(s.transValue) < dateStart) return false;
+      if (dateEnd && timeValue(s.transValue) > dateEnd) return false;
       return true;
     });
 
     out.sort(function (a, b) {
-      if (sort === "high") return b.amount - a.amount;
-      if (sort === "low") return a.amount - b.amount;
-      if (sort === "oldest") return timeValue(a.at) - timeValue(b.at);
-      return timeValue(b.at) - timeValue(a.at);
+      if (sort === "high") return parseFloat( b.transValue ) - parseFloat( a.transValue );
+      if (sort === "low") return parseFloat( a.transValue ) - parseFloat( b.transValue );
+      if (sort === "oldest") return timeValue(a.transTime) - timeValue(b.transTome);
+      return timeValue(b.transTime) - timeValue(a.transTime);
     });
     return out;
   }
@@ -4020,19 +4585,19 @@ if( location.href.includes( `businessInfo` ) ){
   function saleRow(s) {
     var div = document.createElement("div");
     div.className = "transaction-item sale-item px-4 py-3";
-    div.setAttribute("data-id", s.id);
+    div.setAttribute("data-id", s.budgetID);
     div.innerHTML =
       '<div class="row align-items-center flex-row">' +
         '<div class="col-2 col-sm-1 text-center">' +
-          '<span class="d-block text-4 font-weight-300">' + fmtDate(s.at, "DD") + '</span>' +
-          '<span class="d-block text-1 font-weight-300 text-uppercase">' + fmtDate(s.at, "MMM") + '</span>' +
+          '<span class="d-block text-4 font-weight-300">' + fmtDate(new Date( parseInt( s.transTime  ) ).toISOString(), "DD") + '</span>' +
+          '<span class="d-block text-1 font-weight-300 text-uppercase">' + fmtDate(new Date( parseInt( s.transTime ) ).toISOString(), "MMM") + '</span>' +
         '</div>' +
         '<div class="col col-sm-6">' +
-          '<span class="d-block text-4">' + s.item + '</span>' +
-          '<span class="text-muted">' + s.ref + ' &bull; ' + fmtDate(s.at, "h:mm A") + '</span>' +
+          '<span class="d-block text-4">' + s.agreement.productConfig.name + '</span>' +
+          '<span class="text-muted">' + s.transNote + ' &bull; ' + fmtDate(new Date( parseInt( s.transTime  ) ).toISOString(), "h:mm A") + '</span>' +
         '</div>' +
-        '<div class="col-auto col-sm-3 d-none d-sm-block text-center text-3">' + methodBadge(s.method) + '</div>' +
-        '<div class="col-3 col-sm-2 text-right text-4">' + fmtMoney(s.amount) + '</div>' +
+        '<div class="col-auto col-sm-3 d-none d-sm-block text-center text-3">' + methodBadge(s.transType == "BUYPRODUCT" ? "PURCHASED" : "SUBSCRIBED") + '</div>' +
+        '<div class="col-3 col-sm-2 text-right text-4">' + fmtMoney(s.transValue) + '</div>' +
       '</div>';
     return div;
   }
@@ -4091,16 +4656,16 @@ if( location.href.includes( `businessInfo` ) ){
     var unit = s.amount / qty;
 
     setText("s_item", s.item);
-    setText("s_amount", fmtMoney(s.amount));
-    setText("s_date", fmtDate(s.at, "DD MMM YYYY"));
+    setText("s_amount", fmtMoney(s.transValue));
+    setText("s_date", fmtDate(new Date( parseInt( s.transTime  ) ).toISOString(), "DD MMM YYYY"));
     setText("s_unit", fmtMoney(unit));
     setText("s_qty", qty);
-    setText("s_total", fmtMoney(s.amount));
+    setText("s_total", fmtMoney(s.transValue));
     setText("s_ref", s.ref);
     setText("s_id", s.id);
     setText("s_customer", s.customer);
     setText("s_method", s.method);
-    setText("s_datetime", fmtDate(s.at, "DD MMM YYYY, h:mm A"));
+    setText("s_datetime", fmtDate(new Date( parseInt( s.transTime  ) ).toISOString(), "DD MMM YYYY, h:mm A"));
     setText("s_status", s.status);
     setText("s_note", s.note);
 
@@ -4122,10 +4687,20 @@ if( location.href.includes( `businessInfo` ) ){
     });
   }
 
-  function init() {
+  async function init() {
+	loadingDiv();
     var id = qsParam("id") || "BIZ-001";
-    biz = loadBusiness(id);
-    sales = loadSales(id);
+    biz = await loadBusiness(id);
+    sales = await loadSales(id);
+
+
+	console.log("business found: ", biz );
+
+	viewBudget.addEventListener("click", function(){
+		let url = new URL(budgetTask);
+		url.searchParams.set("id", id );
+		location.href = url.href;
+	});
 
     renderHeader();
     renderSales();
@@ -4157,6 +4732,7 @@ if( location.href.includes( `businessInfo` ) ){
       dateStart = dateEnd = null;
       renderSales();
     });
+	removeLoadingDiv();
   }
 
   if (document.readyState === "loading") {
