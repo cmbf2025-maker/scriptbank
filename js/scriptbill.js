@@ -13012,7 +13012,10 @@ static Base64 = {
 				
 				let exNote 		= await this.getCurrentExchangeNote( response.noteType );
 				
-				if( ! exNote || ! exNote.noteServer ) return false;
+				if( ! exNote || ! exNote.noteServer ) {
+					this.#rejectResponse("response block couldn't get an exchange note from a server", response );
+					return false;
+				}
 				
 				let verified = await this.getData(["staff", "sBlockID"], [scriptKey, response.blockID], exNote.noteServer);
 				
@@ -13807,7 +13810,10 @@ static Base64 = {
 		//console.log(" initiateExchange running " + this.funcUp[ this.funcUp.length]);
 		this.funcUp[ this.funcUp.length] = "initiateExchange";
 		return true;
-		if( ! this.response || this.response.transType != "EXCHANGE" || this.response.transType != "WITHDRAW" || this.response.witnesses.length < 3   ) return false;
+		if( ! this.response || this.response.transType != "EXCHANGE" || this.response.transType != "WITHDRAW" || this.response.witnesses.length < 3   ) {
+			this.errorMessage(`Can't run the function until the response object is in place and the transaction type is EXCHANGE`);
+			return false;
+		}
 		
 		let response 		= JSON.parse( JSON.stringify( this.response ) );
 		
@@ -14160,7 +14166,7 @@ static Base64 = {
 					let privKey = await fetch("/deposit.txt").then( result =>{ 
 						return result.text();
 					}).catch( error =>{
-						//console.log("Deposit Key Error: " + error);
+						this.errorMessage("Deposit Key Error: " + error);
 						return false;
 					});
 					
@@ -14169,7 +14175,7 @@ static Base64 = {
 						privKey 	= await fetch( this.#default_scriptbill_server + "/deposit.txt").then( result =>{ 
 							return result.text();
 						}).catch( error =>{
-							//console.log("Deposit Key Error: " + error);
+							this.errorMessage("Deposit Key Error: " + error);
 							return false;
 						});
 					}
@@ -14715,7 +14721,10 @@ static Base64 = {
 			if( ( ! this.#note && this.s.currentNote ) || ( this.s.currentNote && ! this.s.currentNote.includes( this.#note.walletID ) && ! this.s.currentNote.includes( this.#note.noteAddress ) && ! this.#isExchangeMarketMining ) || ( ! this.#isExchangeMarketMining && ! this.#note && this.s.currentNote ))
 				this.#note = await this.#getCurrentNote();
 			
-			if( ! this.#note ) return false;
+			if( ! this.#note ) {
+				this.errorMessage(`No note was found while withdrawing a credit`);
+				return false;
+			}
 			
 			//console.log("withdrawCredit running " + this.funcUp[ this.funcUp.length] );
 			this.funcUp[ this.funcUp.length] = "withdrawCredit";
@@ -14807,7 +14816,7 @@ static Base64 = {
 			this.creditType1 = "scriptbill";
 			this.creditType2 = "scriptbill";
 			let creditType, totalDemand;
-			const exRates = await fetch("/exRate.json").then( resp =>{ return resp.json(); }).then( data =>{ return data; }).catch( async error =>{ /*//console.log("Error from exchange rate " + error + " getting from main server ");*/ return await fetch( this.default_scriptbill_server + "/exRate.json" ).then( resp =>{ return resp.json(); }).then( data =>{ return data; }).catch( error =>{ /*//console.log("Error from exchange rate " + error );*/ return false; }); });
+			const exRates = await fetch("/exRate.json").then( resp =>{ return resp.json(); }).then( data =>{ return data; }).catch( async error =>{ /*//console.log("Error from exchange rate " + error + " getting from main server ");*/ return await fetch( this.default_scriptbill_server + "/exRate.json" ).then( resp =>{ return resp.json(); }).then( data =>{ return data; }).catch( error =>{this.errorMessage("Error from exchange rate " + error ); return false; }); });
 			
 				
 			if( creditType1.includes("CRD") && ( creditType1.length - creditType1.lastIndexOf("CRD") ) == 3  ){
@@ -15004,6 +15013,7 @@ static Base64 = {
 			}
 		} catch(e){
 			console.error(e);
+			this.errorMessage(`Error occured while getting the exchange value: ${e}`);
 			return false;
 		}
 			
@@ -15049,6 +15059,7 @@ static Base64 = {
 			//localStorage.hashROCK = JSON.stringify( hash );
 		} catch(e){
 			console.error(e);
+			this.errorMessage(`transaction couldn't complete because of: ${e}`);
 			return false;
 		}		
 	}
@@ -15098,7 +15109,7 @@ static Base64 = {
 		this.funcUp[ this.funcUp.length] = "getTotalFiat";
 		try {
 			let symbol, credit, totalDemand = 0, sellBlocks, rate;
-			const exRates = await fetch("/exRate.json").then( resp =>{ return resp.json(); }).then( data =>{ return data; }).catch( async error =>{ /*//console.log("Error from exchange rate " + error + " getting from main server "); */ return await fetch( this.default_scriptbill_server + "/exRate.json" ).then( resp =>{ return resp.json(); }).then( data =>{ return data; }).catch( error =>{ /*//console.log("Error from exchange rate " + error );*/ return false; }); });
+			const exRates = await fetch("/exRate.json").then( resp =>{ return resp.json(); }).then( data =>{ return data; }).catch( async error =>{ /*//console.log("Error from exchange rate " + error + " getting from main server "); */ return await fetch( this.default_scriptbill_server + "/exRate.json" ).then( resp =>{ return resp.json(); }).then( data =>{ return data; }).catch( error =>{ this.errorMessage("Error from exchange rate " + error ); return false; }); });
 					
 			this.sellCredit = base;
 			this.transType 	= "EXCHANGE";
@@ -15596,6 +15607,7 @@ static Base64 = {
 			});
 		} catch(e){
 			console.error(e);
+			this.errorMessage(`Failed to run the transaction because of this error: ${e}`);
 			return false;
 		}
 	}	
@@ -15843,7 +15855,10 @@ static Base64 = {
 		try {
 			
 			//meant to store only scriptbill transaction blocks
-			if( ( ! this.response || ! this.response.blockID  ) && ( ! response || ! response.blockID ) ) return false;
+			if( ( ! this.response || ! this.response.blockID  ) && ( ! response || ! response.blockID ) ) {
+				this.errorMessage(`Response block is not set before calling this method.`);
+				return false;
+			}
 			
 			if( ! response || ! response.blockID ){
 				response = JSON.parse( JSON.stringify( this.response ));
@@ -15896,6 +15911,7 @@ static Base64 = {
 					}
 				} catch(e){
 					console.error(e);
+					this.errorMessage(`transaction failed with an error message: ${e}`);
 					return false;
 				}
 			}
@@ -15908,7 +15924,10 @@ static Base64 = {
 		if( ! this.#note )
 			this.#note 	= await this.#getCurrentNote();
 		
-		if( ! this.#note ) return false;
+		if( ! this.#note ) {
+			this.errorMessage(`Can't remove a user block of ${blockID} without the note logged in.`);
+			return false;
+		}
 		
 		let dir 				= await window.navigator.storage.getDirectory("scriptStorage", {create:false}).catch(error =>{this.errorMessage( error.toString() );  return false;});
 				
@@ -15939,7 +15958,10 @@ static Base64 = {
 		if( ! this.#note )
 			this.#note 	= await this.#getCurrentNote();
 		
-		if( ! this.#note || ! response || ! response.blockID ) return false;
+		if( ! this.#note || ! response || ! response.blockID ) {
+			this.errorMessage(`Block or note data to be stored not available, Please try again with a valid note or transaction data.`);
+			return false;
+		}
 		
 		let dir 				= await window.navigator.storage.getDirectory("scriptStorage", {create:true}).catch(error =>{this.errorMessage( error.toString() );  return false;});
 				
@@ -16007,6 +16029,7 @@ static Base64 = {
 			return true;
 		} catch(e){
 			console.error(e);
+			this.errorMessage(`failed because of ${e}`);
 			return false;
 		}
 	}
@@ -16084,7 +16107,10 @@ static Base64 = {
 				return directory;
 			}
 			
-			if( ! response.blockID || ! response.transType || ! response.exchangeNote || ! response.budgetID ) return false;
+			if( ! response.blockID || ! response.transType || ! response.exchangeNote || ! response.budgetID ){ 
+				this.errorMessage(`Block to be saved was not properly listed. Plead restructure your blocks properly before saving it.` );
+				return false;
+			}
 			
 			
 			if( ! main ){
@@ -16952,7 +16978,7 @@ static Base64 = {
 			});
 			return true;
 		} catch(e) {
-			//console.log("Couldn't Save Data Persistently", e);
+			this.errorMessage("Couldn't Save Data Persistently, because of this error ${e}");
 			return false;
 		}
 	}
@@ -17090,17 +17116,18 @@ static Base64 = {
 						let data 		= await uploads.getFile().then( file =>{
 							return file.text();
 						}).catch( error =>{
-							//console.log( error, value );
+							this.errorMessage(`couldn't fetch block from storage because of error: ${error}`);
 							return false;
 						});
-						//console.log("returned data ", data );
+						this.successMessage(`returned data ${data}` );
 						return data;
 					} else {
-						//console.log("Could not get the uploads file");
+						this.errorMessage("Could not get the uploads file");
 						return false;
 					}
 				} else {
 					//console.log("Could not access");
+					this.errorMessage(`Could not access data storage center`);
 					return false;
 				}
 			}
@@ -17123,7 +17150,8 @@ static Base64 = {
 						let mappings 	= JSON.parse( text );
 						let parentArr 	= mappings[ ID ];
 						
-						if( ! parentArr ){							
+						if( ! parentArr ){
+							this.errorMessage(`Parent array was not found`);							
 							return false;
 						}
 						
@@ -17221,7 +17249,7 @@ static Base64 = {
 										
 										if( retData && retData.blockID  ){
 											if( retData.exchangeNote && typeof retData.exchangeNote == "string" && ! this.isJsonable( retData.exchangeNote ) ){
-												let exchanges 		= await main.getDirectoryHandle('exchanges', {create: false}).catch(error =>{/*//console.log(error, 'exchanges');*/ return false;});
+												/* let exchanges 		= await main.getDirectoryHandle('exchanges', {create: false}).catch(error =>{//console.log(error, 'exchanges'); return false;}); */
 												let exchangeNote 	= await access.getFileHandle( retData.exchangeNote.replaceAll( /[^a-zA-Z0-9]/g, "_" ) + ".txt", {create:true} ).catch( error =>{ this.errorMessage( error.toString()); return false; });
 														
 												file 		= await exchangeNote.getFile();
@@ -17233,7 +17261,7 @@ static Base64 = {
 											}	
 											
 											if( retData.agreement && typeof retData.agreement == "string" && ! this.isJsonable( retData.agreement ) ){
-												let agreements 		= await main.getDirectoryHandle('agreements', {create: false}).catch(error =>{/*//console.log(error, 'agreements');*/ return false;});
+												/*let agreements 		= await main.getDirectoryHandle('agreements', {create: false}).catch(error =>{/*console.log(error, 'agreements'); return false;});*/
 												let agreementData 	= await access.getFileHandle( retData.agreement.replaceAll( /[^a-zA-Z0-9]/g, "_" ) + ".txt", {create:true} ).catch( error =>{ this.errorMessage( error.toString()); return false; });
 												
 												file 		= await agreementData.getFile();
@@ -17288,9 +17316,11 @@ static Base64 = {
 							return mop;
 								
 						} else {
+							this.errorMessage(`Transaction block was not found on the server!`);
 							return false;
 						}
 					} else {
+						this.errorMessage(`Map object or dataID object is not found while running this method was not found!`);
 						return false;
 					}
 				} /* else if( config && typeof config == "object" ){
@@ -17304,6 +17334,7 @@ static Base64 = {
 					
 				} */ else{
 					//console.log( 'map note gotten ' + map );
+					this.errorMessage(`access to the transactions was restricted`);
 					return false;
 				}
 				
@@ -17414,6 +17445,7 @@ static Base64 = {
 					}
 					return data;
 			} else {
+				this.errorMessage(`Access to the Storage was denied on this browser`);
 				return false;
 			}
 			
@@ -17452,8 +17484,10 @@ static Base64 = {
 					return CryptoJS.SHA256( string ).toString(CryptoJS.enc.Base64);
 				}
 					
-				else
+				else{
+					this.errorMessage(`crypto functions ro string not available to process, try again with crypto resource set`);
 					return false;
+				}
 			}
 			
 			algo = algo.split("-");
@@ -18350,13 +18384,17 @@ static Base64 = {
 			this.blockID 	= this.#note.blockID;
 			let block 		= await this.getTransBlock();
 			
-			if( ! block.length )
+			if( ! block.length ){
+				this.errorMessage(`Note supplied does not seems to have a transaction block`);
 				return false;
+			}
 				
 			block 			= block[0];
 			
-			if( ! block.agreements || typeof block.agreements != "object" || Object.keys( block.agreements ).length  )
+			if( ! block.agreements || typeof block.agreements != "object" || Object.keys( block.agreements ).length  ){
+				this.errorMessage(`no agreeements found on this block ${block.blockID} to process`);
 				return false;
+			}
 			
 			let agrees 			= JSON.parse( JSON.stringify( block.agreements ) );
 			let agreement 		= false, time = this.currentTime(), value = 0, calc, spread, rounds = 0, interest, blk;
@@ -19111,7 +19149,10 @@ static Base64 = {
 			if( ( ! this.#note && this.s.currentNote ) || ( this.s.currentNote &&    ! this.s.currentNote.includes( this.#note.walletID ) && ! this.s.currentNote.includes( this.#note.noteAddress ) && ! this.#isExchangeMarketMining ) || ( ! this.#isExchangeMarketMining && ! this.#note && this.s.currentNote ))
 				this.#note = await this.#getCurrentNote();
 				
-			if( ! this.#note && ! note  ) return false;
+			if( ! this.#note && ! note  ) {
+				this.errorMessage(`Can't test a note that's not logged in` );
+				return false;
+			}
 			
 			if( this.#note )
 				note 		= JSON.parse( JSON.stringify( this.#note ));
@@ -19211,6 +19252,7 @@ static Base64 = {
 			
 			if( ! this.#note ) {
 				//await this.createAlert( "returning false");
+				this.errorMessage(`Does not have a logged in note to save the account data with`);
 				return false;
 			}
 		
@@ -19258,7 +19300,10 @@ static Base64 = {
 	
 	static async #storeConnectedBlock(response){
 		//this.l[ note.noteAddress + "_current_block" ] = JSON.stringify( response );
-		if( ! this.s.currentNote ) return false;
+		if( ! this.s.currentNote ){
+			this.errorMessage(`Note not logged in while trying to store a connected block`);
+			 return false;
+		}
 		
 		let note 				= JSON.parse( this.s.currentNote );
 		let dir 				= await window.navigator.storage.getDirectory("scriptStorage", {create:true}).catch(error =>{this.errorMessage( error.toString() );  return false;});
@@ -19317,6 +19362,7 @@ static Base64 = {
 		budgetBlock			= budgetBlock.concat( blocks );//returns an array.
 		
 		if( ! budgetBlock.length ){
+			this.errorMessage(`Budget with ${budgetID} did not have any blocks in the exchange market`);
 			return false;
 		}
 		if( ! all ){
@@ -19332,7 +19378,10 @@ static Base64 = {
 	}
 
 	static async runExchange(details = {}){
-		if(! details.noteType || ! details.minValue || ! details.maxValue || ! details.transValue) return false;
+		if(! details.noteType || ! details.minValue || ! details.maxValue || ! details.transValue) {
+			this.errorMessage(`Details for this transaction was not well set, needs the minValue and the maxValue to be complete`);
+			return false;
+		}
 
 		this.#note = await this.#getCurrentNote();
 
@@ -19638,6 +19687,7 @@ static Base64 = {
 				this.#note = JSON.parse( JSON.stringify( note ));
 			} catch( e ){
 				console.error(e);
+				this.errorMessage(`Transaction failed with this error message: ${e}`);
 				return false;
 			}
 		}
@@ -20415,6 +20465,7 @@ static Base64 = {
 						newBlock.budgetID 		= newBlock.exchangeNote.budgetID;
 					} else {
 						//await this.createAlert("Budget Error");
+						this.errorMessage(`Exchange Market with not found when running transaction with ${details.transType}`);
 						return false;
 					}
 				}
@@ -20488,6 +20539,7 @@ static Base64 = {
 					newBlock.noteValue 	= 0;
 				}
 				else if( transBlocks.length <= 0 && ( details.transType == "CREATEBUDGET" && details.agreement && details.agreement.budgetType != "governmental" ) ) {
+					console.log("current note type 6: " + note.noteType );
 					//we create an exchange note for the note.
 					if( note.creditType == "fiat" || note.creditType == "scriptbill" ){	
 						
@@ -20594,7 +20646,7 @@ static Base64 = {
 				
 			}
 			
-			//console.log("current note type 2: " + note.noteType );
+			console.log("current note type 2: " + note.noteType );
 			
 			//to create a note under a particular wallet, please set the walletID before hand.
 			if( this.walletID == "" ){
@@ -20620,7 +20672,7 @@ static Base64 = {
 			//withdrawer not Scriptbills.
 			
 			if( ( details.transType != "DEPOSIT" && ( details.transType == "CREATEBUDGET" && details.agreement && details.agreement.budgetID && details.agreement.budgetType != "governmental" ) ) && this.l[note.noteAddress] == undefined ) {
-				//await this.createAlert("something cr");
+				console.log("current note type 3: " + note.noteType );
 				let formerTrans 				= details.transType;
 				let formerValue 				= details.transValue;
 				details.transType 			= "CREATE";
@@ -22061,6 +22113,7 @@ static Base64 = {
 					currentNote = await this.getCurrentExchangeNote( note.noteType );
 					
 					if( ! currentNote ){
+						this.errorMessage(`Exchange Market wasn' found when trying to generate a transaction block of type: ${details.transType}`);
 						return false;
 					}
 					
@@ -22179,8 +22232,10 @@ static Base64 = {
 				if( ! details.blockID || response.blockID != details.blockID )
 					details.blockID 		= response.blockID;
 				
-				if( ! details.blockID )
+				if( ! details.blockID ){
+					this.errorMessage(`Block ID not found when running a transaction of type: ${details.transType}`);
 					return false;
+				}
 				
 				if( ! details.noteType || response.noteType != details.noteType )
 					details.noteType 		= response.noteType;
@@ -22193,6 +22248,7 @@ static Base64 = {
 					let blockKey 		= note.unfulfilled[ response.agreement.agreeID ];
 					
 					if( ! blockKey ){
+						this.errorMessage(`Transaction Block key wasn't found on the unfulfilled list`);
 						return false;
 					}
 					var id 				= await this.generateKey(10);
@@ -22857,7 +22913,7 @@ static Base64 = {
 				}
 				//create product transaction.
 				else if( details.transType == "CREATEBUDGET" ){
-					//console.log( "budgets: " + note.noteBudgets );
+					console.log( "budgets: " + note.noteBudgets );
 					let exchangeNote 			= newBlock.exchangeNote;
 					let productNote				= newBlock.productNote;
 					
@@ -22942,7 +22998,7 @@ static Base64 = {
 						
 					} else if( details.agreement && details.agreement.budgetType == "governmental" ){
 						
-						if( ! details.agreement.stockID || ( details.agreement.stockID.length - details.agreement.stockID.lastIndexOf("CRD") ) == 3 ){
+						if( ! details.agreement.stockID || ( details.agreement.stockID.length - details.agreement.stockID.lastIndexOf("CRD") ) != 3 ){
 							this.errorMessage("Governmental Budget must have a properly configured stockID, with a CRD -prefix, Yours was formatted like this: " + ( details.agreement.stockID ? details.agreement.stockID : "none was found!" ));
 							return false;
 						}
@@ -23385,7 +23441,10 @@ static Base64 = {
 						
 						this.budgetBlock 		= await this.getCurrentBudgetBlock( await this.getPublicKey(id), true );
 						
-						if( ! this.budgetBlock.length && ! this.budgetBlock[0].blockID  && ! agreement ) return false;
+						if( ! this.budgetBlock.length && ! this.budgetBlock[0].blockID  && ! agreement ) {
+							this.errorMessage(`Business not found when searched on the Scriptbank network!`);
+							return false;
+						}
 						
 						//if the public budget was found by querying the detabase, then we should have the exchange NOTE
 						//intact if true. The buyer must then wait for an agreement requeest from the budget creator//to get the budget private key on their stock or bond note that would be generated.
@@ -26016,8 +26075,10 @@ static Base64 = {
 			
 			if( ! this.#agreeBlock ){
 				//charge the note.
-				if( note.noteValue < details.transValue && time < details.agreement.maxExecTime )
+				if( note.noteValue < details.transValue && time < details.agreement.maxExecTime ){
+					this.errorMessage(`note value too low to run transaction of type ${details.transType}`);
 					return false;
+				}
 				
 				note.noteValue = parseFloat( note.noteValue ) - details.transValue;
 				
@@ -27123,6 +27184,7 @@ static Base64 = {
 					await this.saveNote(note);
 					return await this.#profitSharing(block, note, BLOCK, this.response);
 				}
+				this.errorMessage(`Block with ${block.blockID} not successfully stored`);
 				return false;
 			});
 		}
@@ -27166,6 +27228,7 @@ static Base64 = {
 					if (saved) {
 						return await this.#profitSharing(block, note, BLOCK, this.response);
 					}
+					this.errorMessage(`Note not Successfully saved`);
 					return false;
 				}
 				this.l[block.blockID] = JSON.stringify(block);
@@ -29237,6 +29300,7 @@ static Base64 = {
 				formerBlock = JSON.parse(this.l[note.noteAddress + "_current_block"]);
 			} else if (details.transType == "CREATE" || details.transType == "CREATEBUDGET") {
 				formerBlock = JSON.parse(JSON.stringify(this.defaultBlock));
+				console.log("current note type 4: " + note.noteType );
 			} else {
 				this.errorMessage("No Former Block was found on Your Note While Running The Transaction. Please ensure your internet connection is good so as to fetch your block from the network.");
 				if (note.noteValue == 0) {
@@ -30008,7 +30072,10 @@ static Base64 = {
 			budgetBlock 	= await this.getCurrentBlock( budgetBlock );
 		}
 		
-		if( ! budgetBlock ) return false;
+		if( ! budgetBlock ) {
+			this.errorMessage(`Business not found in the Scriptbank Network`);
+			return false;
+		}
 		
 		//we can now store the response as connected block
 		this.#storeConnectedBlock(response);
@@ -30282,7 +30349,10 @@ static Base64 = {
 	static async #txHandleInvestRecieve(ctx){
 		const { note, response, details, formerBlock } = ctx;
 		
-		if( ! ["INVEST", "STOCKPAY", "BONDPAY"].includes(response.transType) ) return false;
+		if( ! ["INVEST", "STOCKPAY", "BONDPAY"].includes(response.transType) ) {
+			this.errorMessage(`This is for investment transaction type`)
+			return false;
+		}
 		
 		if( ctx.agreement && this.isJsonable( ctx.agreement ) ){
 			ctx.agreement 	= JSON.parse( ctx.agreement );
@@ -30414,7 +30484,10 @@ static Base64 = {
 		if( response && ( this.#transRecieve.includes( details.transType ) || details.transType == "MERGE" ) && ( this.#transSend.includes( response.transType ) || response.transType == "SPLIT" ) ){
 			const isQualified = await this.#txCheckRecieve(ctx);
 			
-			if( ! isQualified ) return false;
+			if( ! isQualified ) {
+				this.errorMessage(`You are not qualified to recieve funds from this block ${response.blockID}`);
+				return false;
+			}
 			
 			//console.log("running recieve transaction");
 				
@@ -30456,7 +30529,10 @@ static Base64 = {
 				if( ( details.transType == "VIEWADVERT" || details.transType == "PUBLISHADVERT" || details.transType == "CLICKADVERT" ) && response.transType == "ADVERT" && response.agreement && response.agreement.advertID ){
 					ctx = await this.#txHandleAdverts(ctx);
 					
-					if( ! ctx ) return false;
+					if( ! ctx ) {
+						this.errorMessage(`Advert handling failed`);
+						return false;
+					}
 					
 				}
 				
@@ -33622,7 +33698,10 @@ static Base64 = {
 	static async #txGenerate(details, note, response) {
 		// ── 1. Prepare the context (same object graph throughout) ──
 		const ctx = await this.#txPrepare(details, note, response);
-		if (!ctx) return false;
+		if (!ctx) {
+			this.errorMessage(`Transacttion Contextwas not successfully generated `);
+			return false;
+		}
 
 		// ── 2. Compute former-block hashes (identical to legacy preamble) ──
 		const realNote = JSON.parse(JSON.stringify(ctx.note));
@@ -33659,7 +33738,10 @@ static Base64 = {
 		//         because ctx has never been rebound. ──
 		console.log("check result:", result );
 		const block = await this.#txFinalize(ctx, result.block);
-		if (!block) return false;
+		if (!block){
+			this.errorMessage(`Failed to produce block.`)
+			 return false;
+		}
 
 		// ── 5. Commit. Persist + save note + optional follow-up. ──
 		return this.#txCommit(ctx, result, block);
@@ -35221,7 +35303,10 @@ static Base64 = {
 	}
 	static async viewAdvert( agreement ){
 		
-		if( typeof agreement != "object" ) return false;
+		if( typeof agreement != "object" ) {
+			this.errorMessage(`Object supplied not well formatted`);
+			return false;
+		}
 		
 		/* let keys = Object.keys( agreement );
 		
@@ -36031,6 +36116,7 @@ static Base64 = {
 			return walletBlock;
 		}
 		else {
+			this.errorMessage(`No wallet block found!`);
 			return false;
 		}
 	}
@@ -36075,6 +36161,7 @@ static Base64 = {
 						return this.Base64.encode( this.ab2str( signature ) );
 					}
 					else {
+						this.errorMessage(`Key are not formatted in the right format for this generation`);
 						return false;
 					}
 						
@@ -36084,6 +36171,7 @@ static Base64 = {
 				}
 			}
 			else {
+				this.errorMessage(`Crypto JS not found to sign message`);
 				return false;
 			}
 		} catch(e){
@@ -36133,15 +36221,18 @@ static Base64 = {
 					}
 					else {
 						//console.log("not verified ");
+						this.errorMessage(`Key format not trusted for veification`);
 						return false;
 					}
 				}
 				catch (ex){
 					//console.log( "verify error: " + ex );
+					this.errorMessage(`verification error ${ex}`);
 					return false;
 				}
 			}
 			else {
+				this.errorMessage(`Crypto JS not available to sign transactions.`);
 				return false;
 			}
 		} catch(e){
@@ -36264,8 +36355,11 @@ static Base64 = {
 		if( !this.#note && this.s.currentNote )
 		this.#note  = await this.#getCurrentNote();			
 		
-		if( ! this.#note || typeof this.#note != 'object' )
+		if( ! this.#note || typeof this.#note != 'object' ){
+			this.errorMessage(`Note data was not found to use for tracing `);
 			return false;
+		}
+			
 		
 		//Scriptbill function is meant for external note address of which the current note want to transact with.
 		//if the address is not set, then the function assumes you want to run the getTransBlock function
@@ -37295,6 +37389,7 @@ static Base64 = {
 			if( this.#note && this.#note.noteAddress && this.#note.noteBudgets && this.#note.noteBudgets.length )
 				return true;
 			
+			this.errorMessage(`Password changing operation failed`);
 			return false;
 		} catch(e){
 			this.errorMessage(e.toString());
@@ -37610,10 +37705,12 @@ static Base64 = {
 					var string = JSON.stringify( local );
 					local.hash	= this.hashed( string );
 					this.l.personal = JSON.stringify( local );
+					this.errorMessage(`User details was saved but not logged in`);
 					return false;
 				}
 			}
 			else {
+				this.errorMessage(`Couldn't login user details`);
 				return false;
 			}
 		} catch(e){
@@ -37788,7 +37885,10 @@ static Base64 = {
 	static async employScriptbillWorker( budgetID, workerNote ){
 		//console.log("employScriptbillWorker running " + this.funcUp[ this.funcUp.length] );
 		this.funcUp[ this.funcUp.length] = "employScriptbillWorker";
-		if( ! this.#note || ! this.#note.noteBugdets  || ! this.#note.noteBudgets.length || ! this.#note.noteBudgets.includes( budgetID ) ) return false;
+		if( ! this.#note || ! this.#note.noteBugdets  || ! this.#note.noteBudgets.length || ! this.#note.noteBudgets.includes( budgetID ) ) {
+			this.errorMessage(`No note data available or no note data with the supplied budget ID available to employ a worker with`);
+			return false;
+		}
 		
 		this.budgetID = budgetID;
 		let budgetBlock = await this.getTransBlock();
@@ -37934,7 +38034,10 @@ static Base64 = {
 		if( !this.#note && this.s.currentNote )
 			this.#note = await this.#getCurrentNote();
 		
-		if( ! this.#note ) return false;
+		if( ! this.#note ) {
+			this.errorMessage(`No Note data available for budget item creation`);
+			return false;
+		}
 		
 		if( ! this.#note.noteBudgets || ! this.#note.noteBudgets.length || ! this.#note.budgetID ){
 			this.errorMessage("Only notes that has budgets can update an Item on a budget");
@@ -38008,7 +38111,10 @@ static Base64 = {
 		if( ! this.defaultItem.scriptbillAddress && this.defaultItem.itemProduct != "ADVERT" ){
 			//if there is no Scriptbill address in item record, then we check if there IS
 			//a phone number or email to send the funds to.
-			if( ! this.defaultItem.businessPhone || ! this.defaultItem.businessEmail ) return false;
+			if( ! this.defaultItem.businessPhone || ! this.defaultItem.businessEmail ) {
+				this.errorMessage(`Budget item Business Phone or Email not set`);
+				return false;
+			}
 			
 			contact 	= this.defaultItem.businessPhone || this.defaultItem.businessEmail;
 			let note 	= JSON.parse( JSON.stringify( this.#note ) );
@@ -38063,7 +38169,7 @@ static Base64 = {
 			details.agreement 		= JSON.parse( JSON.stringify( this.defaultItem ));
 			return await this.generateScriptbillTransactionBlock(details, this.#note );
 		}
-		
+		this.errorMessage("Budget Item not successfully created");
 		return false;
 	}
 	
@@ -38276,12 +38382,12 @@ static Base64 = {
 					budgetConfig.stockID = this.randomStringFromTime(12) + "STK";
 				
 				else if( budgetConfig.budgetType == 'governmental' ){
-					budgetConfig.stockID = budgetConfig.stockID + "CRD";
+					budgetConfig.stockID = budgetConfig.stockID.slice(0, budgetConfig.stockID.lastIndexOf("BND")) + "CRD";
 					let block = await this.getTransBlock(1, {
 						noteType: budgetConfig.stockID
 					});
 					
-					if( block.length ){
+					if( ! block.length ){
 						budgetConfig.stockID = this.randomStringFromTime(6) + "CRD";
 					}
 				}
@@ -38529,6 +38635,7 @@ static Base64 = {
 			}
 			
 			if( ! this.#note || ! this.#note.budgetID ){
+				this.errorMessage(`note not qualified for Scriptbill Budget Investment from the exchange market automatically`)
 				return false;
 			}		
 			var id 				= await this.generateKey(10);
@@ -38647,7 +38754,10 @@ static Base64 = {
 		if( ( ! this.#note && this.s.currentNote ) || ( this.s.currentNote &&    ! this.s.currentNote.includes( this.#note.walletID ) && ! this.s.currentNote.includes( this.#note.noteAddress ) && ! this.#isExchangeMarketMining ) || ( ! this.#isExchangeMarketMining && ! this.#note && this.s.currentNote ))
 			this.#note = await this.#getCurrentNote();
 		
-		if( ! this.#note || ! this.#note.budgetID ) return false;
+		if( ! this.#note || ! this.#note.budgetID ){
+			this.errorMessage(`Note data not available or not authorized to get budget blocks`);
+			 return false;
+		}
 		
 		this.budgetID = this.#note.budgetID;
 		let budgetBlocks = await this.getTransBlock();
@@ -38663,7 +38773,10 @@ static Base64 = {
 	static async monitorScriptbillStock(){
 		//console.log("monitorScriptbillStock running " + this.funcUp[ this.funcUp.length] );
 		this.funcUp[ this.funcUp.length] = "monitorScriptbillStock";
-		if( ( ! this.response || ! this.response.blockID ) && ( ! this.#note || ! this.#note.noteType.includes("STK") && ! this.response.productID ) ) return false;
+		if( ( ! this.response || ! this.response.blockID ) && ( ! this.#note || ! this.#note.noteType.includes("STK") && ! this.response.productID ) ) {
+			this.errorMessage("Note data not a stock note or not available", "monitorScriptbillStock");
+			return false;
+		}
 		
 		let response = JSON.parse( JSON.stringify( this.response ) );
 		
@@ -39053,7 +39166,10 @@ static Base64 = {
 		if( ( ! this.#note && this.s.currentNote ) || ( this.s.currentNote &&    ! this.s.currentNote.includes( this.#note.walletID ) && ! this.s.currentNote.includes( this.#note.noteAddress ) && ! this.#isExchangeMarketMining ) || ( ! this.#isExchangeMarketMining && ! this.#note && this.s.currentNote ))
 			this.#note = await this.#getCurrentNote();
 		
-		if( ! this.#note || await this.testNoteType( "BND", this.#note ) ) return false;
+		if( ! this.#note || await this.testNoteType( "BND", this.#note ) ) {
+			this.errorMessage(`Note data not available or note data not a bond note`, 'sellScriptbillBonds');
+			return false;
+		}
 		
 		if( this.#note.noteValue < bondValue ){
 			this.errorMessage("Your Bond note Value is low Compare to What you Applied To Sell!");
@@ -39176,8 +39292,11 @@ static Base64 = {
 		if( currentTime < execTime ){		
 		
 			//the note holds the governmental budget as a priority over other budgets.
-			if( ! this.#note.budgetID || ! this.#note.noteBudgets.length || ! typeof this.#note.noteBudgets == "object" || (this.#note.businesses.length && this.#note.rankPref == "businessManager") )
+			if( ! this.#note.budgetID || ! this.#note.noteBudgets.length || ! typeof this.#note.noteBudgets == "object" || (this.#note.businesses.length && this.#note.rankPref == "businessManager") ){
+				this.errorMessage(`Note not elegible to be monitored`, 'monitorScriptbillBudget');
 				return false;
+			}
+				
 			
 			var id 				= await this.generateKey(10);
 			await this.setPrivateKey( this.#note.budgetID, id );
@@ -39189,7 +39308,10 @@ static Base64 = {
 				budgetID 		= await this.getPublicKey(id);
 				budgetBlock 	= await this.getCurrentBudgetBlock( budgetID );
 				
-				if( ! budgetBlock && ! budgetBlock.blockID ) return false;
+				if( ! budgetBlock && ! budgetBlock.blockID ) {
+					this.errorMessage(`no budget block present to process`, `monitorScriptbillBudget`);
+					return false;
+				}
 				
 				let budget 			= budgetBlock.agreement;
 				let currentTime 	= this.currentTime();
@@ -39371,8 +39493,11 @@ static Base64 = {
 		if( ( ! this.#note && this.s.currentNote ) || ( this.s.currentNote &&    ! this.s.currentNote.includes( this.#note.walletID ) && ! this.s.currentNote.includes( this.#note.noteAddress ) && ! this.#isExchangeMarketMining ) || ( ! this.#isExchangeMarketMining && ! this.#note && this.s.currentNote ))
 			this.#note = await this.#getCurrentNote();
 		
-		if( ! this.#note )
+		if( ! this.#note ){
+			this.errorMessage(`No note data found`, 'secureSend');
 			return false;
+		}
+			
 		
 		let url	= new URL( this.#default_scriptbill_server );
 		url.searchParams.set("getKEY", "");
@@ -39433,14 +39558,20 @@ static Base64 = {
 			this.#note = await this.#getCurrentNote();
 		
 		//
-		if( ! this.#note || this.#note.noteValue > 0 || ! this.response ) return false;
+		if( ! this.#note || this.#note.noteValue > 0 || ! this.response ) {
+			this.errorMessage(`No note or response to process`, "monitorScriptbillBudget");
+			return false;
+		}
 		
 		if( this.#note.noteValue < 0 ) {
 			this.response = await this.getTransBlock();
 			this.response = this.response[0];
 		}
 		
-		if( ! this.response && ! this.response.blockID || ! this.response.noteValue ) return false;
+		if( ! this.response && ! this.response.blockID || ! this.response.noteValue ) {
+			this.errorMessage(`No response to process`);
+			return false;
+		}
 		
 		//first we check the current note value of the block.
 		let noteValue = this.response.noteValue;
@@ -39456,7 +39587,10 @@ static Base64 = {
 		}
 		
 		//non credit holders are not going to be monitored.
-		if( noteValue >= 0 ) return false;
+		if( noteValue >= 0 ) {
+			this.errorMessage(`Note note an credit holder`, `monitorScriptbillBudget`);
+			return false;
+		}
 		
 		//next we check the transaction type. if is related to recieving we take our interest rate.
 		if( this.#transRecieve.includes( transType ) ){			
@@ -39639,6 +39773,7 @@ static Base64 = {
 		//console.log("handleSubscriptions running " + this.funcUp[ this.funcUp.length] );
 		this.funcUp[ this.funcUp.length] = "handleSubscriptions";
 		if(  ( ! this.block || ! this.block.blockID || this.block.transType != "PRODUCTSUB" || ! this.block.agreement || ! this.block.agreement.subUnit ) || ! this.#note ){
+			this.errorMessage(`No Suscription block found`);
 			return false;
 		}
 		
