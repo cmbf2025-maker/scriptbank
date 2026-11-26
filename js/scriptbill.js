@@ -4943,7 +4943,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 					let note = Object.assign( this.#note );
 					this.#note = null;
 					//console.log( "private key set: " + this.privateKey );
-					note = this.decrypt( noteEncrypt, this.hashed( string ) );
+					note = this.decrypt( noteEncrypt, await this.hashed( string ) );
 					this.#note = Object.assign(note);
 					
 					//console.log( "decrypted note: " + note, typeof note );
@@ -4973,8 +4973,8 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 						
 						if( this.#note.blocks && this.#note.blocks.length && typeof this.#note.blocks == 'object' ){
 							let blocks 		= JSON.parse( JSON.stringify( this.#note.blocks ));//3W9oE6Kcdy4RHvYV+KHq9g==
-							blocks 			= blocks.filter( (block)=>{
-								return this.hashed( block.blockID ) != nextBlockID;
+							blocks 			= blocks.filter( async (block)=>{
+								return await this.hashed( block.blockID ) != nextBlockID;
 							});
 							for( let r = 0; r < blocks.length && r <= 12; r++ ){
 								this.response 		= JSON.parse( JSON.stringify( blocks[r] ));
@@ -4989,8 +4989,8 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 						}
 						if( this.#note.blocks && this.#note.blocks.length && typeof this.#note.blocks == 'object' ){
 							let blocks 		= JSON.parse( JSON.stringify( this.#note.blocks ));//3W9oE6Kcdy4RHvYV+KHq9g==
-							blocks 			= blocks.filter( (block)=>{
-								return this.hashed( block.blockID ) != nextBlockID;
+							blocks 			= blocks.filter( async (block)=>{
+								return await this.hashed( block.blockID ) != nextBlockID;
 							});
 							for( let r = 0; r < blocks.length && r <= 12; r++ ){
 								this.response 		= JSON.parse( JSON.stringify( blocks[r] ));
@@ -5294,7 +5294,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 				let note 	= Object.assign(this.#note ?? {} );
 				this.#note 	= null;
 				//now let'this.s decrypt the note.
-				note 		= this.decrypt( debinarilize, this.hashed( string ) );
+				note 		= this.decrypt( debinarilize, await this.hashed( string ) );
 				this.#note 	= Object.assign( note );
 				//the note must be jsonable for to be sure it was correctly decrypted.
 				if( this.isJsonable( note ) ){
@@ -5352,7 +5352,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 		}
 	}
 	
-	static async saltString(stringToHash, salt, numericData) {
+	static saltString(stringToHash, salt, numericData) {
 		// Validate inputs
 		if (typeof stringToHash !== 'string') {
 			throw new Error('stringToHash must be a string');
@@ -5468,7 +5468,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 			var string 		= 	this.#password;
 			let note 			= Object.assign( this.#note ?? {} );
 			this.#note 			= null;			
-			let pass 			= this.hashed( string );
+			let pass 			= await this.hashed( string );
 			let testType 		= currentNote.noteType.slice( 0, currentNote.noteType.lastIndexOf("CRD"));
 											
 			this.blockID 		= currentNote.blockID;
@@ -5514,7 +5514,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 						this.#currentNote.noteAddress 	= pubKey;
 						var string = "SCRIPTBANKFIATEXCHANGEWALLET";
 						this.#salted 					= true;
-						this.#currentNote.walletID 		= this.hashed( string );
+						this.#currentNote.walletID 		= await this.hashed( string );
 						privKey 		= motherKeys.budgetIDS[ currentNote.noteType ];
 						await this.setPrivateKey( privKey, id );
 						this.#currentNote.budgetID 		= await this.getPublicKey(id);
@@ -5574,7 +5574,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 							this.#currentNote 		= JSON.parse( JSON.stringify( block[0].exchangeNote ));
 					} catch(e){
 						console.error(e);
-						this.errorMssage(" Can't get current note from current note's block: " + currentNote.noteAddress );
+						this.errorMessage(" Can't get current note from current note's block: " + currentNote.noteAddress );
 						return false;
 					}
 				}
@@ -5594,7 +5594,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 				delete realNote.transHash;
 				
 				var string 		= JSON.stringify( realNote );
-				this.#noteHASH 	= this.hashed( string );
+				this.#noteHASH 	= await this.hashed( string );
 				this.#note = JSON.parse( JSON.stringify( currentNote ));
 				return currentNote;
 			}
@@ -5743,7 +5743,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 			delete currentNote.noteSign;
 			var string = JSON.stringify( currentNote );
 			this.#note 		= null;
-			this.#noteHASH	= this.hashed( string );
+			this.#noteHASH	= await this.hashed( string );
 			this.#note = JSON.parse( JSON.stringify( currentNote ));
 			return this.#note;
 		} catch(e){
@@ -5845,7 +5845,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 						this.#motherKeys[ retype ] = await this.generateKey(0, true);
 						
 						/* var string = "SCRIPTBANKCREDITNOTE" + currency;
-						var string = this.hashed( string ); */
+						var string = await this.hashed( string ); */
 						if( ! this.#motherKeys.budgetIDS )
 							this.#motherKeys.budgetIDS = {};
 						
@@ -5879,7 +5879,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 						
 						
 						/* var string 	= "SCRIPTBANKCREDITBUDGET" + currency.toUpperCase();
-						var string 	= this.hashed( string ); */
+						var string 	= await this.hashed( string ); */
 						
 					}, 2000, type );
 					
@@ -6690,7 +6690,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 	
 	static async getCurrentExchangeNote( noteType = false ){
 		
-		if( noteType && ( noteType.length - noteType.lastIndexOf("SBCRD")) != 5 ){
+		if( noteType && ( noteType.length - noteType.lastIndexOf("SBCRD")) == 5 ){
 			return this.defaultBlock.exchangeNote;
 		}
 
@@ -6709,10 +6709,19 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 		
 		const client 		= this.createClient();
 		let note;
+		
+		console.log(client);
 
-		/* if(client)
-			note 				= await client.from("exchangeNote").eq("noteType", noteType).select();*/
-		//console.log("check note: ", note );
+		if(client)
+			note 				= await client.from("exchange_notes").select().eq("noteType", noteType);
+		
+		console.log("check note: ", note );
+		if( note.error ){
+			this.errorMessage(`Couldn't get exchange note from server because of ${note.error.message} and code: ${note.error.code}. You could ${note.error.hint}`);
+		} else if(note.data){
+			return note.data;
+		}
+		
 
 		if(  this.l && this.l[ noteType + "ExchangeNote" ] ){
 			note 	= JSON.parse( this.l[ noteType + "ExchangeNote" ] );
@@ -6759,7 +6768,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 				this.#currentNote.exchangeKey	= privKey;
 				this.#currentNote.noteAddress 	= pubKey;
 				var string = "SCRIPTBANKFIATEXCHANGEWALLET";
-				this.#currentNote.walletID 		= this.hashed( string );
+				this.#currentNote.walletID 		= await this.hashed( string );
 				privKey 		= motherKeys.budgetIDS[ note.noteType ];
 				await this.setPrivateKey( privKey, id );
 				this.#currentNote.budgetID 		= await this.getPublicKey(id);
@@ -6777,7 +6786,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 		return await this.#getCurrentNote();
 	}
 	
-	static encrypt( data, key ){
+	/*static encrypt( data, key ){
 		let func = this.funcUp[ this.funcUp.length - 1];
 		//console.log( "encrypt2 running " + func );
 		this.funcUp[ this.funcUp.length] = "encrypt2";
@@ -6820,6 +6829,121 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 			let decryptTwo 	= CryptoJS.Rabbit;
 			return decrypt.decrypt( decryptTwo.decrypt( data, key ).toString( CryptoJS.enc.Utf8 ), key ).toString( CryptoJS.enc.Utf8 );
 		} catch(e){
+			console.error(e);
+			return data;
+		}
+	} */
+
+	
+	// ─────────────────────────────────────────────────────────────
+	// HELPER: derive a CryptoKey from a plain string key
+	// Uses PBKDF2 so even short/weak keys produce a strong 256-bit key
+	// ─────────────────────────────────────────────────────────────
+	static async #deriveKey(keyStr, salt) {
+		const enc       = new TextEncoder();
+		const rawKey    = await window.crypto.subtle.importKey(
+			"raw",
+			enc.encode(keyStr),
+			{ name: "PBKDF2" },
+			false,
+			["deriveKey"]
+		);
+
+		return await window.crypto.subtle.deriveKey(
+			{
+				name       : "PBKDF2",
+				salt       : enc.encode(salt),
+				iterations : 100_000,
+				hash       : "SHA-256",
+			},
+			rawKey,
+			{ name: "AES-GCM", length: 256 },
+			false,
+			["encrypt", "decrypt"]
+		);
+	}
+
+	// ─────────────────────────────────────────────────────────────
+	// HELPER: single AES-GCM encrypt pass
+	// Returns base64 string: iv(12 bytes) + ciphertext
+	// ─────────────────────────────────────────────────────────────
+	static async #aesGcmEncrypt(data, keyStr, salt) {
+		const enc       = new TextEncoder();
+		const iv        = window.crypto.getRandomValues(new Uint8Array(12));
+		const key       = await Scriptbill.#deriveKey(keyStr, salt);
+
+		const encrypted = await window.crypto.subtle.encrypt(
+			{ name: "AES-GCM", iv },
+			key,
+			enc.encode(data)
+		);
+
+		// Combine iv + ciphertext into one Uint8Array, then base64 encode
+		const combined  = new Uint8Array(iv.byteLength + encrypted.byteLength);
+		combined.set(iv, 0);
+		combined.set(new Uint8Array(encrypted), iv.byteLength);
+
+		return btoa(String.fromCharCode(...combined));
+	}
+
+	// ─────────────────────────────────────────────────────────────
+	// HELPER: single AES-GCM decrypt pass
+	// ─────────────────────────────────────────────────────────────
+	static async #aesGcmDecrypt(base64Data, keyStr, salt) {
+		const enc       = new TextEncoder();
+		const combined  = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+		const iv        = combined.slice(0, 12);
+		const ciphertext= combined.slice(12);
+		const key       = await Scriptbill.#deriveKey(keyStr, salt);
+
+		const decrypted = await window.crypto.subtle.decrypt(
+			{ name: "AES-GCM", iv },
+			key,
+			ciphertext
+		);
+
+		return new TextDecoder().decode(decrypted);
+	}
+
+	// ─────────────────────────────────────────────────────────────
+	// MAIN: double-encrypt (mirrors AES → Rabbit pattern)
+	// First pass : AES-GCM with key + salt "pass1"
+	// Second pass: AES-GCM with key + salt "pass2" (different derived key)
+	// ─────────────────────────────────────────────────────────────
+	static async encrypt(data, key) {
+		this.funcUp[this.funcUp.length] = "encrypt2";
+
+		if (!window.crypto?.subtle) return data;
+		if (!key || !data) return data;
+
+		key = btoa(key); // matches original btoa(key) call
+
+		try {
+			const firstPass  = await Scriptbill.#aesGcmEncrypt(data, key, "2d5e8b1f4a7c0e3d");
+			const secondPass = await Scriptbill.#aesGcmEncrypt(firstPass, key, "7f3a9c2e1b4d8f6a");
+			return secondPass;
+		} catch(e) {
+			this.errorMessage(`Error while trying to encrypt ${e}`);
+			console.error(e);
+			return data;
+		}
+	}
+
+	// ─────────────────────────────────────────────────────────────
+	// MAIN: double-decrypt (reverse of encrypt)
+	// ─────────────────────────────────────────────────────────────
+	static async decrypt(data, key) {
+		if (!window.crypto?.subtle) return data;
+		if (!key || !data) return data;
+
+		key = btoa(key);
+
+		try {
+			const firstPass  = await Scriptbill.#aesGcmDecrypt(data, key, "7f3a9c2e1b4d8f6a");
+			const secondPass = await Scriptbill.#aesGcmDecrypt(firstPass, key, "2d5e8b1f4a7c0e3d");
+			return secondPass;
+		} catch(e) {
+			this.errorMessage(`Error while trying to encrypt ${e}`);
 			console.error(e);
 			return data;
 		}
@@ -6886,7 +7010,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 			var string 	=  this.#password;
 			let currentNote = {};
 			
-			let pass 		= this.hashed( string );
+			let pass 		= await this.hashed( string );
 			let stored 		= await window.navigator.storage.getDirectory("scriptStorage", {create: true}).catch( error =>{this.errorMessage( error.toString() );  return false;});
 			
 			//console.log( "pass: " + pass );
@@ -7177,11 +7301,11 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 			
 			//next, we set the supplied password as private key to decrypt the note'this.s password.
 			var string 		= this.#password;
-			let pass			= this.hashed( string );
+			let pass			= await this.hashed( string );
 			
 			//before decrypting test the integrity of the password and alert the user if the integrity is breached.
 			var string = person[ this.noteAddress ].password + person[ this.noteAddress ].transTime;
-			let hashed = this.hashed( string );
+			let hashed = await this.hashed( string );
 			
 			if( person[ this.noteAddress ].hash != hashed )
 				this.errorMessage( "Personal Database Integrity Compromised!!! This May Affect The Getting Of Your Scriptbill Note" );
@@ -7280,7 +7404,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 			}
 			
 			var string 		= transKey;
-			let noteSecret 		= this.decrypt( this.#note.noteSecret, this.hashed( string ) );
+			let noteSecret 		= this.decrypt( this.#note.noteSecret, await this.hashed( string ) );
 			
 			if( typeof noteSecret == 'string' ){
 				newKey 			= newKey.toString();
@@ -7292,7 +7416,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 				}
 				
 				var string 			= transKey;
-				this.noteSecret 	= this.encrypt( noteSecret, this.hashed( string ) );
+				this.noteSecret 	= this.encrypt( noteSecret, await this.hashed( string ) );
 				let details 		= JSON.parse( JSON.stringify( this.defaultBlock ));
 				details.transValue 	= 0;
 				details.transType 		= "UPDATE";
@@ -7364,9 +7488,9 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 		try {
 			
 			
-			shareBlock.formerBlockID 	= this.hashed(shareBlock.blockID);
+			shareBlock.formerBlockID 	= await this.hashed(shareBlock.blockID);
 			shareBlock.blockID 			= await this.calculateNextBlockID(note);
-			shareBlock.nextBlockID 		= this.hashed(await this.calculateNextBlockID(note,shareBlock.blockID));
+			shareBlock.nextBlockID 		= await this.hashed(await this.calculateNextBlockID(note,shareBlock.blockID));
 			
 			
 			shareBlock.transType 		= 'PROFITSHARING';
@@ -7393,11 +7517,11 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 			note.blockID 				= shareBlock.blockID;
 	
 			var string 				= JSON.stringify( note );
-			let noteHASH				= this.hashed( string );
+			let noteHASH				= await this.hashed( string );
 			shareBlock.noteHash			= noteHASH.slice( 0, noteHASH.length / 2 );
 			note.noteHash				= noteHASH.slice( noteHASH.length / 2, noteHASH.length );
 			var string 				= noteHASH;
-			note.noteSign 				= await this.Sign(note.blockKey, this.hashed( string ));
+			note.noteSign 				= await this.Sign(note.blockKey, await this.hashed( string ));
 			this.returnNote 			= JSON.parse( JSON.stringify( this.#note ));
 			note.blockID 				= shareBlock.blockID;				
 			//this.response 		= JSON.parse( JSON.stringify( block ));
@@ -7422,14 +7546,14 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 			BLOCK.transType				= shareBlock.transType;
 			
 			var string 				= JSON.stringify( BLOCK );
-			let transHASH				= this.hashed( string );
+			let transHASH				= await this.hashed( string );
 			shareBlock.transHash   		= transHASH.slice( 0, transHASH.length / 2 );
 			
 			note.transHash 				= transHASH.slice( transHASH.length / 2, transHASH.length );
 			
 			
 			var string 				= transHASH;
-			shareBlock.blockHash		= this.hashed( string );
+			shareBlock.blockHash		= await this.hashed( string );
 			
 			
 			shareBlock.blockSign			= await this.Sign(note.blockKey, shareBlock.blockHash);
@@ -7761,7 +7885,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 				this.workedID		= transBlock.blockID;
 				this.rankValue		+= rankValue;
 				this.formerBlock 	= JSON.parse( JSON.stringify( transBlock ));
-				transBlock 			= await this.getTransBlock(1, {nextWalletHASH: this.hashed(this.formerBlock.walletHASH, this.formerBlock.lastSalt, this.formerBlock.lastFormular)});//getting the next trans block from the wallet hashes.
+				transBlock 			= await this.getTransBlock(1, {nextWalletHASH: await this.hashed(this.formerBlock.walletHASH, this.formerBlock.lastSalt, this.formerBlock.lastFormular)});//getting the next trans block from the wallet hashes.
 				transBlock			= transBlock[0];
 				
 				if( transBlock && transBlock.blockID ){
@@ -7857,12 +7981,12 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 			}
 			else if( this.formerBlock && this.nextBlock ){
 				//check if the next block gotten is under the notes already gotten.
-				const shouldContinue = this.noteFound.filter( (blockID, index) =>{
+				const shouldContinue = this.noteFound.filter( async (blockID, index) =>{
 					//get the salt and formular from the nextBlock, 
 					//since it's expected to be the former block of any chain in 
 					//this wallet, then using the blocks current salt and 
 					//formular should just work
-					let blockIDHash = this.hashed( blockID.toString(), this.nextBlock.transSalt, this.nextBlock.transFormular );
+					let blockIDHash = await this.hashed( blockID.toString(), this.nextBlock.transSalt, this.nextBlock.transFormular );
 					
 					//this calculation should be equal to the nextBlockID handler 
 					//on the block for it to be the blockchain's former block.
@@ -7881,7 +8005,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 				if( shouldContinue.length ){
 					//we guess the next wallet hash and continue.
 					this.formerBlock 	= JSON.parse( JSON.stringify( transBlock ));
-					transBlock 			= await this.getTransBlock(1, {nextWalletHASH: this.hashed(this.formerBlock.walletHASH, this.formerBlock.lastSalt, this.formerBlock.lastFormular)});//getting the next trans block from the wallet hashes.
+					transBlock 			= await this.getTransBlock(1, {nextWalletHASH: await this.hashed(this.formerBlock.walletHASH, this.formerBlock.lastSalt, this.formerBlock.lastFormular)});//getting the next trans block from the wallet hashes.
 					transBlock			= transBlock[0];
 					
 					if( transBlock && transBlock.blockID ){
@@ -8081,7 +8205,7 @@ CREATE POLICY "agreements_all"  ON public.agreements  FOR ALL USING (true) WITH 
 			}
 			let o = object;
 			var string  = JSON.stringify( o ) + this.#password;
-			o.hash = this.hashed( string );
+			o.hash = await this.hashed( string );
 
 			this.l.personal = JSON.stringify( o );
 		}
@@ -8904,8 +9028,8 @@ static Base64 = {
 					keyObj.qi 		= privateKey.slice( 686, 772 );
 					privateKey 		= await crypto.subtle.importKey( 'jwk', keyObj, { name: "RSA-OAEP", hash: "SHA-256" }, keyObj.ext, keyObj.key_ops );
 					//console.log( "private key: " + privateKey );
-					this.encrypted 	= this.str2ab( decryptKey );
-					decryptKey 		= await crypto.subtle.decrypt( {name:"RSA-OAEP"}, privateKey, this.encrypted );
+					let encrypted 	= this.str2ab( decryptKey );
+					decryptKey 		= await crypto.subtle.decrypt( {name:"RSA-OAEP"}, privateKey, encrypted );
 					//console.log( "decrypt key: " + decryptKey );
 					
 					if( decryptKey ){
@@ -8931,7 +9055,7 @@ static Base64 = {
 			var string    	= privateKey;
 			let note 		= Object.assign( this.#note ?? {} );
 			this.#note 		= null;
-			let pubKey     	= this.hashed( string );
+			let pubKey     	= await this.hashed( string );
 			this.#note 		= note;
 			return this.decrypt( data, pubKey );
 		}
@@ -9266,9 +9390,9 @@ static Base64 = {
 				type:"broadcast",
 				event:"exchange_broadcast",
 				payload:{text: JSON.stringify(exchangeNote)}
-			})
-			setTimeout(()=>this.shareExchange(), 10000);
-		}	
+			});
+		}
+		setTimeout(()=>this.shareExchange(), 100000);
 	}
 	static async checkReferers( response, note ){
 		let referers 		= note.walletID;
@@ -11296,225 +11420,391 @@ static Base64 = {
     }
   }
 
+// ================================================================
+	// HELPERS
+	// ================================================================
 
-	static async saveBlock(block, client) {
-    try {
-      let { data, error } = await client
-        .from('blocks')
-        .insert({
-          blockid: block.blockID,
-          formerblockid: block.formerBlockID,
-          nextblockid: block.nextBlockID,
-          notehash: block.noteHash,
-          transhash: block.transHash,
-          realhash: block.realHash,
-          totalhash: block.totalHASH,
-          blockhash: block.blockHash,
-          notesign: block.noteSign,
-          noteserver: block.noteServer,
-          notevalue: block.noteValue,
-          notetype: block.noteType,
-          transvalue: block.transValue,
-          rankpref: block.rankPref,
-          transtype: block.transType,
-          credittype: block.creditType,
-          transtime: block.transTime,
-          recipient: block.recipient,
-          referenceid: block.referenceID,
-          referencekey: block.referenceKey,
-          splitid: block.splitID,
-          wallethash: block.walletHASH,
-          formerwallethash: block.formerWalletHASH,
-          walletsign: block.walletSign,
-          blockkey: block.blockKey,
-          blocksign: block.blockSign,
-          blockref: block.blockRef,
-          signref: block.signRef,
-          agreements: block.agreements,
-          lastagreehash: block.lastAgreeHash,
-          agreehash: block.agreeHash,
-          noteid: block.noteID,
-          expiry: block.expiry,
-          interestrate: block.interestRate,
-          interesttype: block.interestType,
-          budgetrefs: block.budgetRefs,
-          budgetid: block.budgetID,
-          productid: block.productID,
-          agreement: block.agreement,
-          exchangenote: block.exchangeNote,
-          exblockid: block.exBlockID,
-          exnextblockid: block.exNextBlockID,
-          exformerblockid: block.exFormerBlockID,
-          productblockid: block.productBlockID,
-          productnextblockid: block.productNextBlockID,
-          productformerblockid: block.productFormerBlockID
-        })
-        .select()
-		
-		if( error ){
-			this.errorMessage(`Couldn't insert into database because of ${error.message}. Error Details: ${error.details} and sugested fix: ${error.hint}; Code: ${error.code}`);
-			if(!this.regenerateBlockIds(block, client))
-				return false;
+	/**
+	 * Look for an existing row in `table` whose `column` matches one of `ids`.
+	 * `ids` can be a single value or an array in priority order; the first
+	 * match (by that order) wins.
+	 */
+	static async findExisting(client, table, column, ids) {
+		const list = (Array.isArray(ids) ? ids : [ids])
+			.filter(v => v !== undefined && v !== null && v !== "");
+
+		if (!list.length) return { existing: null, error: null };
+
+		const { data, error } = await client
+			.from(table)
+			.select(column)
+			.in(column, list);
+
+		if (error) return { existing: null, error };
+		if (!data || !data.length) return { existing: null, error: null };
+
+		// Respect the priority order of `list`
+		for (const id of list) {
+			const hit = data.find(row => row[column] === id);
+			if (hit) return { existing: hit, error: null };
+		}
+		return { existing: data[0], error: null };
+	}
+
+	/**
+	 * Check-then-write: if a row with the ID exists -> UPDATE it, otherwise INSERT.
+	 * Returns { data, error, action, key } where action is 'lookup' | 'update' | 'insert'
+	 * and key is the ID value of the row that was written.
+	 */
+	static async saveRow(client, table, column, ids, payload) {
+		const { existing, error: findError } = await this.findExisting(client, table, column, ids);
+
+		if (findError)
+			return { data: null, error: findError, action: 'lookup', key: null };
+
+		if (existing) {
+			const key = existing[column];
+			// Never rewrite the identifying column on update
+			const { [column]: _omit, ...updates } = payload;
+
+			const { data, error } = await client
+				.from(table)
+				.update(updates)
+				.eq(column, key)
+				.select();
+
+			return { data, error, action: 'update', key };
 		}
 
-        const budgets = ["CREATEBUDGET", "UPDATEBUDGET", "REMOVEBUDGET"];
-        const products = [];
-        const adverts = [];
-        let agreement = false;
-
-        if(block.agreement && budgets.includes(block.transType) && block.agreement.budgetID){
-			let {error: error2 } = await supabase
-          .from('budgets')
-          .insert({
-            name					: block.agreement.name, //unique name for the budget, can be a business or website name.
-            value					: block.agreement.value, //the total value of a Scriptbill Budget. Always Used to Increase stock value manually
-            max_exec				: block.agreement.max_exec, //maximum time the budget would execute.
-            budgetid				: block.agreement.budgetID,//the public Key of the Budget,the private ke would be set on the note with the block ID where the budget is kept.
-            sleepingpartner 		: block.agreement.sleepingPartner, //this is the description for a sleeping investor.
-            workingpartner		: block.agreement.workingPartner, //this is the description for a working investor.
-            sleepingpartnershare	: block.agreement.sleepingPartnerShare, //this is the rate that describes the sleepig investor share.
-            workingpartnershare	: block.agreement.workingPartnerShare, //this is the rate that describes the sleepig investor share.
-            budgetitems			: block.agreement.budgetItems,//items that are in the budget that constitute the budget
-            budgetsign			: block.agreement.budgetSign, //the signature on the budget
-            budgetref				: block.agreement.budgetRef,//reference to the budget signature.
-            budgettype			: block.agreement.budgetType, // "personal" & "family" tells that this budget 
-            //is not business related budget and won't accept investment. Any investment to this budget type will not 
-            //issue any stocks. "governmental" budget will issue bonds not stocks to the investor and used by 
-            //business managers and any persons or organization who support the economy, business budget will issue stocks to investor.
-            orientation			: block.agreement.orientation,//telling whether this budget is a "straight" or "recursive" 
-            //budget. If straight the budget block expires when the budget executes. but if recursive, the budget 
-            //block will renew until the time for the recursion stops.
-            recursion				: block.agreement.recursion,//used to describe how many times the budget will execute if the budget is a recursive budget
-            budgetspread			: block.agreement.budgetSpread, //time required for the budget to spread after it has executed. Works for a recursive budgetType
-            budgetcredit			: block.agreement.budgetCredit, //the acceptable credit for investing and executing this budget. Budget credit should be set according to how the item in the budget is valued.
-            budgetdesc			  : block.agreement.budgetDesc, //the description of the budget. This will give investors view of what product or products that will be produced under this budget, and everything investors need to know about this budget.
-            budgetimages			: block.agreement.budgetImages,//array of image url that can describe the budget products and effects.
-            budgetvideos			  : block.agreement.budgetVideos, //array of videos that describe the budgets to investors.
-            companyranks			  : block.agreement.companyRanks,//rank codes that will be occupied by users in the company. If you are employed in the company, a special rank code will be assigned you and the public key stored on the budget block
-            stockid				      : block.agreement.stockID,//default scriptbill stocks code.
-            investorshub			  : block.agreement.investorsHub,//an array of hashes that can only be verified by people who hold stocks to this budget. This hash also test for the values on their stock note.
-            //if an investor sell his stock, the exchange market must test to see if the stock is 
-            //true by testing the hashes, deduct the sold value from his account, issue out money 
-            //to the seller and updating the hub hashes if only the investor hash stocks with the company who owns this budget. InvestorHub works majorly for business and 
-            //governmental budget types. Personal and Family budget types will not trade their 
-            //stocks because it does not have a real business value.
-            agreement				    : block.agreement.agreement,//describes the extra agreenebt the budget creator would like to have with 
-            //their investor. This should only be configured using the this.defaultAgree option.
-            
-          }).select()
-          agreement = block.agreement.agreement;
-		  error = error2;
-		  if( error ){
-				this.errorMessage(`Couldn't insert budget into database because of ${error.message}. Error Details: ${error.details} and sugested fix: ${error.hint}; Code: ${error.code}`);
-				return false;
-			}
-        } 
-        else if(block.agreement && products.includes(block.transType) && block.agreement.productConfig){
-			let {error: error3} = await supabase
-          .from('products')
-          .insert( {
-              blockid		: block.blockID,
-              value			: block.agreement.productConfig.value,//the original value of the product.
-              units			: block.agreement.productConfig.units,//the units of products available in the System
-			  productid 	: block.productID,
-              totalunits	: block.agreement.productConfig.totalUnits,//total units of product included to the scriptbill systems
-              name			: block.agreement.productConfig.name, // the name of the product.
-              description	: block.agreement.productConfig.description,//description of product, HTML allowed
-              images		: block.agreement.productConfig.images,//urls to images that describe the product
-              videos		: block.agreement.productConfig.videos, //urls to videos that describe the product
-              credittype	: block.agreement.productConfig.creditType, //the type of credit which the product is being valued.
-              sharingrate	: block.agreement.productConfig.sharingRate,//the profit sharing rate on the product
-              blockexpiry	: block.agreement.productConfig.blockExpiry, //tells time the transaction block of the buyer will expire.
-              budgetid		: block.agreement.productConfig.budgetID,//the ID of the budget the product belongs to. Budget IDs in the Scriptbill Network is an ID of a Company in the Network that manages the STOCK note credit the budget produces. business and governmental budget are budget that produces exchangeable credits in the network.
-              
-            }).select()
-          agreement = block.agreement;
-		  error 	= error3;
-		  if( error ){
-				this.errorMessage(`Couldn't insert product into database because of ${error.message}. Error Details: ${error.details} and sugested fix: ${error.hint}; Code: ${error.code}`);
-				return false;
-			}
-        } 
-
-        
-        else if(block.agreement && adverts.includes(block.transType) && block.agreement.advertID){
-		  let {error: error4} = await supabase
-          .from('adverts')
-          .insert( {
-            blockid		:block.blockID,
-            advertid 	: block.agreement.advertID,//this carries the id of the advert to be created
-            productid : block.agreement.productID,//this carries the product that the advert is promoting
-            viewers		: block.agreement.viewers, //number of viewers you are planning to send this advert to.
-            viewersshare : block.agreement.viewersShare,//this is the rate of the transvalue going to viewers.
-            publishers 	: block.agreement.publishers, //number of publishers you want to show this advert to.
-            publishshare 	: block.agreement.publishShare,//rate of advert funds going to publishers.
-            scope 		: block.agreement.scope, //this is the name of the area the advert will be shown to, people not living in this area won't participate in the view or view share of the advert.
-            banner 		: block.agreement.banner,//this is the url of the banner that this advert represent.
-            video 		: block.agreement.video,//this is the url of the video that will show this ads.
-            interest 	: block.agreement.interest,//an array of interest that you are targetting with your advert
-          }).select();
-		  
-		  error = error4;
-		  if( error ){
-				this.errorMessage(`Couldn't insert advert into database because of ${error.message}. Error Details: ${error.details} and sugested fix: ${error.hint}; Code: ${error.code}`);
-				return false;
-			}
-        } 
-        else if(block.agreement && block.agreement.agreeID){
-          agreement = block.agreement;
-        }
-        
-        if( agreement && agreement.agreeID ){
-			let {error: error5} = await supabase
-			.from('agreements')
-			.insert({
-			  blockid: block.blockID,          
-			  agreeid			: agreement.agreeID, //this is the unique identifier of the agreement.
-			  agreesign		: agreement.agreeSign, //this is the unique signature of the agreement, to be signed by the initiator of the agreement
-			  agreekey		: agreement.agreeKey, //this is the public key to the agreement, used to verify the agreement signature and to verify the beneficiary account.
-			  sendersign		: agreement.senderSign, //this is the unique signature of the sender,
-			  senderid		: agreement.senderID, //this is the block ID of the sender, used as a signature text for the signature.
-			  senderkey		: agreement.senderKey, //key used by sender to sign this agreement
-			  recieverid		: agreement.recieverID, //this is the identifier of the block of the reciever, this is useful when other nodes want to accept the new agreement as valid.
-			  recieverkey		: agreement.recieverKey, //key used by reciever to sign this agreement
-			  maxexectime		: agreement.maxExecTime, //this is the maximum time allowed for the agreement to last on the block chain. If this time elapses, the agreement would be executed by force,  forcing the note of the creator to reduce even to a negative value.
-			  agreetype		: agreement.agreeType,//this describes the type of agreement we are handling. values are "normal", which denotes that the agreement should be handled normally, that is if terms are not met agreement should be reverted to the sender. The "sendTo" type ensures that the funds are sent to a particular or an array of note addresses, specifying the values to be sent per address when the execution time reach or when the agreement terms are not met. "Loan" type specifies that the money was borrowed to the recipient and must be returned at the specified time. The "loan" type works with interest rates. "contract" agreement type works like budget for the recipient, because it tells how the recipient should use the money, base on an initial quote sent by the recipient in a QUOTE transaction
-			  exectime		: agreement.ExecTime, //this is the execution time for the agreement, this will only successfully run the agreement if and only if the note that holds the agreement has enough funds to sponsor the agreement, else agreement would not run but would wait until their is a RECIEVE transaction that would update the note'this.s value.
-			  value			: agreement.value, //this is the total value of the agreement, the transaction value of a transaction is mostly used here. For security reasons, this value cannot be larger than the value of the transaction.
-			  isperiodic		: agreement.isPeriodic, //a boolean value that tells whether this should run periodically, if it will run periodically, the periodic value will be calculated
-			  times			: agreement.times, //works with the isPeriodic, if set to true, the value of this variable will be used against the value variable to determine how much the account will spend
-			  paytime			: agreement.payTime, //this is the time for the next payment, works when isPeriodic is set to true, else the execTime determines the payment
-			  payperiod		: agreement.payPeriod, //this is the spread of payment that controls how scripts should set the payTime. If 1 week, when the payment has been executed, the pay period is used to calculate the next payTime.
-			  delayinterest	: agreement.delayInterest, //this determine the amount of interest that would be charged if the execTime is exceeded before the contract ends.
-			  interesttype	: agreement.interestType, //This is the type of interest that would be charged; accepts SIMPLE & COMPOUND.
-			  interestspread	: agreement.interestRate, //this determine the spread at which the interest will be calculated.
-			  interestrate    : agreement.interestRate,
-			  timestamp		: agreement.timeStamp, //this is the signature of the timestamp of the agreement. This is designed to avoid duplicate agreement issues.
-			  realnonce		: agreement.realNonce,//hashed of the current note ID.
-			  recieversign 	: agreement.recieverSign,//this is the signature on the agreement which is signed by the sender with the senders key to verify that the agreement has been met by the reciever. The sender will have to create an AGREEMENTSIGN transaction, referencing the blockID to the AGREEMENTREQUEST transaction sent by the reciever to obey this.
-			  quoteid			: agreement.quoteID,//this is the block ID to the reference block that has the quote to the agreement in a contract based agreement.
-			  sendaddress		: agreement.sendAddress,//this is the address or group of addresses to send the agreement value to, this correspond to a sendTo agreement type. if it is a group, then values to be sent to each address should be specified. If the execution time for each address is different, then this should be specified, else the general execution time will be followed for all address. 
-			
-		
-			})
+		const { data, error } = await client
+			.from(table)
+			.insert(payload)
 			.select();
-			
-			error = error5;
-			
-			if( error ){
-				this.errorMessage(`Couldn't insert agreement into database because of ${error.message}. Error Details: ${error.details} and sugested fix: ${error.hint}; Code: ${error.code}`);
-				return false;
-			}
-        }
 
-      
-      console.log('[v0] Block saved successfully:', data)
-      return data
-    } catch (err) {
-      console.error('[v0] Failed to save block:', err)
-      throw err
-    }
-  }
+		return { data, error, action: 'insert', key: payload[column] };
+	}
+
+	static reportDbError(label, res) {
+		const e = res.error;
+		this.errorMessage(`Couldn't ${res.action} ${label}: ${e.message}. Details: ${e.details}. Hint: ${e.hint}. Code: ${e.code}`);
+		console.error(`[saveBlock] ${label} ${res.action} error:`, e);
+	}
+
+	static buildExchangeNotePayload(note) {
+		return {
+			"walletID"      : note.walletID,
+			"exchangeID"    : note.exchangeID,
+			"exchangeKey"   : note.exchangeKey,
+			"budgetID"      : note.budgetID,
+			"exchangeValue" : note.exchangeValue,
+			"noteValue"     : note.noteValue,
+			"motherValue"   : note.motherValue,
+			"demandValue"   : note.demandValue,
+			"transValue"    : note.transValue,
+			"transType"     : note.transType,
+			"motherType"    : note.motherType,
+			"noteType"      : note.noteType,
+			"noteID"        : note.noteID,
+			"noteKey"       : note.noteKey,
+			"noteHash"      : note.noteHash,
+			"transHash"     : note.transHash,
+			"blockHash"     : note.blockHash,
+			"transKey"      : note.transKey,
+			"noteServer"    : note.noteServer,
+		};
+	}
+
+	// ================================================================
+	// SAVE BLOCK
+	// ================================================================
+	static async saveBlock(block, client) {
+		try {
+
+			// ── DEBUG: confirm which Supabase instance is receiving the data ──
+			console.log("[saveBlock] Supabase URL:", client.supabaseUrl ?? client.rest?.url ?? "unknown");
+			console.log("[saveBlock] blockID:", block.blockID);
+
+			// ============================================================
+			// 1. BLOCKS  (match on blockID, productBlockID or exBlockID)
+			// ============================================================
+			const blockPayload = {
+				"blockID"               : block.blockID,
+				"formerBlockID"         : block.formerBlockID,
+				"nextBlockID"           : block.nextBlockID,
+				"noteHash"              : block.noteHash,
+				"transHash"             : block.transHash,
+				"realHash"              : block.realHash,
+				"totalHASH"             : block.totalHASH,
+				"blockHash"             : block.blockHash,
+				"noteSign"              : block.noteSign,
+				"noteServer"            : block.noteServer,
+				"noteValue"             : block.noteValue,
+				"noteType"              : block.noteType,
+				"noteID"                : block.noteID,
+				"transValue"            : block.transValue,
+				"rankPref"              : block.rankPref,
+				"transType"             : block.transType,
+				"creditType"            : block.creditType,
+				"transTime"             : block.transTime,
+				"recipient"             : block.recipient,
+				"referenceID"           : block.referenceID,
+				"referenceKey"          : block.referenceKey,
+				"splitID"               : block.splitID,
+				"walletHASH"            : block.walletHASH,
+				"formerWalletHASH"      : block.formerWalletHASH,
+				"walletSign"            : block.walletSign,
+				"blockKey"              : block.blockKey,
+				"blockSign"             : block.blockSign,
+				"blockRef"              : block.blockRef,
+				"signRef"               : block.signRef,
+				"agreements"            : block.agreements,
+				"lastAgreeHash"         : block.lastAgreeHash,
+				"agreeHash"             : block.agreeHash,
+				"expiry"                : block.expiry,
+				"interestRate"          : block.interestRate,
+				"interestType"          : block.interestType,
+				"budgetRefs"            : block.budgetRefs,
+				"budgetID"              : block.budgetID,
+				"productID"             : block.productID,
+				"agreement"             : block.agreement,
+				"exchangeNote"          : block.exchangeNote,
+				"exBlockID"             : block.exBlockID,
+				"exNextBlockID"         : block.exNextBlockID,
+				"exFormerBlockID"       : block.exFormerBlockID,
+				"productBlockID"        : block.productBlockID,
+				"productNextBlockID"    : block.productNextBlockID,
+				"productFormerBlockID"  : block.productFormerBlockID,
+			};
+
+			// Priority order: blockID, then productBlockID (if present), then exBlockID
+			const blockLookupIDs = [block.blockID, block.productBlockID, block.exBlockID];
+
+			const blockRes = await this.saveRow(client, 'blocks', 'blockID', blockLookupIDs, blockPayload);
+			let data = blockRes.data;
+
+			// The blockID actually stored in the DB (may be an existing one matched via
+			// productBlockID / exBlockID). Child rows are linked to this.
+			let savedBlockID = blockRes.key ?? block.blockID;
+
+			if (blockRes.error) {
+				this.reportDbError('block', blockRes);
+
+				if (blockRes.action === 'insert') {
+					// Same fallback as before: only on a failed insert try fresh block IDs
+					if (!(await this.regenerateBlockIds(block, client)))
+						return false;
+					savedBlockID = block.blockID;
+				} else {
+					return false;
+				}
+			}
+
+			console.log(`[saveBlock] blocks ${blockRes.action} result — data:`, data, "error:", blockRes.error);
+
+			// ============================================================
+			// 2. EXCHANGE NOTES  (match on exchangeID)
+			// ============================================================
+			if (
+				(block.productNote  && block.productNote.exchangeID) ||
+				(block.exchangeNote && block.exchangeNote.exchangeID)
+			) {
+				// 2a. exchangeNote
+				if (block.exchangeNote && block.exchangeNote.exchangeID) {
+					const res = await this.saveRow(
+						client,
+						'exchange_notes',
+						'exchangeID',
+						block.exchangeNote.exchangeID,
+						this.buildExchangeNotePayload(block.exchangeNote)
+					);
+					if (res.error) this.reportDbError('exchange_note', res);
+				}
+
+				// 2b. productNote
+				if (block.productNote && block.productNote.exchangeID) {
+					const res = await this.saveRow(
+						client,
+						'exchange_notes',
+						'exchangeID',
+						block.productNote.exchangeID,
+						this.buildExchangeNotePayload(block.productNote)
+					);
+					if (res.error) this.reportDbError('product exchange_note', res);
+				}
+			}
+
+			// ============================================================
+			// 3. BUDGETS  (match on budgetID)
+			// ============================================================
+			const budgetTransTypes = ["CREATEBUDGET", "UPDATEBUDGET", "REMOVEBUDGET"];
+			let agreement = false;
+
+			if (block.agreement && budgetTransTypes.includes(block.transType) && block.agreement.budgetID) {
+				const res = await this.saveRow(
+					client,
+					'budgets',
+					'budgetID',
+					block.agreement.budgetID,
+					{
+						"blockID"               : savedBlockID,
+						name                    : block.agreement.name,
+						value                   : block.agreement.value,
+						max_exec                : block.agreement.max_exec,
+						"budgetID"              : block.agreement.budgetID,
+						"sleepingPartner"       : block.agreement.sleepingPartner,
+						"workingPartner"        : block.agreement.workingPartner,
+						"sleepingPartnerShare"  : block.agreement.sleepingPartnerShare,
+						"workingPartnerShare"   : block.agreement.workingPartnerShare,
+						"budgetItems"           : block.agreement.budgetItems,
+						"budgetSign"            : block.agreement.budgetSign,
+						"budgetRef"             : block.agreement.budgetRef,
+						"budgetType"            : block.agreement.budgetType,
+						orientation             : block.agreement.orientation,
+						recursion               : block.agreement.recursion,
+						"budgetSpread"          : block.agreement.budgetSpread,
+						"budgetCredit"          : block.agreement.budgetCredit,
+						"budgetDesc"            : block.agreement.budgetDesc,
+						"budgetImages"          : block.agreement.budgetImages,
+						"budgetVideos"          : block.agreement.budgetVideos,
+						"companyRanks"          : block.agreement.companyRanks,
+						"stockID"               : block.agreement.stockID,
+						"investorsHub"          : block.agreement.investorsHub,
+						agreement               : block.agreement.agreement,
+					}
+				);
+
+				agreement = block.agreement.agreement;
+
+				if (res.error) {
+					this.reportDbError('budget', res);
+					return false;
+				}
+			}
+
+			// ============================================================
+			// 4. PRODUCTS  (match on productID)
+			// ============================================================
+			const productTransTypes = []; // fill in your product transTypes here
+
+			if (block.agreement && productTransTypes.includes(block.transType) && block.agreement.productConfig) {
+				const res = await this.saveRow(
+					client,
+					'products',
+					'productID',
+					block.productID,
+					{
+						"blockID"       : savedBlockID,
+						"productID"     : block.productID,
+						value           : block.agreement.productConfig.value,
+						units           : block.agreement.productConfig.units,
+						"totalUnits"    : block.agreement.productConfig.totalUnits,
+						name            : block.agreement.productConfig.name,
+						description     : block.agreement.productConfig.description,
+						images          : block.agreement.productConfig.images,
+						videos          : block.agreement.productConfig.videos,
+						"creditType"    : block.agreement.productConfig.creditType,
+						"sharingRate"   : block.agreement.productConfig.sharingRate,
+						"blockExpiry"   : block.agreement.productConfig.blockExpiry,
+						"budgetID"      : block.agreement.productConfig.budgetID,
+					}
+				);
+
+				agreement = block.agreement;
+
+				if (res.error) {
+					this.reportDbError('product', res);
+					return false;
+				}
+			}
+
+			// ============================================================
+			// 5. ADVERTS  (match on advertID)
+			// ============================================================
+			const advertTransTypes = []; // fill in your advert transTypes here
+
+			if (block.agreement && advertTransTypes.includes(block.transType) && block.agreement.advertID) {
+				const res = await this.saveRow(
+					client,
+					'adverts',
+					'advertID',
+					block.agreement.advertID,
+					{
+						"blockID"       : savedBlockID,
+						"advertID"      : block.agreement.advertID,
+						"productID"     : block.agreement.productID,
+						viewers         : block.agreement.viewers,
+						"viewersShare"  : block.agreement.viewersShare,
+						publishers      : block.agreement.publishers,
+						"publishShare"  : block.agreement.publishShare,
+						scope           : block.agreement.scope,
+						banner          : block.agreement.banner,
+						video           : block.agreement.video,
+						interest        : block.agreement.interest,
+					}
+				);
+
+				if (res.error) {
+					this.reportDbError('advert', res);
+					return false;
+				}
+			}
+
+			// ============================================================
+			// 6. AGREEMENTS  (match on agreeID)
+			// ============================================================
+			if (!agreement && block.agreement && block.agreement.agreeID)
+				agreement = block.agreement;
+
+			if (agreement && agreement.agreeID) {
+				const res = await this.saveRow(
+					client,
+					'agreements',
+					'agreeID',
+					agreement.agreeID,
+					{
+						"blockID"       : savedBlockID,
+						"agreeID"       : agreement.agreeID,
+						"agreeSign"     : agreement.agreeSign,
+						"agreeKey"      : agreement.agreeKey,
+						"senderSign"    : agreement.senderSign,
+						"senderID"      : agreement.senderID,
+						"senderKey"     : agreement.senderKey,
+						"recieverID"    : agreement.recieverID,
+						"recieverKey"   : agreement.recieverKey,
+						"maxExecTime"   : agreement.maxExecTime,
+						"agreeType"     : agreement.agreeType,
+						"ExecTime"      : agreement.ExecTime,
+						value           : agreement.value,
+						"isPeriodic"    : agreement.isPeriodic,
+						times           : agreement.times,
+						"payTime"       : agreement.payTime,
+						"payPeriod"     : agreement.payPeriod,
+						"delayInterest" : agreement.delayInterest,
+						"interestType"  : agreement.interestType,
+						"interestSpread": agreement.interestSpread,
+						"interestRate"  : agreement.interestRate,
+						"timeStamp"     : agreement.timeStamp,
+						"realNonce"     : agreement.realNonce,
+						"recieverSign"  : agreement.recieverSign,
+						"quoteID"       : agreement.quoteID,
+						"sendAddress"   : agreement.sendAddress,
+					}
+				);
+
+				if (res.error) {
+					this.reportDbError('agreement', res);
+					return false;
+				}
+			}
+
+			console.log('[saveBlock] Block saved successfully:', data);
+			return data;
+
+		} catch (err) {
+			console.error('[saveBlock] Failed to save block:', err);
+			throw err;
+		}
+	}
 
 	static createClient(isNote = false,  superbaseUrl = "https://vqbbepojwyaojyboazrt.supabase.co",superbaseKey= "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZxYmJlcG9qd3lhb2p5Ym9henJ0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyMjMzMzIsImV4cCI6MjA4NTc5OTMzMn0.RUq-VICBBiOEHLDcN135isAFtoqlCVFxMvDJc5kny3k" ){
 
@@ -11523,11 +11813,11 @@ static Base64 = {
 		if(this.supabase && ! isNote )
 			return this.supabase;
 
-		const supabaseUrl = isNote ? this.#note?.superbaseUrl ?? superbaseUrl:superbaseUrl;
-		const supabaseAnonKey = isNote ? this.#note?.superbaseKey ?? superbaseKey:superbaseKey;
+		/*const supabaseUrl = isNote ? this.#note?.superbaseUrl ?? superbaseUrl:superbaseUrl;
+		const supabaseAnonKey = isNote ? this.#note?.superbaseKey ?? superbaseKey:superbaseKey;*/
 
 		const { createClient } = supabase;
-		const client 			= createClient(supabaseUrl, supabaseAnonKey);
+		const client 			= createClient(superbaseUrl, superbaseKey);
 		if(! this.supabase)
 			this.supabase 			= client;
 
@@ -11883,7 +12173,7 @@ static Base64 = {
 	static async #verifyBlockChain(response, blockID, depth = 10){
 		if( ! response || !response.blockID ) return false;
 		
-		const lastBlock = await this.getTransBlock( 1, {nextBlockID: this.hashed( response.blockID,  response.lastSalt, response.lastFormular ) } );
+		const lastBlock = await this.getTransBlock( 1, {nextBlockID: await this.hashed( response.blockID,  response.lastSalt, response.lastFormular ) } );
 		
 		if( ! lastBlock.length ) return false;
 		
@@ -12056,7 +12346,7 @@ static Base64 = {
 
 		// ── 6. The block before `response` must have had the agreement ──
 		const before = (await this.getTransBlock(1, {
-			nextBlockID: this.hashed(
+			nextBlockID: await this.hashed(
 				response.blockID,
 				response.lastSalt,
 				response.lastFormular,
@@ -12085,7 +12375,7 @@ static Base64 = {
 		// ── 8. `agreeHash` and `lastAgreeHash` chain-check ──
 		//     (can be offloaded to a periodic verification, but the
 		//     cheapest here is to recompute agreeHash and compare.)
-		/*const expectedAgreeHash = this.hashed(JSON.stringify(response.agreements || {}));
+		/*const expectedAgreeHash = await this.hashed(JSON.stringify(response.agreements || {}));
 		if (response.agreeHash !== expectedAgreeHash) {
 			return false;
 		}
@@ -12910,15 +13200,15 @@ static Base64 = {
 			}
 			let fBlock = false;
 			if( ! this.formerBlock || ! this.formerBlock.blockID ){
-				fBlock 				= await this.getTransBlock(1, {nextBlockID: this.hashed(response.blockID, response.transSalt, response.transFormular)});
+				fBlock 				= await this.getTransBlock(1, {nextBlockID: await this.hashed(response.blockID, response.transSalt, response.transFormular)});
 				gottenBy = "this.formerBlock"
 				//console.log("Fblock getting, not former block: " , fBlock );
-			} else if( this.hashed( this.formerBlock.blockID, response.transSalt, response.transFormular ) == response.formerBlockID || this.hashed( this.formerBlock.splitID, response.transSalt, response.transFormular ) == response.formerBlockID ) {
+			} else if( await this.hashed( this.formerBlock.blockID, response.transSalt, response.transFormular ) == response.formerBlockID || await this.hashed( this.formerBlock.splitID, response.transSalt, response.transFormular ) == response.formerBlockID ) {
 				fBlock 				= [ JSON.parse( JSON.stringify( this.formerBlock ) ) ];
 				//console.log("Fblock getting, former: " , fBlock );
 				this.formerBlock 	= false;
 			} else {
-				fBlock 				= await this.getTransBlock(1, {nextBlockID: this.hashed( response.blockID, response.transSalt, response.transFormular)});
+				fBlock 				= await this.getTransBlock(1, {nextBlockID: await this.hashed( response.blockID, response.transSalt, response.transFormular)});
 				gottenBy 			= "next block"
 				//console.log("Fblock getting, former block bur from formerBlockID: " , fBlock );
 			}
@@ -12943,7 +13233,7 @@ static Base64 = {
 			}
 			
 			if( ( ! fBlock.length || ! fBlock[0].blockID ) ){
-				fBlock 				= await this.getTransBlock(1, {nextSplitID:this.hashed(response.blockID, response.transSalt ?? "", response.transFormular ?? "")});
+				fBlock 				= await this.getTransBlock(1, {nextSplitID:await this.hashed(response.blockID, response.transSalt ?? "", response.transFormular ?? "")});
 				//console.log("Fblock getting, spliti: " , fBlock );
 				this.splitBlock 	= fBlock[0];
 				gottenBy 			= "split"
@@ -12982,7 +13272,7 @@ static Base64 = {
 				//await this.createAlert("Verifying Data 2 Former Block Not Directly Found");
 				//checking if the current block is an exchange note block.
 				if( response.noteValue != 0 && ! isExchangeTrans ){
-					fBlock 	= await this.getTransBlock(1, {nextBlockID: this.hashed(response.blockID, response.transSalt ?? "", response.transFormular ?? "")});
+					fBlock 	= await this.getTransBlock(1, {nextBlockID: await this.hashed(response.blockID, response.transSalt ?? "", response.transFormular ?? "")});
 					fBlock	= fBlock[0];
 					gottenBy	= "next ID"
 					//console.log("Fblock getting, last: " , fBlock );
@@ -13012,10 +13302,7 @@ static Base64 = {
 				
 				let exNote 		= await this.getCurrentExchangeNote( response.noteType );
 				
-				if( ! exNote || ! exNote.noteServer ) {
-					this.#rejectResponse("response block couldn't get an exchange note from a server", response );
-					return false;
-				}
+				if( ! exNote || ! exNote.noteServer ) return false;
 				
 				let verified = await this.getData(["staff", "sBlockID"], [scriptKey, response.blockID], exNote.noteServer);
 				
@@ -13281,7 +13568,7 @@ static Base64 = {
 				//verifying the blocks.
 				//verifying the block id, the next block ID test will ensure that the current note secret was used to calculate
 				//the block IDs
-				if( this.hashed( fBlock.blockID, response.transSalt ?? "", response.transFormular ?? "" ) != response.formerBlockID || fBlock.nextBlockID != this.hashed(response.blockID, response.transSalt ?? "", response.transFormular ?? "") ) {
+				if( await this.hashed( fBlock.blockID, response.transSalt ?? "", response.transFormular ?? "" ) != response.formerBlockID || fBlock.nextBlockID != await this.hashed(response.blockID, response.transSalt ?? "", response.transFormular ?? "") ) {
 					this.response     = JSON.parse( JSON.stringify( response ) );					
 					this.#rejectResponse('Block ID not Matched!!!', response );
 					this.s.processingID = this.s.processingID.split(",").filter((data)=> data != response.blockID).join(",");
@@ -13353,7 +13640,7 @@ static Base64 = {
 					}
 					
 				}
-				else if( this.splitBlock && this.splitBlock.blockID && this.hashed( this.splitBlock.splitID, this.splitBlock.transSalt ?? "", this.splitBlock.transFormular ?? "" ) ==  response.formerBlockID ){
+				else if( this.splitBlock && this.splitBlock.blockID && await this.hashed( this.splitBlock.splitID, this.splitBlock.transSalt ?? "", this.splitBlock.transFormular ?? "" ) ==  response.formerBlockID ){
 					let verify 	= await this.verifyData( this.splitBlock );
 					
 					if( ! verify ){
@@ -13539,7 +13826,7 @@ static Base64 = {
 					//we don't expect more than one recieve block in a transaction
 					//if any exist, then it should be the current response block
 					if( revBlocks.length > 0 && revBlocks[0].blockID != response.blockID ){
-						if( revBlocks[0].nextBlockID == this.hashed(response.blockID, response.transSalt ?? "", response.transFormular ?? "") ){
+						if( revBlocks[0].nextBlockID == await this.hashed(response.blockID, response.transSalt ?? "", response.transFormular ?? "") ){
 							this.response     = JSON.parse( JSON.stringify( response ) );
 							this.#rejectResponse("Can't Recieve a Transaction More Than Once", response );
 							this.s.processingID = this.s.processingID.split(",").filter((data)=> data != response.blockID).join(",");
@@ -13599,7 +13886,7 @@ static Base64 = {
 				if( response.lastBlockHash && response.lastNoteHash ){
 					let newHash 	= fBlock.transHash + response.lastBlockHash;
 					var string 	= newHash + fBlock.totalHASH;
-					let totalHASH 	= this.hashed( string,  response.transSalt ?? "", response.transFormular ?? "" );
+					let totalHASH 	= await this.hashed( string,  response.transSalt ?? "", response.transFormular ?? "" );
 					
 					if( totalHASH != response.totalHASH ){
 						/* this.#rejectResponse("Block Hashes Do Not Match. Trans Block Invalid!");
@@ -13608,7 +13895,7 @@ static Base64 = {
 					
 				/* 	newHash 		= fBlock.noteHash + response.lastNoteHash;
 					var string 		= newHash + fBlock.realHash;
-					totalHASH 		= this.hashed( string );
+					totalHASH 		= await this.hashed( string );
 					
 					if( totalHASH != response.realHash ){
 						this.response     = JSON.parse( JSON.stringify( response ) );
@@ -13636,7 +13923,7 @@ static Base64 = {
 						} else {
 							//more stricter verification
 							var string 	= JSON.stringify( fBlock.agreements );
-							let agreeHash 	= this.hashed( string, response.transSalt ?? "", response.transFormular ?? "" );
+							let agreeHash 	= await this.hashed( string, response.transSalt ?? "", response.transFormular ?? "" );
 							
 							if( agreeHash != response.lastAgreeHash ){
 								this.response     = JSON.parse( JSON.stringify( response ) );
@@ -13679,7 +13966,7 @@ static Base64 = {
 							}
 
 							//checking if verify block is in this blockchain
-							let backBlock 	= await this.getTransBlock(1,{nextBlockID:this.hashed(veriBlock.blockID, veriBlock.transSalt ?? "", veriBlock.transFormular ?? "")})
+							let backBlock 	= await this.getTransBlock(1,{nextBlockID:await this.hashed(veriBlock.blockID, veriBlock.transSalt ?? "", veriBlock.transFormular ?? "")})
 														
 							if(backBlock.length){
 								isWitness	= true;
@@ -13810,10 +14097,7 @@ static Base64 = {
 		//console.log(" initiateExchange running " + this.funcUp[ this.funcUp.length]);
 		this.funcUp[ this.funcUp.length] = "initiateExchange";
 		return true;
-		if( ! this.response || this.response.transType != "EXCHANGE" || this.response.transType != "WITHDRAW" || this.response.witnesses.length < 3   ) {
-			this.errorMessage(`Can't run the function until the response object is in place and the transaction type is EXCHANGE`);
-			return false;
-		}
+		if( ! this.response || this.response.transType != "EXCHANGE" || this.response.transType != "WITHDRAW" || this.response.witnesses.length < 3   ) return false;
 		
 		let response 		= JSON.parse( JSON.stringify( this.response ) );
 		
@@ -14166,7 +14450,7 @@ static Base64 = {
 					let privKey = await fetch("/deposit.txt").then( result =>{ 
 						return result.text();
 					}).catch( error =>{
-						this.errorMessage("Deposit Key Error: " + error);
+						//console.log("Deposit Key Error: " + error);
 						return false;
 					});
 					
@@ -14175,7 +14459,7 @@ static Base64 = {
 						privKey 	= await fetch( this.#default_scriptbill_server + "/deposit.txt").then( result =>{ 
 							return result.text();
 						}).catch( error =>{
-							this.errorMessage("Deposit Key Error: " + error);
+							//console.log("Deposit Key Error: " + error);
 							return false;
 						});
 					}
@@ -14233,7 +14517,7 @@ static Base64 = {
 						if( ! this.#currentNote.walletID ){
 							if( this.#fiatCurrencies[testType] ){
 								var string 		= "SCRIPTBANKFIATEXCHANGEWALLET";
-								this.#currentNote.walletID 	= this.hashed( string );
+								this.#currentNote.walletID 	= await this.hashed( string );
 							} else {
 								this.#currentNote.walletID 	= await this.generateKey(30);
 							}
@@ -14351,7 +14635,7 @@ static Base64 = {
 					if( ! this.#note.walletID ){
 						if( this.#fiatCurrencies[testType] ){
 							var string 		= "SCRIPTBANKFIATEXCHANGEWALLET";
-							this.#note.walletID 	= this.hashed( string );
+							this.#note.walletID 	= await this.hashed( string );
 						} else {
 							this.#note.walletID 	= await this.generateKey(30);
 						}
@@ -14445,13 +14729,13 @@ static Base64 = {
 					
 				//generating a unique walletID.
 				var string			= "SCRIPTBANKFIATEXCHANGEWALLET";
-				this.#note.walletID 	= this.hashed( string );
+				this.#note.walletID 	= await this.hashed( string );
 						
 				//creating the default agreement for the budget.
 				var string 			= "SCRIPTBANKCREDIT"+this.#fiatCurrencies[ testType ].toUpperCase().split(" ").join("");
-				privKey 				= this.hashed( string );
+				privKey 				= await this.hashed( string );
 				var string 			= privKey;
-				budget.agreement		= await this.createAgreement( this.hashed( string ) );
+				budget.agreement		= await this.createAgreement( await this.hashed( string ) );
 				this.#note.agreements.push( {agreeID: budget.agreement.agreeID, key: budget.agreement.privateKey} );
 				delete budget.agreement.privateKey;
 				budget.agreement.maxExecTime 	= parseInt( this.currentTime() ) + parseInt( this.calculateTime( "3 Months" ) );
@@ -14721,10 +15005,7 @@ static Base64 = {
 			if( ( ! this.#note && this.s.currentNote ) || ( this.s.currentNote && ! this.s.currentNote.includes( this.#note.walletID ) && ! this.s.currentNote.includes( this.#note.noteAddress ) && ! this.#isExchangeMarketMining ) || ( ! this.#isExchangeMarketMining && ! this.#note && this.s.currentNote ))
 				this.#note = await this.#getCurrentNote();
 			
-			if( ! this.#note ) {
-				this.errorMessage(`No note was found while withdrawing a credit`);
-				return false;
-			}
+			if( ! this.#note ) return false;
 			
 			//console.log("withdrawCredit running " + this.funcUp[ this.funcUp.length] );
 			this.funcUp[ this.funcUp.length] = "withdrawCredit";
@@ -14816,7 +15097,7 @@ static Base64 = {
 			this.creditType1 = "scriptbill";
 			this.creditType2 = "scriptbill";
 			let creditType, totalDemand;
-			const exRates = await fetch("/exRate.json").then( resp =>{ return resp.json(); }).then( data =>{ return data; }).catch( async error =>{ /*//console.log("Error from exchange rate " + error + " getting from main server ");*/ return await fetch( this.default_scriptbill_server + "/exRate.json" ).then( resp =>{ return resp.json(); }).then( data =>{ return data; }).catch( error =>{this.errorMessage("Error from exchange rate " + error ); return false; }); });
+			const exRates = await fetch("/exRate.json").then( resp =>{ return resp.json(); }).then( data =>{ return data; }).catch( async error =>{ /*//console.log("Error from exchange rate " + error + " getting from main server ");*/ return await fetch( this.default_scriptbill_server + "/exRate.json" ).then( resp =>{ return resp.json(); }).then( data =>{ return data; }).catch( error =>{ /*//console.log("Error from exchange rate " + error );*/ return false; }); });
 			
 				
 			if( creditType1.includes("CRD") && ( creditType1.length - creditType1.lastIndexOf("CRD") ) == 3  ){
@@ -15013,7 +15294,6 @@ static Base64 = {
 			}
 		} catch(e){
 			console.error(e);
-			this.errorMessage(`Error occured while getting the exchange value: ${e}`);
 			return false;
 		}
 			
@@ -15059,7 +15339,6 @@ static Base64 = {
 			//localStorage.hashROCK = JSON.stringify( hash );
 		} catch(e){
 			console.error(e);
-			this.errorMessage(`transaction couldn't complete because of: ${e}`);
 			return false;
 		}		
 	}
@@ -15109,7 +15388,7 @@ static Base64 = {
 		this.funcUp[ this.funcUp.length] = "getTotalFiat";
 		try {
 			let symbol, credit, totalDemand = 0, sellBlocks, rate;
-			const exRates = await fetch("/exRate.json").then( resp =>{ return resp.json(); }).then( data =>{ return data; }).catch( async error =>{ /*//console.log("Error from exchange rate " + error + " getting from main server "); */ return await fetch( this.default_scriptbill_server + "/exRate.json" ).then( resp =>{ return resp.json(); }).then( data =>{ return data; }).catch( error =>{ this.errorMessage("Error from exchange rate " + error ); return false; }); });
+			const exRates = await fetch("/exRate.json").then( resp =>{ return resp.json(); }).then( data =>{ return data; }).catch( async error =>{ /*//console.log("Error from exchange rate " + error + " getting from main server "); */ return await fetch( this.default_scriptbill_server + "/exRate.json" ).then( resp =>{ return resp.json(); }).then( data =>{ return data; }).catch( error =>{ /*//console.log("Error from exchange rate " + error );*/ return false; }); });
 					
 			this.sellCredit = base;
 			this.transType 	= "EXCHANGE";
@@ -15371,7 +15650,7 @@ static Base64 = {
 			var string 			= this.#password;
 			note 				= JSON.stringify( this.#note );
 			this.#note 			= null;
-			let pass 			= this.hashed( string );
+			let pass 			= await this.hashed( string );
 			this.#note 			= JSON.parse( note );
 			//console.log("hashed: " + pass );
 			//await this.createAlert("check hashed");
@@ -15586,18 +15865,18 @@ static Base64 = {
 						o.walletID = note.walletID;
 						o.transTime = this.currentTime();
 						var string = JSON.stringify( o ) + this.#password;
-						o.hash		= this.hashed( string );
+						o.hash		= await this.hashed( string );
 						person = JSON.parse( JSON.stringify( o ));
 					}
 					var string 	=  this.#password;
 					person[note.noteAddress]  			= {};
-					person[note.noteAddress].password 	= this.encrypt( password, this.hashed( string ) );
+					person[note.noteAddress].password 	= this.encrypt( password, await this.hashed( string ) );
 					person[note.noteAddress].transTime 	= this.currentTime();
 					var string 								= person[note.noteAddress].password + person[note.noteAddress].transTime;
-					person[note.noteAddress].hash 		= this.hashed( string );
+					person[note.noteAddress].hash 		= await this.hashed( string );
 					delete 	person.hash;
 					var string 				= JSON.stringify( person );
-					person.hash 				= this.hashed( string );
+					person.hash 				= await this.hashed( string );
 					await this.savePersistently( person, 'ScriptNotes', 'notes' );
 				}
 
@@ -15607,7 +15886,6 @@ static Base64 = {
 			});
 		} catch(e){
 			console.error(e);
-			this.errorMessage(`Failed to run the transaction because of this error: ${e}`);
 			return false;
 		}
 	}	
@@ -15680,9 +15958,15 @@ static Base64 = {
 		
 		const saveResponse = async (response, note)=>{
 			let trivKey;
+
+			let main = this.createClient();
+
+			if( main ){
+				this.saveBlock( response, main );
+			}
 			if( response.exchangeNote && response.exchangeNote.exchangeID && response.exBlockID ){
 				var string 		= response.exchangeNote.exchangeID;
-				trivKey 			= this.hashed( string );
+				trivKey 			= await this.hashed( string );
 				if( ( this.l[ trivKey ] && this.l[ trivKey + "_triv_time" ] && this.l[ trivKey + "_triv_time" ] <= response.transTime ) || ! this.l[trivKey] ){
 					this.l[ trivKey ] 	= response.exBlockID;
 					this.l[ trivKey + "_triv_time" ] = response.transTime;
@@ -15690,7 +15974,7 @@ static Base64 = {
 			}
 			if( response.productNote && response.productNote.exchangeID && response.productBlockID ){
 				var string 		= response.productNote.exchangeID;
-				trivKey 			= this.hashed( string );
+				trivKey 			= await this.hashed( string );
 				if( ( this.l[ trivKey ] && this.l[ trivKey + "_triv_time" ] && this.l[ trivKey + "_triv_time" ] <= response.transTime ) || ! this.l[trivKey] ){
 					this.l[ trivKey ] 	= response.productBlockID;
 					this.l[ trivKey + "_triv_time" ] = response.transTime;
@@ -15754,10 +16038,13 @@ static Base64 = {
 					}
 				}
 				//storing directly to the product note server.
-				const client = this.createClient(false, response.productNote.noteServer, response.productNote.noteKey );
 
-				if(client){
-					this.saveBlock(response, client)
+				if( response.productNote && response.productNote.noteServer && response.productNote.noteKey ){
+					const client = this.createClient(false, response.productNote.noteServer, response.productNote.noteKey );
+
+					if(client){
+						this.saveBlock(response, client)
+					}
 				}
 			}
 			
@@ -15855,10 +16142,7 @@ static Base64 = {
 		try {
 			
 			//meant to store only scriptbill transaction blocks
-			if( ( ! this.response || ! this.response.blockID  ) && ( ! response || ! response.blockID ) ) {
-				this.errorMessage(`Response block is not set before calling this method.`);
-				return false;
-			}
+			if( ( ! this.response || ! this.response.blockID  ) && ( ! response || ! response.blockID ) ) return false;
 			
 			if( ! response || ! response.blockID ){
 				response = JSON.parse( JSON.stringify( this.response ));
@@ -15911,7 +16195,6 @@ static Base64 = {
 					}
 				} catch(e){
 					console.error(e);
-					this.errorMessage(`transaction failed with an error message: ${e}`);
 					return false;
 				}
 			}
@@ -15924,10 +16207,7 @@ static Base64 = {
 		if( ! this.#note )
 			this.#note 	= await this.#getCurrentNote();
 		
-		if( ! this.#note ) {
-			this.errorMessage(`Can't remove a user block of ${blockID} without the note logged in.`);
-			return false;
-		}
+		if( ! this.#note ) return false;
 		
 		let dir 				= await window.navigator.storage.getDirectory("scriptStorage", {create:false}).catch(error =>{this.errorMessage( error.toString() );  return false;});
 				
@@ -15958,10 +16238,7 @@ static Base64 = {
 		if( ! this.#note )
 			this.#note 	= await this.#getCurrentNote();
 		
-		if( ! this.#note || ! response || ! response.blockID ) {
-			this.errorMessage(`Block or note data to be stored not available, Please try again with a valid note or transaction data.`);
-			return false;
-		}
+		if( ! this.#note || ! response || ! response.blockID ) return false;
 		
 		let dir 				= await window.navigator.storage.getDirectory("scriptStorage", {create:true}).catch(error =>{this.errorMessage( error.toString() );  return false;});
 				
@@ -16029,7 +16306,6 @@ static Base64 = {
 			return true;
 		} catch(e){
 			console.error(e);
-			this.errorMessage(`failed because of ${e}`);
 			return false;
 		}
 	}
@@ -16107,10 +16383,7 @@ static Base64 = {
 				return directory;
 			}
 			
-			if( ! response.blockID || ! response.transType || ! response.exchangeNote || ! response.budgetID ){ 
-				this.errorMessage(`Block to be saved was not properly listed. Plead restructure your blocks properly before saving it.` );
-				return false;
-			}
+			if( ! response.blockID || ! response.transType || ! response.exchangeNote || ! response.budgetID ) return false;
 			
 			
 			if( ! main ){
@@ -16978,7 +17251,7 @@ static Base64 = {
 			});
 			return true;
 		} catch(e) {
-			this.errorMessage("Couldn't Save Data Persistently, because of this error ${e}");
+			//console.log("Couldn't Save Data Persistently", e);
 			return false;
 		}
 	}
@@ -17116,18 +17389,17 @@ static Base64 = {
 						let data 		= await uploads.getFile().then( file =>{
 							return file.text();
 						}).catch( error =>{
-							this.errorMessage(`couldn't fetch block from storage because of error: ${error}`);
+							//console.log( error, value );
 							return false;
 						});
-						this.successMessage(`returned data ${data}` );
+						//console.log("returned data ", data );
 						return data;
 					} else {
-						this.errorMessage("Could not get the uploads file");
+						//console.log("Could not get the uploads file");
 						return false;
 					}
 				} else {
 					//console.log("Could not access");
-					this.errorMessage(`Could not access data storage center`);
 					return false;
 				}
 			}
@@ -17150,8 +17422,7 @@ static Base64 = {
 						let mappings 	= JSON.parse( text );
 						let parentArr 	= mappings[ ID ];
 						
-						if( ! parentArr ){
-							this.errorMessage(`Parent array was not found`);							
+						if( ! parentArr ){							
 							return false;
 						}
 						
@@ -17249,7 +17520,7 @@ static Base64 = {
 										
 										if( retData && retData.blockID  ){
 											if( retData.exchangeNote && typeof retData.exchangeNote == "string" && ! this.isJsonable( retData.exchangeNote ) ){
-												/* let exchanges 		= await main.getDirectoryHandle('exchanges', {create: false}).catch(error =>{//console.log(error, 'exchanges'); return false;}); */
+												let exchanges 		= await main.getDirectoryHandle('exchanges', {create: false}).catch(error =>{/*//console.log(error, 'exchanges');*/ return false;});
 												let exchangeNote 	= await access.getFileHandle( retData.exchangeNote.replaceAll( /[^a-zA-Z0-9]/g, "_" ) + ".txt", {create:true} ).catch( error =>{ this.errorMessage( error.toString()); return false; });
 														
 												file 		= await exchangeNote.getFile();
@@ -17261,7 +17532,7 @@ static Base64 = {
 											}	
 											
 											if( retData.agreement && typeof retData.agreement == "string" && ! this.isJsonable( retData.agreement ) ){
-												/*let agreements 		= await main.getDirectoryHandle('agreements', {create: false}).catch(error =>{/*console.log(error, 'agreements'); return false;});*/
+												let agreements 		= await main.getDirectoryHandle('agreements', {create: false}).catch(error =>{/*//console.log(error, 'agreements');*/ return false;});
 												let agreementData 	= await access.getFileHandle( retData.agreement.replaceAll( /[^a-zA-Z0-9]/g, "_" ) + ".txt", {create:true} ).catch( error =>{ this.errorMessage( error.toString()); return false; });
 												
 												file 		= await agreementData.getFile();
@@ -17316,11 +17587,9 @@ static Base64 = {
 							return mop;
 								
 						} else {
-							this.errorMessage(`Transaction block was not found on the server!`);
 							return false;
 						}
 					} else {
-						this.errorMessage(`Map object or dataID object is not found while running this method was not found!`);
 						return false;
 					}
 				} /* else if( config && typeof config == "object" ){
@@ -17334,7 +17603,6 @@ static Base64 = {
 					
 				} */ else{
 					//console.log( 'map note gotten ' + map );
-					this.errorMessage(`access to the transactions was restricted`);
 					return false;
 				}
 				
@@ -17445,7 +17713,6 @@ static Base64 = {
 					}
 					return data;
 			} else {
-				this.errorMessage(`Access to the Storage was denied on this browser`);
 				return false;
 			}
 			
@@ -17458,7 +17725,14 @@ static Base64 = {
 		
 	}
 
-	static hashed(string = "", salt = "", formular = "", algo = ''){
+	static async hashString(str, algorithm = "SHA-256") {
+		const encoded = new TextEncoder().encode(str);
+		const hashBuffer = await window.crypto.subtle.digest(algorithm, encoded);
+		const hashArray = Array.from(new Uint8Array(hashBuffer));
+		return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+	}
+
+	static async hashed(string = "", salt = "", formular = "", algo = ''){
 		//console.log("hashed running " + this.funcUp[ this.funcUp.length]);
 		this.funcUp[ this.funcUp.length] = "hashed";
 
@@ -17476,18 +17750,16 @@ static Base64 = {
 				string = Date.now().toString();
 			
 			if( algo == '' ){
-				if( CryptoJS && CryptoJS.SHA256 && string && typeof string == 'string' ){
+				if( string && typeof string == 'string' ){
 					
 					if( formular && salt && salt.length == 256 && formular.length == 32 && ! this.#salted )
 						string = this.saltString(string, salt, formular )
 
-					return CryptoJS.SHA256( string ).toString(CryptoJS.enc.Base64);
+					return await this.hashString( string );//CryptoJS.SHA256( string ).toString(CryptoJS.enc.Base64);
 				}
 					
-				else{
-					this.errorMessage(`crypto functions ro string not available to process, try again with crypto resource set`);
+				else
 					return false;
-				}
 			}
 			
 			algo = algo.split("-");
@@ -18384,17 +18656,13 @@ static Base64 = {
 			this.blockID 	= this.#note.blockID;
 			let block 		= await this.getTransBlock();
 			
-			if( ! block.length ){
-				this.errorMessage(`Note supplied does not seems to have a transaction block`);
+			if( ! block.length )
 				return false;
-			}
 				
 			block 			= block[0];
 			
-			if( ! block.agreements || typeof block.agreements != "object" || Object.keys( block.agreements ).length  ){
-				this.errorMessage(`no agreeements found on this block ${block.blockID} to process`);
+			if( ! block.agreements || typeof block.agreements != "object" || Object.keys( block.agreements ).length  )
 				return false;
-			}
 			
 			let agrees 			= JSON.parse( JSON.stringify( block.agreements ) );
 			let agreement 		= false, time = this.currentTime(), value = 0, calc, spread, rounds = 0, interest, blk;
@@ -18451,6 +18719,10 @@ static Base64 = {
 		}
 	}
 
+	static #noteServers = {
+
+	};
+
 	static async getNoteServers(type){
 		return {
 			url : "https://svtbqnysmjffbstuotwd.supabase.co",
@@ -18495,7 +18767,7 @@ static Base64 = {
 			}
 			
 			else if( ! this.l.personal )		
-				this.walletID = this.hashed( this.currentTime() );//using the current time as seed makes the new walvar id being created very unique.
+				this.walletID = await this.hashed( this.currentTime() );//using the current time as seed makes the new walvar id being created very unique.
 			
 			this.walletID 		= this.walletID.replaceAll("/","").replaceAll("+","");
 			
@@ -18539,8 +18811,8 @@ static Base64 = {
 					if( this.#fiatCurrencies[ testType ] ){
 						var string = "SCRIPTBANKFIATEXCHANGEWALLET";
 						this.#salted = true;
-						if( ! this.#currentNote.walletID || this.#currentNote.walletID != this.hashed( string ) ){
-							this.#currentNote.walletID = this.hashed( string );
+						if( ! this.#currentNote.walletID || this.#currentNote.walletID != await this.hashed( string ) ){
+							this.#currentNote.walletID = await this.hashed( string );
 						}//ftp://ftp.hp.com/pub/caps-softpaq/CASLSetup.exe	
 						this.#salted = false;
 					}
@@ -18621,7 +18893,7 @@ static Base64 = {
 					this.#currentNote.noteAddress 	= pubKey;
 					var string = "SCRIPTBANKFIATEXCHANGEWALLET";
 					this.#salted 					= true;
-					this.#currentNote.walletID 		= this.hashed( string );
+					this.#currentNote.walletID 		= await this.hashed( string );
 					privKey 		= motherKeys.budgetIDS[ note.noteType ];
 					await this.setPrivateKey( privKey, id );
 					this.#currentNote.budgetID 		= await this.getPublicKey(id);
@@ -18689,7 +18961,7 @@ static Base64 = {
 					else {
 						privKey 					= motherKeys.budgetIDS[ note.noteType ];
 						var string 				= "SCRIPTBANKFIATEXCHANGEWALLET";
-						this.#currentNote.walletID 	= this.hashed( string );
+						this.#currentNote.walletID 	= await this.hashed( string );
 					} */
 					
 					//await this.setPrivateKey( privKey );
@@ -18700,11 +18972,12 @@ static Base64 = {
 					//note 						= JSON.parse( JSON.stringify( this.defaultScriptbill ) );
 					/* //console.log("check current note: " + JSON.stringify( note ) );
 					await this.createAlert( "check current note secret: " + note.noteSecret ); */
-					
+					note 							= this.#currentNote;
 					if( this.#fiatCurrencies[ testType ] ){
 						privKey 						= motherKeys[ 'noteAddresses' ][ `${testType}CRD` ];
 						//let motherKeys 					= await this.#generateMotherKeys();
 						await this.setPrivateKey( privKey, id );
+						
 						note.noteSecret 				= privKey;
 						note.noteAddress 				= await this.getPublicKey(id);
 						note.budgetID 					= motherKeys['budgetIDS'][`${testType}CRD`];
@@ -18850,7 +19123,7 @@ static Base64 = {
 			//testing the note ID of the block.
 			if( block.noteID != '' ){
 				var string 	=  this.#note.noteKey;
-				let noteID 		= this.encrypt( block.noteID, this.hashed( string ) );
+				let noteID 		= this.encrypt( block.noteID, await this.hashed( string ) );
 				
 				if( this.#note.noteID != noteID ) {
 					this.errorMessage( 'Note Block with Block ID: ' + block.blockID + ' Was Not Verified To Be Created By The Current Note With Note Address: ' + this.#note.noteAddress + '; The Note ID From the Block Didn\'t Match The Note\'this.s. Transaction Will Now Be Aborted!!!' );
@@ -18903,7 +19176,7 @@ static Base64 = {
 			this.#note.transHash	= "";
 			let stringNote = JSON.stringify( this.#note );
 			var string    = stringNote;
-			let realHash = this.hashed( string );//hash
+			let realHash = await this.hashed( string );//hash
 			
 			//attempting to get the correct hash value of the former transaction block.
 			block.noteHash		= "";
@@ -18912,7 +19185,7 @@ static Base64 = {
 			block.realHash		= "";
 			let stringTrans 	= JSON.stringify( block );
 			var string 		= stringTrans;
-			let transBlockHash 	= this.hashed( string );
+			let transBlockHash 	= await this.hashed( string );
 			
 			this.#note.noteHash = noteHash;
 			this.#note.transHash = transHash;
@@ -18947,7 +19220,7 @@ static Base64 = {
 			//before continuing the transaction, we test to verify the transaction block hash that has been kept.
 			let testHASH 	= block.transHash + this.#note.transHash;
 			var string 	= testHASH;
-			let reHash 		= this.hashed( string );
+			let reHash 		= await this.hashed( string );
 			let blockHash 	= this.#note.blockHash;
 			
 			if( reHash != blockHash && this.#note.noteAddress != '' && this.#note.noteID != '0000' ) {
@@ -18959,7 +19232,7 @@ static Base64 = {
 			//testing the note'this.s nonce
 			let nonce 		= this.#note.noteID;
 			var string 	= block.noteID;
-			let hashedNonce = this.hashed( string );
+			let hashedNonce = await this.hashed( string );
 			
 			//fake note detected
 			if( nonce != hashedNonce && block.noteID != '0000' ) {
@@ -18984,7 +19257,7 @@ static Base64 = {
 			
 			//restoring the hashes.
 			/*var string			= formerHash + realHash;
-			block.realHash = this.hashed( string );
+			block.realHash = await this.hashed( string );
 			
 			//checking the hashes.
 			if( ! block.realHash.includes( block.nextHash ) && block.realHash.indexOf( block.nextHash ) !== 0 ) {
@@ -18994,7 +19267,7 @@ static Base64 = {
 			
 			//restoring the hashes for the block.
 			var string 			= totalHash + transBlockHash;
-			block.totalHASH	= this.hashed( string );
+			block.totalHASH	= await this.hashed( string );
 			
 			//checking the hashes.
 			if( ! block.totalHASH.includes( block.nextBlockHash ) && block.totalHASH.indexOf( block.nextBlockHash ) !== 0 ) {
@@ -19149,10 +19422,7 @@ static Base64 = {
 			if( ( ! this.#note && this.s.currentNote ) || ( this.s.currentNote &&    ! this.s.currentNote.includes( this.#note.walletID ) && ! this.s.currentNote.includes( this.#note.noteAddress ) && ! this.#isExchangeMarketMining ) || ( ! this.#isExchangeMarketMining && ! this.#note && this.s.currentNote ))
 				this.#note = await this.#getCurrentNote();
 				
-			if( ! this.#note && ! note  ) {
-				this.errorMessage(`Can't test a note that's not logged in` );
-				return false;
-			}
+			if( ! this.#note && ! note  ) return false;
 			
 			if( this.#note )
 				note 		= JSON.parse( JSON.stringify( this.#note ));
@@ -19176,7 +19446,7 @@ static Base64 = {
 		
 			let note 		= JSON.parse( this.isJsonable( Scriptbill.s.currentNote ) ? Scriptbill.s.currentNote: '{}' );
 			var string 	= note.walletID;
-			let trivKey 	= this.hashed( string );
+			let trivKey 	= await this.hashed( string );
 			
 			let accountData = {}; 	
 			
@@ -19252,12 +19522,11 @@ static Base64 = {
 			
 			if( ! this.#note ) {
 				//await this.createAlert( "returning false");
-				this.errorMessage(`Does not have a logged in note to save the account data with`);
 				return false;
 			}
 		
 			var string 	= this.#note.walletID;
-			let trivKey 	= this.hashed( string );
+			let trivKey 	= await this.hashed( string );
 			
 			
 			if( localStorage ){
@@ -19300,10 +19569,7 @@ static Base64 = {
 	
 	static async #storeConnectedBlock(response){
 		//this.l[ note.noteAddress + "_current_block" ] = JSON.stringify( response );
-		if( ! this.s.currentNote ){
-			this.errorMessage(`Note not logged in while trying to store a connected block`);
-			 return false;
-		}
+		if( ! this.s.currentNote ) return false;
 		
 		let note 				= JSON.parse( this.s.currentNote );
 		let dir 				= await window.navigator.storage.getDirectory("scriptStorage", {create:true}).catch(error =>{this.errorMessage( error.toString() );  return false;});
@@ -19362,7 +19628,6 @@ static Base64 = {
 		budgetBlock			= budgetBlock.concat( blocks );//returns an array.
 		
 		if( ! budgetBlock.length ){
-			this.errorMessage(`Budget with ${budgetID} did not have any blocks in the exchange market`);
 			return false;
 		}
 		if( ! all ){
@@ -19378,10 +19643,7 @@ static Base64 = {
 	}
 
 	static async runExchange(details = {}){
-		if(! details.noteType || ! details.minValue || ! details.maxValue || ! details.transValue) {
-			this.errorMessage(`Details for this transaction was not well set, needs the minValue and the maxValue to be complete`);
-			return false;
-		}
+		if(! details.noteType || ! details.minValue || ! details.maxValue || ! details.transValue) return false;
 
 		this.#note = await this.#getCurrentNote();
 
@@ -19687,7 +19949,6 @@ static Base64 = {
 				this.#note = JSON.parse( JSON.stringify( note ));
 			} catch( e ){
 				console.error(e);
-				this.errorMessage(`Transaction failed with this error message: ${e}`);
 				return false;
 			}
 		}
@@ -19935,7 +20196,7 @@ static Base64 = {
 		delete realNote.transHash;
 		
 		var string 	= JSON.stringify( realNote );
-		let formerHash 	= this.hashed( string );
+		let formerHash 	= await this.hashed( string );
 		
 		if( this.#noteHASH && this.#noteHASH != formerHash )
 			formerHash 	= this.#noteHASH;
@@ -19969,7 +20230,7 @@ static Base64 = {
 		}
 		
 		var string 	= JSON.stringify( block );
-		let formerHashB = this.hashed( string );
+		let formerHashB = await this.hashed( string );
 		//next is to use information on the former block to configure the new block,
 		//if the information on the former block does not match that of the new block, then the note has become invalid
 		this.block 		= JSON.parse( JSON.stringify( newBlock ));
@@ -20052,7 +20313,7 @@ static Base64 = {
 			newBlock.agreements = {};
 		
 		var string 		= JSON.stringify( newBlock.agreements );		
-		let formerAgreeHash	= this.hashed( string );
+		let formerAgreeHash	= await this.hashed( string );
 		
 		if( currentNote && ! this.#isExchangeMarketMining ){
 			if( currentNote.budgetID )
@@ -20121,7 +20382,7 @@ static Base64 = {
 			else if( this.noteSecret != note.noteSecret )
 				note.noteSecret 		= this.noteSecret;
 			
-			string 						= this.hashed( string );
+			string 						= await this.hashed( string );
 			//console.log( "note secret before decrypt", noteSecret, "key: ", string );
 			note.noteSecret 			= this.decrypt( noteSecret, string );
 		} 
@@ -20182,44 +20443,44 @@ static Base64 = {
 			
 			//calculating the wallet hashes.
 			var string 					= note.walletID;
-			trivKey 					= this.hashed( string );/* 
+			trivKey 					= await this.hashed( string );/* 
 			secret 						= note.noteSecret;
 			note.noteSecret 			= trivKey; */
 			var string 					= trivKey;
-			trivKey 					= this.hashed( string );
+			trivKey 					= await this.hashed( string );
 			let walletBlock 			= await this.getCurrentWalletBlock( newBlock );
 			////alert("Check update 713")
-			newBlock.formerWalletHASH  	= this.hashed( walletBlock.walletHASH );
+			newBlock.formerWalletHASH  	= await this.hashed( walletBlock.walletHASH );
 			newBlock.walletHASH 		= await this.calculateNextBlockID( note, newBlock.walletHASH, 1, true );
-			newBlock.nextWalletHASH		= this.hashed(  await this.calculateNextBlockID( note, newBlock.walletHASH, 1, true ) );
+			newBlock.nextWalletHASH		= await this.hashed(  await this.calculateNextBlockID( note, newBlock.walletHASH, 1, true ) );
 			////alert("Check update 714")
 			if( ! this.autoExecute ) {
 				//first of all, the new block ids will have to change.
-				newBlock.formerBlockID = this.hashed( block.blockID );
+				newBlock.formerBlockID = await this.hashed( block.blockID );
 				if( block.nextBlockID != "AUTOEXECUTE" ) {
 					if( ! block.splitID || note.blockID != block.splitID ){
 						newBlock.blockID 		= await this.calculateNextBlockID(note, block.blockID);
-						newBlock.nextBlockID 	= this.hashed( await this.calculateNextBlockID(note, block.blockID) );
+						newBlock.nextBlockID 	= await this.hashed( await this.calculateNextBlockID(note, newBlock.blockID) );
 					} else {
-						newBlock.formerBlockID 	= this.hashed( block.splitID );
+						newBlock.formerBlockID 	= await this.hashed( block.splitID );
 						newBlock.blockID 		= await this.calculateNextBlockID( note, block.splitID );
-						newBlock.nextBlockID 	= this.hashed( await this.calculateNextBlockID( note, newBlock.blockID ) );
+						newBlock.nextBlockID 	= await this.hashed( await this.calculateNextBlockID( note, newBlock.blockID ) );
 					}
 				}
 				else {
 					this.sit 				= "Calculating for " + details.transType;
 					newBlock.blockID 		= await this.calculateNextBlockID(note, block.blockID );
-					newBlock.nextBlockID 	= this.hashed( await this.calculateNextBlockID(note, newBlock.blockID ) );
+					newBlock.nextBlockID 	= await this.hashed( await this.calculateNextBlockID(note, newBlock.blockID ) );
 				}				
 			}
 			else {
 				newBlock.blockID 		= await this.calculateNextBlockID(note, details.blockID );
-				newBlock.formerBlockID = this.hashed( details.blockID );
+				newBlock.formerBlockID = await this.hashed( details.blockID );
 				newBlock.nextBlockID	= "AUTOEXECUTE";
 			}
 			
 			/* var string 					= newBlock.exchangeNote.exchangeID;
-			trivKey      					= this.hashed( string );
+			trivKey      					= await this.hashed( string );
 			
 			this.sit 						= "Calculating Exchange Note ID";
 			let trivTime 					= this.l[trivKey + "_triv_time"];
@@ -20232,7 +20493,7 @@ static Base64 = {
 			
 			
 			var string 				= newBlock.noteType + newBlock.transTime + newBlock.exchangeNote.exchangeKey;
-			newBlock.exBlockID 			= this.hashed( string );	
+			newBlock.exBlockID 			= await this.hashed( string );	
 			//this.seed 					= newBlock.exBlockID;
 			//to be set by verifiers.
 			newBlock.exNextBlockID 			= "";
@@ -20256,12 +20517,12 @@ static Base64 = {
 			
 			else {
 				var string 					= newBlock.walletHASH + note.noteSecret;
-				newBlock.walletHASH 			= this.hashed( string );
+				newBlock.walletHASH 			= await this.hashed( string );
 				this.l[trivKey]					= newBlock.walletHASH;
 			} 
 			
 			var string							= newBlock.walletHASH + note.noteSecret;
-			newBlock.nextWalletHASH 		= this.hashed( string );*/
+			newBlock.nextWalletHASH 		= await this.hashed( string );*/
 			
 			//generating the exBlockIDs
 			//note.noteSecret 			= this.block.exchangeNote.exchangeKey;
@@ -20271,7 +20532,7 @@ static Base64 = {
 			//trying to get the current rank code.
 			let rankStore;
 			var string 			= note.walletID;
-			trivKey 			= this.hashed( string );
+			trivKey 			= await this.hashed( string );
 			
 			if( this.l[ trivKey ] )
 				rankStore 	= JSON.parse( this.isJsonable( this.l[trivKey] ) ? this.l[trivKey]: '{}' );
@@ -20465,7 +20726,6 @@ static Base64 = {
 						newBlock.budgetID 		= newBlock.exchangeNote.budgetID;
 					} else {
 						//await this.createAlert("Budget Error");
-						this.errorMessage(`Exchange Market with not found when running transaction with ${details.transType}`);
 						return false;
 					}
 				}
@@ -20478,7 +20738,7 @@ static Base64 = {
 					
 					//trying to get the current rank code.
 					var string 		= note.walletID;
-					trivKey 			= this.hashed( string );
+					trivKey 			= await this.hashed( string );
 					let rank 		= Object.keys( this.#scriptbillRanks )[0];
 					let rankStore;
 					//checking this key.
@@ -20530,16 +20790,15 @@ static Base64 = {
 				if( transBlocks && transBlocks.length > 0 ){
 					block = transBlocks[ transBlocks.length - 1 ];
 					newBlock 			= JSON.parse( JSON.stringify( block ) );
-					newBlock.formerBlockID = this.hashed(newBlock.blockID);
+					newBlock.formerBlockID = await this.hashed(newBlock.blockID);
 					this.sit 				= "Calculating Block ID For new Block When Type Block Is Found";
 					newBlock.blockID 		= await this.calculateNextBlockID(note, newBlock.blockID);
-					newBlock.nextBlockID	=this.hashed(await this.calculateNextBlockID(note, newBlock.blockID));
+					newBlock.nextBlockID	=await this.hashed(await this.calculateNextBlockID(note, newBlock.blockID));
 					newBlock.transType     = "CREATE";
 					newBlock.transValue 	= 0;
 					newBlock.noteValue 	= 0;
 				}
 				else if( transBlocks.length <= 0 && ( details.transType == "CREATEBUDGET" && details.agreement && details.agreement.budgetType != "governmental" ) ) {
-					console.log("current note type 6: " + note.noteType );
 					//we create an exchange note for the note.
 					if( note.creditType == "fiat" || note.creditType == "scriptbill" ){	
 						
@@ -20595,7 +20854,7 @@ static Base64 = {
 					newBlock.formerWalletHASH = newBlock.blockID;
 					this.sit 			= "Calculating Wallet Hashes ";
 					newBlock.walletHASH = await this.calculateNextBlockID(note, newBlock.blockID);
-					newBlock.nextWalletHASH = this.hashed( await this.calculateNextBlockID(note, newBlock.walletHASH));
+					newBlock.nextWalletHASH = await this.hashed( await this.calculateNextBlockID(note, newBlock.walletHASH));
 				}
 				
 				//custom credit blocks must have a GAS handler from which their network is being gassed
@@ -20646,7 +20905,7 @@ static Base64 = {
 				
 			}
 			
-			console.log("current note type 2: " + note.noteType );
+			//console.log("current note type 2: " + note.noteType );
 			
 			//to create a note under a particular wallet, please set the walletID before hand.
 			if( this.walletID == "" ){
@@ -20657,11 +20916,11 @@ static Base64 = {
 			
 			//no former block found. the transaction will be turned into a create note transaction sorry.
 			var string 					= this.currentTime();
-			this.seed						= this.hashed( string );
+			this.seed						= await this.hashed( string );
 			newBlock.formerBlockID 		= "";
 			this.sit 					= "Calculating Next Block ID For New Block ";
 			newBlock.blockID 			= await this.calculateNextBlockID(note, this.seed);
-			newBlock.nextBlockID		= this.hashed(await this.calculateNextBlockID(note, newBlock.blockID));
+			newBlock.nextBlockID		= await this.hashed(await this.calculateNextBlockID(note, newBlock.blockID));
 			
 			//console.log( "the block IDs: ", "blockID: " + newBlock.blockID, "former: " +newBlock.formerBlockID, "next: " + newBlock.nextBlockID);
 			
@@ -20672,7 +20931,7 @@ static Base64 = {
 			//withdrawer not Scriptbills.
 			
 			if( ( details.transType != "DEPOSIT" && ( details.transType == "CREATEBUDGET" && details.agreement && details.agreement.budgetID && details.agreement.budgetType != "governmental" ) ) && this.l[note.noteAddress] == undefined ) {
-				console.log("current note type 3: " + note.noteType );
+				//await this.createAlert("something cr");
 				let formerTrans 				= details.transType;
 				let formerValue 				= details.transValue;
 				details.transType 			= "CREATE";
@@ -20966,7 +21225,7 @@ static Base64 = {
 								note.accountData.loanValue 		= newBlock.loanValue;
 								
 								var string 	= note.walletID;
-								trivKey 		= this.hashed( string );
+								trivKey 		= await this.hashed( string );
 								
 								localStorage[trivKey] 		= JSON.stringify( this.account );
 								
@@ -21131,7 +21390,7 @@ static Base64 = {
 						var string 				= JSON.stringify( newBlock.agreement );
 						newBlock.recipient 	= await this.#encrypt( string, id );
 						delete newBlock.agreement.privateKey;
-						newBlock.agreement 	= this.hashed( string );						
+						newBlock.agreement 	= await this.hashed( string );						
 					}
 					
 					if( note.referee ){
@@ -21516,7 +21775,7 @@ static Base64 = {
 						//var string  					= productBlock.productFormerBlockID + productBlock.productID;
 						newBlock.productFormerBlockID 	= productBlock.productBlockID;
 						var string 					= productBlock.productID;
-						trivKey 						= this.hashed( string );
+						trivKey 						= await this.hashed( string );
 						newBlock.productID 				= productBlock.productID;
 						
 						//we get the ones that were saved by when saving the a product BLOCK
@@ -21640,7 +21899,7 @@ static Base64 = {
 					
 					if( ! productNote ){
 						this.exchangeID 	= response.productNote.exchangeID;
-						productNote 		= await this.getCurrentExchangeNote();
+						productNote 		= Object.assign( response.productNote );
 					}
 					
 					if( ! productNote && response.productID ){
@@ -21810,7 +22069,7 @@ static Base64 = {
 				//product.
 				if( ! newBlock.productID && (newBlock.transType != "BUYPRODUCT" || newBlock.transType != "PRODUCTSUB" )){
 					var string 	= JSON.stringify( agreement );
-					newBlock.agreement = this.hashed( string );	
+					newBlock.agreement = await this.hashed( string );	
 				}				
 				
 				//before encrypting the budget let's add references to our block
@@ -21866,7 +22125,7 @@ static Base64 = {
 				/* if( noteSecret == note.noteSecret && !isNew && ! this.#isExchangeMarketMining ){
 					//await this.createAlert("isNew");
 					var string 	=	 transKey;
-					note.noteSecret = this.decrypt( noteSecret, this.hashed( string ) );
+					note.noteSecret = this.decrypt( noteSecret, await this.hashed( string ) );
 				} */
 				//console.log( "secret: " + note.noteSecret );
 				//await this.createAlert( "check secret");
@@ -22113,7 +22372,6 @@ static Base64 = {
 					currentNote = await this.getCurrentExchangeNote( note.noteType );
 					
 					if( ! currentNote ){
-						this.errorMessage(`Exchange Market wasn' found when trying to generate a transaction block of type: ${details.transType}`);
 						return false;
 					}
 					
@@ -22194,8 +22452,8 @@ static Base64 = {
 						var id;
 						for( id = 0; id < emails.length; id++ ){
 							var string 	= emails[id] + this.recieveKey;
-							var string 	= this.hashed( string, response.transSalt, response.transFormular );
-							agreement 		= this.decrypt( details.recipient, this.hashed( string, response.transSalt, response.transFormular ) );
+							var string 	= await this.hashed( string, response.transSalt, response.transFormular );
+							agreement 		= this.decrypt( details.recipient, await this.hashed( string, response.transSalt, response.transFormular ) );
 							
 							if( this.isJsonable( agreement ) ) break;
 						}
@@ -22207,8 +22465,8 @@ static Base64 = {
 							var id;
 							for( id = 0; id < phones.length; id++ ){
 								var string 	= phones[id] + this.recieveKey;
-								var string		= this.hashed( string, response.transSalt, response.transFormular );
-								agreement 		= this.decrypt( details.recipient, this.hashed( string, response.transSalt, response.transFormular ) );
+								var string		= await this.hashed( string, response.transSalt, response.transFormular );
+								agreement 		= this.decrypt( details.recipient, await this.hashed( string, response.transSalt, response.transFormular ) );
 								
 								if( this.isJsonable( agreement ) ) break;
 							}
@@ -22224,7 +22482,7 @@ static Base64 = {
 				//and the key must be shared by the sender.
 				if( this.key && ! this.isJsonable( agreement ) ){
 					var string 	= this.key;
-					agreement 		= this.decrypt( details.recipient, this.hashed( string, response.transSalt, response.transFormular ) );
+					agreement 		= this.decrypt( details.recipient, await this.hashed( string, response.transSalt, response.transFormular ) );
 					delete this.key;
 				}
 				
@@ -22232,10 +22490,8 @@ static Base64 = {
 				if( ! details.blockID || response.blockID != details.blockID )
 					details.blockID 		= response.blockID;
 				
-				if( ! details.blockID ){
-					this.errorMessage(`Block ID not found when running a transaction of type: ${details.transType}`);
+				if( ! details.blockID )
 					return false;
-				}
 				
 				if( ! details.noteType || response.noteType != details.noteType )
 					details.noteType 		= response.noteType;
@@ -22248,7 +22504,6 @@ static Base64 = {
 					let blockKey 		= note.unfulfilled[ response.agreement.agreeID ];
 					
 					if( ! blockKey ){
-						this.errorMessage(`Transaction Block key wasn't found on the unfulfilled list`);
 						return false;
 					}
 					var id 				= await this.generateKey(10);
@@ -22913,7 +23168,7 @@ static Base64 = {
 				}
 				//create product transaction.
 				else if( details.transType == "CREATEBUDGET" ){
-					console.log( "budgets: " + note.noteBudgets );
+					//console.log( "budgets: " + note.noteBudgets );
 					let exchangeNote 			= newBlock.exchangeNote;
 					let productNote				= newBlock.productNote;
 					
@@ -22998,7 +23253,7 @@ static Base64 = {
 						
 					} else if( details.agreement && details.agreement.budgetType == "governmental" ){
 						
-						if( ! details.agreement.stockID || ( details.agreement.stockID.length - details.agreement.stockID.lastIndexOf("CRD") ) != 3 ){
+						if( ! details.agreement.stockID || ( details.agreement.stockID.length - details.agreement.stockID.lastIndexOf("CRD") ) == 3 ){
 							this.errorMessage("Governmental Budget must have a properly configured stockID, with a CRD -prefix, Yours was formatted like this: " + ( details.agreement.stockID ? details.agreement.stockID : "none was found!" ));
 							return false;
 						}
@@ -23133,7 +23388,7 @@ static Base64 = {
 				else if( ( details.transType == "QUOTESTOCK" || details.transType == "QUOTEBOND" ) && ( response.transType == "SOLDSTOCK" || response.transType == "SOLDBOND" ) ){
 					/* if( noteSecret == note.noteSecret && ! isNew && ! this.#isExchangeMarketMining ){
 						var string 			= transKey;
-						note.noteSecret 	= this.decrypt( noteSecret, this.hashed( string ) );
+						note.noteSecret 	= this.decrypt( noteSecret, await this.hashed( string ) );
 					} */
 					//first decrypt the agreement handler.
 					var id 				= await this.generateKey(10);
@@ -23208,7 +23463,7 @@ static Base64 = {
 							await this.setPrivateKey( agreement.budgetKey, id );
 							var VerifyKey  =  await this.getPublicKey(id, true);
 							var VerifyText = stockNote.transTime + stockNote.value;
-							hash			= this.hashed( string );
+							hash			= await this.hashed( string );
 							if( ! await this.Verify(signature, VerifyKey, VerifyText) ){
 								hash 	= false;
 								stockNote = {};
@@ -23342,7 +23597,7 @@ static Base64 = {
 					newBlock.signRef		=  await this.Sign( signKey, signTxt );
 					
 					newBlock.splitID 		= this.Base64.encode( await this.generateKey(newBlock.blockID.length) ).toString().slice(0, newBlock.blockID.length );
-					newBlock.nextSplitID 	= this.hashed( await this.calculateNextBlockID(stockNote, newBlock.splitID ) );
+					newBlock.nextSplitID 	= await this.hashed( await this.calculateNextBlockID(stockNote, newBlock.splitID ) );
 					//
 					
 				}  else if( ( details.transType == "SOLDBOND" || details.transType == "SOLDSTOCK" ) && response && ( response.transType == "BUYSTOCK" || response.transType == "BUYBOND" || response.transType == "INVEST" ) ) {
@@ -23441,10 +23696,7 @@ static Base64 = {
 						
 						this.budgetBlock 		= await this.getCurrentBudgetBlock( await this.getPublicKey(id), true );
 						
-						if( ! this.budgetBlock.length && ! this.budgetBlock[0].blockID  && ! agreement ) {
-							this.errorMessage(`Business not found when searched on the Scriptbank network!`);
-							return false;
-						}
+						if( ! this.budgetBlock.length && ! this.budgetBlock[0].blockID  && ! agreement ) return false;
 						
 						//if the public budget was found by querying the detabase, then we should have the exchange NOTE
 						//intact if true. The buyer must then wait for an agreement requeest from the budget creator//to get the budget private key on their stock or bond note that would be generated.
@@ -23621,9 +23873,9 @@ static Base64 = {
 						for( q = 0; q < ranks.length; q++ ) {
 							privKey = ranks[q];
 							var string 	= privKey;
-							pubKey  		= this.hashed( string );
+							pubKey  		= await this.hashed( string );
 							var string 	= pubKey;
-							pubKey  		= this.hashed( string );
+							pubKey  		= await this.hashed( string );
 										
 							//compare the pubkey gotten with the companyRank key
 							//supplied.
@@ -23636,9 +23888,9 @@ static Base64 = {
 					if( prodAgree.companyRanks && agreement.companyRank && typeof agreement.companyRank == 'string' && prodAgree.companyRanks.length ) {
 						let rank = agreement.companyRank;
 						var string 	= rank;
-						pubKey  		= this.hashed( string );
+						pubKey  		= await this.hashed( string );
 						var string 	= pubKey;
-						pubKey  		= this.hashed( string );
+						pubKey  		= await this.hashed( string );
 									
 						//compare the pubkey gotten with the companyRank key
 						//supplied.
@@ -23708,14 +23960,14 @@ static Base64 = {
 							email 				= not.accountData.emails[0];
 							pass 				= await this.generateKey(10);
 							var string 		= email + pass;
-							details.recipient 	= this.hashed( string );
+							details.recipient 	= await this.hashed( string );
 							this.successMessage("I Have Just Sent You " + details.transValue + " " + testType + " In Scriptbill Bonds.  Visit " + sbLink + " to download the Scriptbill browser extension, usable with Kiwi Mobile browser and Login With The Username: " + email + " and Shared Trans Key: " + pass + ".");
 						}
 						else if( note.accountData.phones && note.accountData.phones.length ){
 							phone 				= note.accountData.phones[0];
 							pass 				= await this.generateKey(10);
 							var string 		= phone + pass;
-							details.recipient 	= this.hashed( string );
+							details.recipient 	= await this.hashed( string );
 							this.successMessage("I Have Just Sent You " + details.transValue + " " + testType + " In Scriptbill Bonds.  Visit " + sbLink + " to download the Scriptbill browser extension, usable with Kiwi Mobile browser and Login With The Username: " + phone + " and Shared Trans Key: " + pass + ".");
 						}
 						this.#set_pass = details.recipient;
@@ -23783,9 +24035,9 @@ static Base64 = {
 						if( transBlock && transBlock.blockID ){
 							//to get the correct hash value of the transblock, we remove the variables,				
 							var string 		= JSON.stringify( transBlock );
-							let transHash		= this.hashed( string );
+							let transHash		= await this.hashed( string );
 							var string 		= JSON.stringify( currentNote );
-							let noteHASH 		= this.hashed( string );
+							let noteHASH 		= await this.hashed( string );
 							let joinNote 		= response.noteHash + currentNote.noteHash;
 							let joinTrans 		= response.transHash 	+ currentNote.transHash;
 							
@@ -23853,7 +24105,7 @@ static Base64 = {
 							//test first with the note'this.s secret
 							/* if( noteSecret == note.noteSecret && ! isNew && ! this.#isExchangeMarketMining ){
 								var string 			= transKey;
-								note.noteSecret 	= this.decrypt( noteSecret, this.hashed( string ) );
+								note.noteSecret 	= this.decrypt( noteSecret, await this.hashed( string ) );
 							} */
 							var id 				= await this.generateKey(10);
 							await this.setPrivateKey( note.noteSecret, id );
@@ -24309,7 +24561,7 @@ static Base64 = {
 						newBlock.agreement 	= JSON.parse( JSON.stringify( details.agreement ) );
 						/* var string 				= "SCRIPTBANKLOANS";
 						this.signKey 				= privKey;
-						this.signTxt				= this.hashed( string ); */
+						this.signTxt				= await this.hashed( string ); */
 						newBlock.agreement					= await this.createAgreement("", newBlock, true );
 						newBlock.agreement.value 			= details.transValue;
 						newBlock.agreement.recieverID		= newBlock.blockID;
@@ -24379,7 +24631,7 @@ static Base64 = {
 						note.accountData.loanValue 		= newBlock.loanValue;
 						
 						var string 	= note.walletID;
-						trivKey 		= this.hashed( string );
+						trivKey 		= await this.hashed( string );
 						
 						localStorage[trivKey] 		= JSON.stringify( this.account );
 						
@@ -24766,7 +25018,7 @@ static Base64 = {
 							}
 							
 							var string = location.origin;
-							let server 	= this.hashed( string );
+							let server 	= await this.hashed( string );
 							let run 	= await this.getData(["server", "staff", "value", "type", "ID"],[server, this.scriptKey, details.agreement.value, "SIGN", details.agreement.agreeID], location.origin, "socket" );
 							
 							
@@ -24991,7 +25243,7 @@ static Base64 = {
 						//without knowing the noteAddress.
 						/* if( noteSecret == note.noteSecret && ! isNew && ! this.#isExchangeMarketMining ){
 							var string 			= transKey;
-							note.noteSecret 	= this.decrypt( noteSecret, this.hashed( string ) );
+							note.noteSecret 	= this.decrypt( noteSecret, await this.hashed( string ) );
 						} */
 						var id 				= await this.generateKey(10);
 						await this.setPrivateKey( note.noteSecret, id );
@@ -25148,7 +25400,7 @@ static Base64 = {
 						
 					/* let investorsHub 	= this.budgetBlock.agreement.investorsHub;
 					var string 		= details.reference;
-					let hashKey			= this.hashed( string );
+					let hashKey			= await this.hashed( string );
 						
 					if( ! investorsHub.indexOf( hashKey ) ) {
 						this.errorMessage("Sorry, We couldn't find your stock note as a valid investor on this budget. Please try again with a different stock note.");
@@ -25685,14 +25937,14 @@ static Base64 = {
 					await this.setPrivateKey( details.agreement.privateKey, id );
 					details.agreement.note 	=  JSON.parse( JSON.stringify( this.#splitNote ) );
 					var string 			= JSON.stringify( details.agreement );
-					newBlock.agreement = this.hashed( string );
+					newBlock.agreement = await this.hashed( string );
 					newBlock.recipient = this.encrypt( string, details.recipient );
 					newBlock.blockRef 	= await this.getPublicKey(id, true);
 					newBlock.signRef 	= await this.generateKey(10);
 				}
 				
 				newBlock.splitID 		= this.Base64.encode( await this.generateKey( newBlock.blockID.length ) ).toString().slice(0, newBlock.blockID.length );
-				newBlock.nextSplitID 	= this.hashed( await this.calculateNextBlockID(this.#splitNote, newBlock.splitID ) );
+				newBlock.nextSplitID 	= await this.hashed( await this.calculateNextBlockID(this.#splitNote, newBlock.splitID ) );
 			}
 		}
 
@@ -25979,11 +26231,11 @@ static Base64 = {
 				newBlock.agreement 		= JSON.parse( JSON.stringify( details.agreement ));
 				newBlock.recipient 		= details.recipient;
 			} else {
-				newBlock.agreement 		= this.hashed( string );
+				newBlock.agreement 		= await this.hashed( string );
 				newBlock.recipient 		= this.encrypt( string, details.recipient );
 			}
 			newBlock.splitID			= this.Base64.encode( await this.generateKey(newBlock.blockID.length ) ).toString().slice(0, newBlock.blockID.length );
-			newBlock.nextSplitID 		= this.hashed( await this.calculateNextBlockID(note, newBlock.splitID ) );
+			newBlock.nextSplitID 		= await this.hashed( await this.calculateNextBlockID(note, newBlock.splitID ) );
 		} else if( response && response.transType == "CREDIT"  && details.transType == "GETCREDIT" && response.agreement ){
 			
 			if( typeof response.agreement == "object" && response.agreement.agreeType == "PRODUCT" ) {
@@ -26003,7 +26255,7 @@ static Base64 = {
 					if( amountSub && amountSub < product.value ){
 						product.value 	= amountSub;
 						var string 	= product.name + product.storeID;
-						var id 			= this.hashed( string );
+						var id 			= await this.hashed( string );
 						
 						if( ! note.accountData )
 							note.accountData 	= {};
@@ -26075,10 +26327,8 @@ static Base64 = {
 			
 			if( ! this.#agreeBlock ){
 				//charge the note.
-				if( note.noteValue < details.transValue && time < details.agreement.maxExecTime ){
-					this.errorMessage(`note value too low to run transaction of type ${details.transType}`);
+				if( note.noteValue < details.transValue && time < details.agreement.maxExecTime )
 					return false;
-				}
 				
 				note.noteValue = parseFloat( note.noteValue ) - details.transValue;
 				
@@ -26104,7 +26354,7 @@ static Base64 = {
 			this.setPublicKey( agreement.agreeKey );
 			var string 			= JSON.stringify( agreement );
 			newBlock.recipient = await this.#encrypt( string );
-			newBlock.agreement = this.hashed( string );
+			newBlock.agreement = await this.hashed( string );
 			
 			
 			if( block.length && block[0].blockID ){
@@ -26189,12 +26439,12 @@ static Base64 = {
 			
 			this.#productBlock 			= await this.getCurrentProductBlock( "", this.#productBlock );
 			
-			newBlock.productFormerBlockID 	= this.hashed( this.#productBlock.productBlockID );
+			newBlock.productFormerBlockID 	= await this.hashed( this.#productBlock.productBlockID );
 			newBlock.productBlockID 		= await this.calculateNextBlockID( this.#productBlock.productNote, newBlock.productBlockID );
-			newBlock.productNextBlockID 	= this.hashed( await this.calculateNextBlockID( this.#productBlock.productNote, newBlock.productBlockID ) );
+			newBlock.productNextBlockID 	= await this.hashed( await this.calculateNextBlockID( this.#productBlock.productNote, newBlock.productBlockID ) );
 		
 			/* var string 					= this.#productBlock.productNote.exchangeID;
-			trivKey      					= this.hashed( string );
+			trivKey      					= await this.hashed( string );
 			
 			this.sit 						= "Calculating Exchange Note ID";
 			let trivTime 					= this.l[trivKey + "_triv_time"];
@@ -26207,7 +26457,7 @@ static Base64 = {
 			
 			//newBlock.transTime 			= this.currentTime();
 			var string 					= this.#productBlock.productID + newBlock.transTime + newBlock.productNote.exchangeKey;
-			newBlock.productBlockID 			= this.hashed( string );	
+			newBlock.productBlockID 			= await this.hashed( string );	
 			//this.seed 					= newBlock.exBlockID;
 			//to be set by verifiers.
 			newBlock.productNextBlockID 			= "";
@@ -26294,7 +26544,7 @@ static Base64 = {
 		//calculating the agreement hashes. This is important to secure the agreement entry against manipulation once set, except it must be updated through an agreementrequest transaction.
 		newBlock.lastAgreeHash 		= formerAgreeHash;
 		var string 				= JSON.stringify( newBlock.agreements );
-		let agreeHASH 				= this.hashed( string );
+		let agreeHASH 				= await this.hashed( string );
 		newBlock.agreeHash			= agreeHASH.slice(0,6) + agreeHASH.slice( agreeHASH.length - 7, agreeHASH.length );
 				
 		//this will be used to verify 
@@ -26307,7 +26557,7 @@ static Base64 = {
 		
 				
 		var string 				= formerHashB + newBlock.totalHASH;
-		let totalHash 				= this.hashed( string );
+		let totalHash 				= await this.hashed( string );
 		newBlock.totalHASH			= totalHash;
 		
 		//creating the real hash variable.
@@ -26316,7 +26566,7 @@ static Base64 = {
 				
 		//this is the total hash of the note stored in the r
 		var string					= formerHash + newBlock.realHash;
-		newBlock.realHash			= this.hashed( string );
+		newBlock.realHash			= await this.hashed( string );
 		
 		//adding the last variables to the block as supplied by the note
 		//during this transaction request.
@@ -26437,7 +26687,7 @@ static Base64 = {
 		await this.createAlert( "Note Secret: " + note.noteSecret );	
 		
 		//if( ! this.#isExchangeMarketMining )
-		string 					= this.hashed( string );
+		string 					= await this.hashed( string );
 		//console.log( "note secret before encrypt: ", note.noteSecret, " key: ", string );
 		note.noteSecret 		= this.encrypt( note.noteSecret, string ); 
 	
@@ -26458,7 +26708,7 @@ static Base64 = {
 			note.blockID 			= shareBlock.blockID; */
 		
 		var string 					= JSON.stringify( note );
-		let noteHash				= this.hashed( string );
+		let noteHash				= await this.hashed( string );
 		this.#noteHASH 				= noteHash;
 		newBlock.noteHash			= noteHash.slice( 0, noteHash.length / 2 );
 		
@@ -26501,7 +26751,7 @@ static Base64 = {
 		
 		//calculate the transaction hashes of the block, before calculating the total hash of both the note and the block.
 		var string 				= JSON.stringify( BLOCK );
-		let transHash 				= this.hashed( string );
+		let transHash 				= await this.hashed( string );
 		newBlock.transHash   		= transHash.slice( 0, transHash.length / 2 );
 		
 		
@@ -26510,7 +26760,7 @@ static Base64 = {
 		//saving the half of the trans hash on the note as an evidence to the note.
 		//that the note owns the transaction block.
 		note.transHash 			= transHash.slice( transHash.length / 2, transHash.length );
-		newBlock.blockHash 		= this.hashed( string );
+		newBlock.blockHash 		= await this.hashed( string );
 
 		//let's sign the transaction block.
 		newBlock.blockSign				= await this.Sign(note.blockKey, newBlock.blockHash);
@@ -26518,7 +26768,7 @@ static Base64 = {
 		
 		note.noteHash				= noteHash.slice( noteHash.length / 2, noteHash.length );
 		var string 					= noteHash;
-		note.noteSign 				= await this.Sign(note.blockKey, this.hashed( string ));
+		note.noteSign 				= await this.Sign(note.blockKey, await this.hashed( string ));
 		//from this point forward, nothing else should be added to the note.
 		//this may make the note invalid.
 		//console.log( "Create Product ID " + newBlock.productID );
@@ -26559,7 +26809,7 @@ static Base64 = {
 			this.#password 		= await this.#getPassword();
 			var string 		= this.#password;
 			note 				= JSON.stringify( currentNote );
-			let pass 			= this.hashed( string );
+			let pass 			= await this.hashed( string );
 			//console.log("hashed: " + pass );
 			//await this.createAlert("check hashed");
 			this.noteEncrypt 	= this.encrypt( note, pass );
@@ -27184,7 +27434,6 @@ static Base64 = {
 					await this.saveNote(note);
 					return await this.#profitSharing(block, note, BLOCK, this.response);
 				}
-				this.errorMessage(`Block with ${block.blockID} not successfully stored`);
 				return false;
 			});
 		}
@@ -27228,7 +27477,6 @@ static Base64 = {
 					if (saved) {
 						return await this.#profitSharing(block, note, BLOCK, this.response);
 					}
-					this.errorMessage(`Note not Successfully saved`);
 					return false;
 				}
 				this.l[block.blockID] = JSON.stringify(block);
@@ -27772,7 +28020,7 @@ static Base64 = {
 			building.agreement = JSON.parse(JSON.stringify(building.agreement));
 			building.recipient = details.recipient;
 		} else {
-			building.agreement = this.hashed(s);
+			building.agreement = await this.hashed(s);
 			building.recipient = this.encrypt(s, details.recipient);
 		}
 
@@ -27819,13 +28067,13 @@ static Base64 = {
 			building.agreement = JSON.parse(JSON.stringify(agreement));
 			building.recipient = details.recipient;
 		} else {
-			building.agreement = this.hashed(s);
+			building.agreement = await this.hashed(s);
 			building.recipient = this.encrypt(s, details.recipient);
 		}
 
 		building.splitID     = this.Base64.encode(await this.generateKey(32))
 									.toString().slice(0, 32);
-		building.nextSplitID = this.hashed(await this.calculateNextBlockID(note, building.splitID));
+		building.nextSplitID = await this.hashed(await this.calculateNextBlockID(note, building.splitID));
 
 		return { handled: true, block: building };
 	}
@@ -28126,7 +28374,7 @@ static Base64 = {
 			details.agreement.note = JSON.parse(JSON.stringify(this.#splitNote));
 
 			const s = JSON.stringify(details.agreement);
-			building.agreement = this.hashed(s);
+			building.agreement = await this.hashed(s);
 			building.recipient = this.encrypt(s, details.recipient);
 			building.blockRef  = await this.getPublicKey(id, true);
 			building.signRef   = await this.generateKey(10);
@@ -28135,7 +28383,7 @@ static Base64 = {
 		// ── splitID / nextSplitID ──
 		building.splitID     = this.Base64.encode(await this.generateKey(32))
 									.toString().slice(0, 32);
-		building.nextSplitID = this.hashed(await this.calculateNextBlockID(this.#splitNote, building.splitID));
+		building.nextSplitID = await this.hashed(await this.calculateNextBlockID(this.#splitNote, building.splitID));
 
 		return { handled: true, block: building };
 	}
@@ -28835,7 +29083,7 @@ static Base64 = {
 		// ── Step 8: split IDs ──
 		building.splitID     = this.Base64.encode(await this.generateKey(32))
 									.toString().slice(0, 32);
-		building.nextSplitID = this.hashed(await this.calculateNextBlockID(bondNote, building.splitID));
+		building.nextSplitID = await this.hashed(await this.calculateNextBlockID(bondNote, building.splitID));
 
 		// ── Step 9: clean up the public agreement view ──
 		const signKey = agreement.budgetKey;
@@ -29013,7 +29261,7 @@ static Base64 = {
 		// ── Step 8: split IDs ──
 		building.splitID     = this.Base64.encode(await this.generateKey(32))
 									.toString().slice(0, 32);
-		building.nextSplitID = this.hashed(await this.calculateNextBlockID(stockNote, building.splitID));
+		building.nextSplitID = await this.hashed(await this.calculateNextBlockID(stockNote, building.splitID));
 
 		// ── Step 9: clean up the public agreement view ──
 		signKey = agreement.budgetKey;
@@ -29074,7 +29322,7 @@ static Base64 = {
 		if (!note.walletRank) {
 			note.walletRank = await this.generateKey(30);
 			this.#salted 	= true;
-			const trivKey = this.hashed(note.walletID);
+			const trivKey = await this.hashed(note.walletID);
 			this.#salted = false;
 			let rank = Object.keys(this.#scriptbillRanks)[0];
 			let rankStore;
@@ -29300,7 +29548,6 @@ static Base64 = {
 				formerBlock = JSON.parse(this.l[note.noteAddress + "_current_block"]);
 			} else if (details.transType == "CREATE" || details.transType == "CREATEBUDGET") {
 				formerBlock = JSON.parse(JSON.stringify(this.defaultBlock));
-				console.log("current note type 4: " + note.noteType );
 			} else {
 				this.errorMessage("No Former Block was found on Your Note While Running The Transaction. Please ensure your internet connection is good so as to fetch your block from the network.");
 				if (note.noteValue == 0) {
@@ -30072,10 +30319,7 @@ static Base64 = {
 			budgetBlock 	= await this.getCurrentBlock( budgetBlock );
 		}
 		
-		if( ! budgetBlock ) {
-			this.errorMessage(`Business not found in the Scriptbank Network`);
-			return false;
-		}
+		if( ! budgetBlock ) return false;
 		
 		//we can now store the response as connected block
 		this.#storeConnectedBlock(response);
@@ -30349,10 +30593,7 @@ static Base64 = {
 	static async #txHandleInvestRecieve(ctx){
 		const { note, response, details, formerBlock } = ctx;
 		
-		if( ! ["INVEST", "STOCKPAY", "BONDPAY"].includes(response.transType) ) {
-			this.errorMessage(`This is for investment transaction type`)
-			return false;
-		}
+		if( ! ["INVEST", "STOCKPAY", "BONDPAY"].includes(response.transType) ) return false;
 		
 		if( ctx.agreement && this.isJsonable( ctx.agreement ) ){
 			ctx.agreement 	= JSON.parse( ctx.agreement );
@@ -30384,7 +30625,7 @@ static Base64 = {
 		//and the key must be shared by the sender.
 		if( this.key && ! this.isJsonable( agreement ) && typeof agreement == "object" ){
 			var string 	= this.key;
-			agreement 		= this.decrypt( details.recipient, this.hashed( string, response.transSalt, response.transFormular ) );
+			agreement 		= this.decrypt( details.recipient, await this.hashed( string, response.transSalt, response.transFormular ) );
 			delete this.key;
 		}
 		
@@ -30398,8 +30639,8 @@ static Base64 = {
 		blockSpace.blockID 			= await this.calculateNextBlockID(note, newBlock.blockID);
 		blockSpace.transFormular 	= this.generateRandomNumberAsString(32);
 		blockSpace.transSalt 		= await this.generateKey(256);
-		blockSpace.nextBlockID 		= this.hashed( await this.calculateNextBlockID( note, blockSpace.blockID ), blockSpace.transSalt, blockSpace.transFormular );
-		blockSpace.formerBlockID 	= this.hashed( newBlock.blockID, blockSpace.transSalt, blockSpace.transFormular );
+		blockSpace.nextBlockID 		= await this.hashed( await this.calculateNextBlockID( note, blockSpace.blockID ), blockSpace.transSalt, blockSpace.transFormular );
+		blockSpace.formerBlockID 	= await this.hashed( newBlock.blockID, blockSpace.transSalt, blockSpace.transFormular );
 		blockSpace.transValue 		= 0;
 		blockSpace.noteValue 		= note.noteValue;
 		blockSpace.exchangeNote 	= newBlock.exchangeNote;
@@ -30451,8 +30692,8 @@ static Base64 = {
 				var id;
 				for( id = 0; id < emails.length; id++ ){
 					var string 	= emails[id] + this.recieveKey;
-					var string 	= this.hashed( string, response.transSalt, response.transFormular );
-					agreement 		= this.decrypt( details.recipient, this.hashed( string, response.transSalt, response.transFormular ) );
+					var string 	= await this.hashed( string, response.transSalt, response.transFormular );
+					agreement 		= this.decrypt( details.recipient, await this.hashed( string, response.transSalt, response.transFormular ) );
 					
 					if( this.isJsonable( agreement ) ) break;
 				}
@@ -30464,8 +30705,8 @@ static Base64 = {
 					var id;
 					for( id = 0; id < phones.length; id++ ){
 						var string 	= phones[id] + this.recieveKey;
-						var string		= this.hashed( string, response.transSalt, response.transFormular );
-						agreement 		= this.decrypt( details.recipient, this.hashed( string, response.transSalt, response.transFormular ) );
+						var string		= await this.hashed( string, response.transSalt, response.transFormular );
+						agreement 		= this.decrypt( details.recipient, await this.hashed( string, response.transSalt, response.transFormular ) );
 						
 						if( this.isJsonable( agreement ) ) break;
 					}
@@ -30484,10 +30725,7 @@ static Base64 = {
 		if( response && ( this.#transRecieve.includes( details.transType ) || details.transType == "MERGE" ) && ( this.#transSend.includes( response.transType ) || response.transType == "SPLIT" ) ){
 			const isQualified = await this.#txCheckRecieve(ctx);
 			
-			if( ! isQualified ) {
-				this.errorMessage(`You are not qualified to recieve funds from this block ${response.blockID}`);
-				return false;
-			}
+			if( ! isQualified ) return false;
 			
 			//console.log("running recieve transaction");
 				
@@ -30513,7 +30751,7 @@ static Base64 = {
 				/* if( noteSecret == note.noteSecret && !isNew && ! this.#isExchangeMarketMining ){
 					//await this.createAlert("isNew");
 					var string 	=	 transKey;
-					note.noteSecret = this.decrypt( noteSecret, this.hashed( string ) );
+					note.noteSecret = this.decrypt( noteSecret, await this.hashed( string ) );
 				} */
 				//console.log( "secret: " + note.noteSecret );
 				//await this.createAlert( "check secret");
@@ -30529,10 +30767,7 @@ static Base64 = {
 				if( ( details.transType == "VIEWADVERT" || details.transType == "PUBLISHADVERT" || details.transType == "CLICKADVERT" ) && response.transType == "ADVERT" && response.agreement && response.agreement.advertID ){
 					ctx = await this.#txHandleAdverts(ctx);
 					
-					if( ! ctx ) {
-						this.errorMessage(`Advert handling failed`);
-						return false;
-					}
+					if( ! ctx ) return false;
 					
 				}
 				
@@ -31260,7 +31495,7 @@ static Base64 = {
 		note.accountData.loanID    = this.account.loanID;
 		note.accountData.loanValue = building.loanValue;
 
-		const trivKey = this.hashed(note.walletID);
+		const trivKey = await this.hashed(note.walletID);
 		localStorage[trivKey] = JSON.stringify(this.account);
 
 		if (!note.loanValue) note.loanValue = 0;
@@ -32056,7 +32291,7 @@ static Base64 = {
 		const encKey = await this.getPublicKey(id, true);
 		building.recipient = this.encrypt(JSON.stringify(agreement), encKey);
 
-		building.agreement = this.hashed(JSON.stringify(agreement));
+		building.agreement = await this.hashed(JSON.stringify(agreement));
 
 		// Record that the note has now received this agreement's payment.
 		if (!note.unfulfilled || typeof note.unfulfilled !== "object") {
@@ -32419,7 +32654,7 @@ static Base64 = {
 			note.accountData.loanID    = this.account.loanID;
 			note.accountData.loanValue = this.account.loanValue;
 
-			const trivKey = this.hashed(note.walletID);
+			const trivKey = await this.hashed(note.walletID);
 			localStorage[trivKey] = JSON.stringify(this.account);
 			note.loanValue = (note.loanValue || 0) + parseFloat(details.transValue);
 		}
@@ -32486,7 +32721,7 @@ static Base64 = {
 	//      the note anyway; legacy does it via #agreeBlock).
 	//   3. Otherwise: bill note.noteValue -= details.transValue.
 	//   4. Encrypt the agreement for the recipient using a fresh key.
-	//   5. Set newBlock.agreement = this.hashed(agreement).
+	//   5. Set newBlock.agreement = await this.hashed(agreement).
 	// ──────────────────────────────────────────────────────────────────────────
 	static async #txHandleAgreeSendCreate(ctx) {
 		const { note, details, formerBlock } = ctx;
@@ -32533,7 +32768,7 @@ static Base64 = {
 		building.recipient = this.encrypt(JSON.stringify(agreement), encKey);
 
 		// ── Hash the agreement ──
-		building.agreement = this.hashed(JSON.stringify(agreement));
+		building.agreement = await this.hashed(JSON.stringify(agreement));
 
 		// Ensure the note records the agreement's block-key (needed by
 		// AGREEMENTSIGN later).
@@ -33001,7 +33236,7 @@ static Base64 = {
 			delete realNote.noteSign;
 			delete realNote.noteHash;
 			delete realNote.transHash;
-			let formerHash = this.hashed(JSON.stringify(realNote), parentSalt, parentFormular);
+			let formerHash = await this.hashed(JSON.stringify(realNote), parentSalt, parentFormular);
 			if (this.#noteHASH && this.#noteHASH !== formerHash) formerHash = this.#noteHASH;
 			ctx.formerHash = formerHash;
 		}
@@ -33017,7 +33252,7 @@ static Base64 = {
 			].forEach((k) => delete formerBlockCopy[k]);
 			const KEYS = Object.keys(this.defaultBlock);
 			for (const k in formerBlockCopy) if (!KEYS.includes(k)) delete formerBlockCopy[k];
-			ctx.formerHashB = this.hashed(JSON.stringify(formerBlockCopy), parentSalt, parentFormular);
+			ctx.formerHashB = await this.hashed(JSON.stringify(formerBlockCopy), parentSalt, parentFormular);
 		}
 
 		const formerHash  = ctx.formerHash;
@@ -33029,29 +33264,29 @@ static Base64 = {
 		// ─────────────────────────────────────────────────────────────────
 		if (formerBlock && formerBlock.blockID) {
 			// ── UPDATE chain. ──
-			const trivKey = this.hashed(note.walletID, salt, formular);
+			const trivKey = await this.hashed(note.walletID, salt, formular);
 			const walletBlock = await this.getCurrentWalletBlock(newBlock);
 
-			newBlock.formerWalletHASH = this.hashed(walletBlock.walletHASH, salt, formular);
+			newBlock.formerWalletHASH = await this.hashed(walletBlock.walletHASH, salt, formular);
 			newBlock.walletHASH       = await this.calculateNextBlockID(note, newBlock.walletHASH, 1, true);
-			newBlock.nextWalletHASH   = this.hashed(
+			newBlock.nextWalletHASH   = await this.hashed(
 				await this.calculateNextBlockID(note, newBlock.walletHASH, 1, true),
 				salt, formular
 			);
 
 			if (!this.autoExecute) {
-				newBlock.formerBlockID = this.hashed(formerBlock.blockID, salt, formular);
+				newBlock.formerBlockID = await this.hashed(formerBlock.blockID, salt, formular);
 				if (formerBlock.nextBlockID != "AUTOEXECUTE") {
 					if (!formerBlock.splitID || note.blockID != formerBlock.splitID) {
 						newBlock.blockID     = await this.calculateNextBlockID(note, formerBlock.blockID);
-						newBlock.nextBlockID = this.hashed(
+						newBlock.nextBlockID = await this.hashed(
 							await this.calculateNextBlockID(note, formerBlock.blockID),
 							salt, formular
 						);
 					} else {
-						newBlock.formerBlockID = this.hashed(formerBlock.splitID, salt, formular);
+						newBlock.formerBlockID = await this.hashed(formerBlock.splitID, salt, formular);
 						newBlock.blockID       = await this.calculateNextBlockID(note, formerBlock.splitID);
-						newBlock.nextBlockID   = this.hashed(
+						newBlock.nextBlockID   = await this.hashed(
 							await this.calculateNextBlockID(note, newBlock.blockID),
 							salt, formular
 						);
@@ -33059,14 +33294,14 @@ static Base64 = {
 				} else {
 					this.sit = "Calculating for " + details.transType;
 					newBlock.blockID      = await this.calculateNextBlockID(note, formerBlock.blockID);
-					newBlock.nextBlockID  = this.hashed(
+					newBlock.nextBlockID  = await this.hashed(
 						await this.calculateNextBlockID(note, newBlock.blockID),
 						salt, formular
 					);
 				}
 			} else {
 				newBlock.blockID       = await this.calculateNextBlockID(note, details.blockID);
-				newBlock.formerBlockID = this.hashed(details.blockID, salt, formular);
+				newBlock.formerBlockID = await this.hashed(details.blockID, salt, formular);
 				newBlock.nextBlockID   = "AUTOEXECUTE";
 			}
 
@@ -33079,7 +33314,7 @@ static Base64 = {
 
 			// Rank code.
 			let rankStore;
-			const trivKey2 = this.hashed(note.walletID, salt, formular);
+			const trivKey2 = await this.hashed(note.walletID, salt, formular);
 			if (this.l[trivKey2]) {
 				rankStore = JSON.parse(this.isJsonable(this.l[trivKey2]) ? this.l[trivKey2] : "{}");
 			} else {
@@ -33147,18 +33382,18 @@ static Base64 = {
 		} else {
 			// ── CREATE chain. ──
 			// Salt/formular guaranteed non-empty by #txHandleCreate.
-			this.seed = this.hashed(this.currentTime(), salt, formular);
+			this.seed = await this.hashed(this.currentTime(), salt, formular);
 
 			newBlock.formerBlockID = "";
 			newBlock.blockID       = await this.calculateNextBlockID(note, this.seed);
-			newBlock.nextBlockID   = this.hashed(
+			newBlock.nextBlockID   = await this.hashed(
 				await this.calculateNextBlockID(note, newBlock.blockID),
 				salt, formular
 			);
 
-			newBlock.formerWalletHASH = this.hashed("", salt, formular);
+			newBlock.formerWalletHASH = await this.hashed("", salt, formular);
 			newBlock.walletHASH       = await this.calculateNextBlockID(note, newBlock.walletHASH, 1, true);
-			newBlock.nextWalletHASH   = this.hashed(
+			newBlock.nextWalletHASH   = await this.hashed(
 				await this.calculateNextBlockID(note, newBlock.walletHASH, 1, true),
 				salt, formular
 			);
@@ -33176,9 +33411,9 @@ static Base64 = {
 			if (!this.#productBlock) this.#productBlock = JSON.parse(JSON.stringify(newBlock));
 			this.#productBlock = await this.getCurrentProductBlock("", this.#productBlock);
 
-			newBlock.productFormerBlockID = this.hashed(this.#productBlock.productBlockID, salt, formular);
-			newBlock.productBlockID       = await this.calculateNextBlockID(this.#productBlock.productNote, newBlock.productBlockID);
-			newBlock.productNextBlockID   = this.hashed(
+			newBlock.productFormerBlockID = await this.hashed(this.#productBlock.productBlockID, salt, formular);
+			newBlock.productBlockID       = await this.calculateNextBlockID(this.#productBlock.productNote, this.#productBlock.productBlockID);
+			newBlock.productNextBlockID   = await this.hashed(
 				await this.calculateNextBlockID(this.#productBlock.productNote, newBlock.productBlockID),
 				salt, formular
 			);
@@ -33276,19 +33511,19 @@ static Base64 = {
 		newBlock.lastAgreeHash = ctx.formerAgreeHash ?? "";
 		{
 			const s = JSON.stringify(newBlock.agreements);
-			const agreeHASH = this.hashed(s, salt, formular);
+			const agreeHASH = await this.hashed(s, salt, formular);
 			newBlock.agreeHash = agreeHASH.slice(0, 6) + agreeHASH.slice(agreeHASH.length - 7);
 		}
 
 		if (!newBlock.totalHASH) newBlock.totalHASH = "";
 		{
 			const s = (formerHashB ?? "") + newBlock.totalHASH;
-			newBlock.totalHASH = this.hashed(s, parentSalt, parentFormular);
+			newBlock.totalHASH = await this.hashed(s, parentSalt, parentFormular);
 		}
 		if (!newBlock.realHash) newBlock.realHash = "";
 		{
 			const s = (formerHash ?? "") + newBlock.realHash;
-			newBlock.realHash = this.hashed(s, parentSalt, parentFormular);
+			newBlock.realHash = await this.hashed(s, parentSalt, parentFormular);
 		}
 		newBlock.lastBlockHash = (formerHashB ?? "").slice(Math.round((formerHashB ?? "").length / 2));
 		newBlock.lastNoteHash  = (formerHash  ?? "").slice(Math.round((formerHash  ?? "").length / 2));
@@ -33356,7 +33591,7 @@ static Base64 = {
 		const bleckID = note.blockID;
 		if (newBlock.transType == "UPDATE" && newBlock.transValue > 0) newBlock.transValue = 0;
 
-		const noteHash = this.hashed(JSON.stringify(note), salt, formular);
+		const noteHash = await this.hashed(JSON.stringify(note), salt, formular);
 		this.#noteHASH = noteHash;
 		newBlock.noteHash = noteHash.slice(0, noteHash.length / 2);
 
@@ -33395,14 +33630,14 @@ static Base64 = {
 		const KEYS = Object.keys(this.defaultBlock);
 		for (const blockID in BLOCK) if (!KEYS.includes(blockID)) delete BLOCK[blockID];
 
-		const transHash = this.hashed(JSON.stringify(BLOCK), salt, formular);
+		const transHash = await this.hashed(JSON.stringify(BLOCK), salt, formular);
 		newBlock.transHash = transHash.slice(0, transHash.length / 2);
 		note.transHash     = transHash.slice(transHash.length / 2);
-		newBlock.blockHash = this.hashed(transHash, salt, formular);
+		newBlock.blockHash = await this.hashed(transHash, salt, formular);
 
 		newBlock.blockSign = await this.Sign(note.blockKey, newBlock.blockHash);
 		note.noteHash = noteHash.slice(noteHash.length / 2);
-		note.noteSign = await this.Sign(note.blockKey, this.hashed(noteHash, salt, formular));
+		note.noteSign = await this.Sign(note.blockKey, await this.hashed(noteHash, salt, formular));
 
 		// ─────────────────────────────────────────────────────────────────
 		// (K) Quoted-note download (QUOTESTOCK / QUOTEBOND).
@@ -33415,7 +33650,7 @@ static Base64 = {
 			quoted.blockHash = note.blockHash;
 
 			if (!this.#password) this.#password = await this.#getPassword();
-			const pass        = this.hashed(this.#password);
+			const pass        = await this.hashed(this.#password);
 			const quotedStr   = JSON.stringify(quoted);
 			this.noteEncrypt  = this.encrypt(quotedStr, pass);
 			const noteEncrypt = await this.binarilize();
@@ -33698,17 +33933,14 @@ static Base64 = {
 	static async #txGenerate(details, note, response) {
 		// ── 1. Prepare the context (same object graph throughout) ──
 		const ctx = await this.#txPrepare(details, note, response);
-		if (!ctx) {
-			this.errorMessage(`Transacttion Contextwas not successfully generated `);
-			return false;
-		}
+		if (!ctx) return false;
 
 		// ── 2. Compute former-block hashes (identical to legacy preamble) ──
 		const realNote = JSON.parse(JSON.stringify(ctx.note));
 		delete realNote.noteSign;
 		delete realNote.noteHash;
 		delete realNote.transHash;
-		let formerHash = this.hashed(JSON.stringify(realNote));
+		let formerHash = await this.hashed(JSON.stringify(realNote));
 		if (this.#noteHASH && this.#noteHASH !== formerHash) formerHash = this.#noteHASH;
 
 		const formerBlockCopy = JSON.parse(JSON.stringify(ctx.formerBlock || {}));
@@ -33719,7 +33951,7 @@ static Base64 = {
 		].forEach((k) => delete formerBlockCopy[k]);
 		const KEYS = Object.keys(this.defaultBlock);
 		for (const k in formerBlockCopy) if (!KEYS.includes(k)) delete formerBlockCopy[k];
-		const formerHashB = this.hashed(JSON.stringify(formerBlockCopy));
+		const formerHashB = await this.hashed(JSON.stringify(formerBlockCopy));
 
 		ctx.formerHash  = formerHash;
 		ctx.formerHashB = formerHashB;
@@ -33738,10 +33970,7 @@ static Base64 = {
 		//         because ctx has never been rebound. ──
 		console.log("check result:", result );
 		const block = await this.#txFinalize(ctx, result.block);
-		if (!block){
-			this.errorMessage(`Failed to produce block.`)
-			 return false;
-		}
+		if (!block) return false;
 
 		// ── 5. Commit. Persist + save note + optional follow-up. ──
 		return this.#txCommit(ctx, result, block);
@@ -35303,10 +35532,7 @@ static Base64 = {
 	}
 	static async viewAdvert( agreement ){
 		
-		if( typeof agreement != "object" ) {
-			this.errorMessage(`Object supplied not well formatted`);
-			return false;
-		}
+		if( typeof agreement != "object" ) return false;
 		
 		/* let keys = Object.keys( agreement );
 		
@@ -36116,7 +36342,6 @@ static Base64 = {
 			return walletBlock;
 		}
 		else {
-			this.errorMessage(`No wallet block found!`);
 			return false;
 		}
 	}
@@ -36161,7 +36386,6 @@ static Base64 = {
 						return this.Base64.encode( this.ab2str( signature ) );
 					}
 					else {
-						this.errorMessage(`Key are not formatted in the right format for this generation`);
 						return false;
 					}
 						
@@ -36171,7 +36395,6 @@ static Base64 = {
 				}
 			}
 			else {
-				this.errorMessage(`Crypto JS not found to sign message`);
 				return false;
 			}
 		} catch(e){
@@ -36221,18 +36444,15 @@ static Base64 = {
 					}
 					else {
 						//console.log("not verified ");
-						this.errorMessage(`Key format not trusted for veification`);
 						return false;
 					}
 				}
 				catch (ex){
 					//console.log( "verify error: " + ex );
-					this.errorMessage(`verification error ${ex}`);
 					return false;
 				}
 			}
 			else {
-				this.errorMessage(`Crypto JS not available to sign transactions.`);
 				return false;
 			}
 		} catch(e){
@@ -36240,6 +36460,16 @@ static Base64 = {
 			console.error(e);
 			return false;
 		}
+	}
+
+	static async __calculateNextBlockID(seed = false, depth = 1, walletID = false, run = 1){
+		this.#note = await this.#getCurrentNote();
+
+		if(! this.#note ){
+			return false;
+		}
+
+		return await this.calculateNextBlockID( this.#note, seed, depth, walletID, run );
 	}
 	//Scriptbill function can help us trace the blocks that belong to a particular note
 	static async calculateNextBlockID( note = false, seed = false, depth = 1, walletID = false, run = 1 ){
@@ -36269,7 +36499,7 @@ static Base64 = {
 					seed = this.currentTime().toString();
 				}
 				var id 				= await this.generateKey(10);
-				await this.setPrivateKey( note.noteSecret ? note.noteSecret : note.exchangeKey, id );
+				await this.setPrivateKey( note.exchangeKey ? note.exchangeKey : note.noteSecret, id );
 				
 				//console.log( "FUNC: calculateNextBlockID: Params: noteSecret: " + note.noteSecret + " seed: " + this.seed + " runned: " + ++this.runned );
 				
@@ -36355,11 +36585,8 @@ static Base64 = {
 		if( !this.#note && this.s.currentNote )
 		this.#note  = await this.#getCurrentNote();			
 		
-		if( ! this.#note || typeof this.#note != 'object' ){
-			this.errorMessage(`Note data was not found to use for tracing `);
+		if( ! this.#note || typeof this.#note != 'object' )
 			return false;
-		}
-			
 		
 		//Scriptbill function is meant for external note address of which the current note want to transact with.
 		//if the address is not set, then the function assumes you want to run the getTransBlock function
@@ -37389,7 +37616,6 @@ static Base64 = {
 			if( this.#note && this.#note.noteAddress && this.#note.noteBudgets && this.#note.noteBudgets.length )
 				return true;
 			
-			this.errorMessage(`Password changing operation failed`);
 			return false;
 		} catch(e){
 			this.errorMessage(e.toString());
@@ -37471,7 +37697,7 @@ static Base64 = {
 			//this function.
 			let agreement 			= await this.createAgreement();
 			/* var string 			= this.productConfig.storeID;
-			this.productConfig.storeID = this.hashed( string ); */
+			this.productConfig.storeID = await this.hashed( string ); */
 			agreement.productConfig = JSON.parse( JSON.stringify( this.productConfig ));
 			agreement.agreeType			= "PRODUCT";
 			delete agreement.privateKey;
@@ -37616,7 +37842,7 @@ static Base64 = {
 				return null;
 			}
 			
-			////console.log( "personal: " + this.l.personal, "string: " + var string, "hash: " + this.hashed( string ) );
+			////console.log( "personal: " + this.l.personal, "string: " + var string, "hash: " + await this.hashed( string ) );
 			if( this.l.personal ){
 				let local = JSON.parse( this.isJsonable( this.l.personal ) ? this.l.personal : '{}' );
 				let blockID, note, noteBlock, noteHash;
@@ -37626,7 +37852,7 @@ static Base64 = {
 					let localHash 	= local.hash;
 					delete local.hash;
 					var string 	= JSON.stringify( local ) + this.#password;				
-					let hash 		= this.hashed( string );
+					let hash 		= await this.hashed( string );
 
 					if( hash != localHash ) {
 						//if we don't trust the local data we use the database information.
@@ -37703,14 +37929,12 @@ static Base64 = {
 					local.transTime = this.currentTime();
 					local.password 	= this.#password;
 					var string = JSON.stringify( local );
-					local.hash	= this.hashed( string );
+					local.hash	= await this.hashed( string );
 					this.l.personal = JSON.stringify( local );
-					this.errorMessage(`User details was saved but not logged in`);
 					return false;
 				}
 			}
 			else {
-				this.errorMessage(`Couldn't login user details`);
 				return false;
 			}
 		} catch(e){
@@ -37885,10 +38109,7 @@ static Base64 = {
 	static async employScriptbillWorker( budgetID, workerNote ){
 		//console.log("employScriptbillWorker running " + this.funcUp[ this.funcUp.length] );
 		this.funcUp[ this.funcUp.length] = "employScriptbillWorker";
-		if( ! this.#note || ! this.#note.noteBugdets  || ! this.#note.noteBudgets.length || ! this.#note.noteBudgets.includes( budgetID ) ) {
-			this.errorMessage(`No note data available or no note data with the supplied budget ID available to employ a worker with`);
-			return false;
-		}
+		if( ! this.#note || ! this.#note.noteBugdets  || ! this.#note.noteBudgets.length || ! this.#note.noteBudgets.includes( budgetID ) ) return false;
 		
 		this.budgetID = budgetID;
 		let budgetBlock = await this.getTransBlock();
@@ -37904,7 +38125,7 @@ static Base64 = {
 		var id 				= await this.generateKey(10);
 		await this.setPrivateKey( privKey, id );
 		var string 		= await this.getPublicKey(id);
-		agreement.companyRanks.push(  this.hashed( string ) );
+		agreement.companyRanks.push(  await this.hashed( string ) );
 		budgetBlock.agreement = agreement;
 		let details	 	= budgetBlock;
 		details.transType = "EMPLOY";
@@ -37960,14 +38181,14 @@ static Base64 = {
 		noteBlock.exchangeNote.noteValue = 1;
 		
 		//next up we calculate the hashes.
-		noteBlock.blockHash 	= this.hashed( JSON.stringify( noteBlock ) );
+		noteBlock.blockHash 	= await this.hashed( JSON.stringify( noteBlock ) );
 		note.blockHash 			= noteBlock.blockHash.slice( 0, Math.round( noteBlock.blockHash.length / 2 ) );
 		noteBlock.totalHASH 	=  noteBlock.blockHash;
 		noteBlock.blockHash  	= noteBlock.blockHash.slice( Math.round( noteBlock.blockHash.length / 2 ), noteBlock.blockHash.length );
 		noteBlock.realHash 		= note.noteHash;
 		
 		//let's
-		noteBlock.noteHash 		= this.hashed( JSON.stringify( note ) );
+		noteBlock.noteHash 		= await this.hashed( JSON.stringify( note ) );
 		note.noteHash 			= noteBlock.noteHash.slice( 0, Math.round( noteBlock.noteHash.length / 2 ) );
 		noteBlock.noteHash 		= noteBlock.notehash.slice( Math.round( noteBlock.noteHash.length / 2 ), noteBlock.noteHash.length );
 		
@@ -37995,7 +38216,7 @@ static Base64 = {
 		note.noteAddress 	= await this.getPublicKey( id );
 		
 		//now let's generate the wallet ID for the default note
-		note.walletID 		= this.hashed( this.currentTime());
+		note.walletID 		= await this.hashed( this.currentTime());
 		
 		//the note needs a budget to be valid, so we create the budget ID for the note which should be the private key to the budget that would be created.
 		note.budgetID 		= await this.generateKey( 10, true );
@@ -38011,13 +38232,13 @@ static Base64 = {
 		note.transValue 	= 1;
 		
 		//next we create the current block hash from the default block.
-		note.blockHash 		= this.hashed( JSON.stringify( this.defaultBlock) );
+		note.blockHash 		= await this.hashed( JSON.stringify( this.defaultBlock) );
 		
 		//next the transHash, this will change when we create the budget block now.
 		note.transHash 		= note.blockHash.slice( 0, Math.round( note.blockHash.length / 2 ) );
 		
 		//add the note hash to the equation 
-		note.noteHash		= this.hashed( JSON.stringify( note ) );
+		note.noteHash		= await this.hashed( JSON.stringify( note ) );
 		note.noteSign 		= await this.Sign(note.blockKey, note.noteHash );
 		
 		this.#note 			= Object.assign(note);
@@ -38034,10 +38255,7 @@ static Base64 = {
 		if( !this.#note && this.s.currentNote )
 			this.#note = await this.#getCurrentNote();
 		
-		if( ! this.#note ) {
-			this.errorMessage(`No Note data available for budget item creation`);
-			return false;
-		}
+		if( ! this.#note ) return false;
 		
 		if( ! this.#note.noteBudgets || ! this.#note.noteBudgets.length || ! this.#note.budgetID ){
 			this.errorMessage("Only notes that has budgets can update an Item on a budget");
@@ -38111,10 +38329,7 @@ static Base64 = {
 		if( ! this.defaultItem.scriptbillAddress && this.defaultItem.itemProduct != "ADVERT" ){
 			//if there is no Scriptbill address in item record, then we check if there IS
 			//a phone number or email to send the funds to.
-			if( ! this.defaultItem.businessPhone || ! this.defaultItem.businessEmail ) {
-				this.errorMessage(`Budget item Business Phone or Email not set`);
-				return false;
-			}
+			if( ! this.defaultItem.businessPhone || ! this.defaultItem.businessEmail ) return false;
 			
 			contact 	= this.defaultItem.businessPhone || this.defaultItem.businessEmail;
 			let note 	= JSON.parse( JSON.stringify( this.#note ) );
@@ -38127,7 +38342,7 @@ static Base64 = {
 			else
 				this.defaultScriptbill.noteType = this.#note.noteType;
 			
-			this.defaultScriptbill.walletID     = this.hashed( this.currentTime());
+			this.defaultScriptbill.walletID     = await this.hashed( this.currentTime());
 				
 			this.#note   = false;
 			this.#saveNote = false;
@@ -38138,7 +38353,7 @@ static Base64 = {
 					}
 					let transKey 				= await this.generateKey(10);
 					var string 					= contact + transKey;
-					this.defaultItem.data.note = this.encrypt( JSON.stringify( this.#note ), this.hashed( string ));
+					this.defaultItem.data.note = this.encrypt( JSON.stringify( this.#note ), await this.hashed( string ));
 					this.defaultItem.scriptbillAddress = this.#note.noteAddress;
 					this.#note 					= JSON.parse( JSON.stringify( note ));
 					let details 	= JSON.parse( JSON.stringify( this.defaultBlock ) );		
@@ -38169,7 +38384,7 @@ static Base64 = {
 			details.agreement 		= JSON.parse( JSON.stringify( this.defaultItem ));
 			return await this.generateScriptbillTransactionBlock(details, this.#note );
 		}
-		this.errorMessage("Budget Item not successfully created");
+		
 		return false;
 	}
 	
@@ -38382,12 +38597,12 @@ static Base64 = {
 					budgetConfig.stockID = this.randomStringFromTime(12) + "STK";
 				
 				else if( budgetConfig.budgetType == 'governmental' ){
-					budgetConfig.stockID = budgetConfig.stockID.slice(0, budgetConfig.stockID.lastIndexOf("BND")) + "CRD";
+					budgetConfig.stockID = budgetConfig.stockID + "CRD";
 					let block = await this.getTransBlock(1, {
 						noteType: budgetConfig.stockID
 					});
 					
-					if( ! block.length ){
+					if( block.length ){
 						budgetConfig.stockID = this.randomStringFromTime(6) + "CRD";
 					}
 				}
@@ -38544,7 +38759,7 @@ static Base64 = {
 						let motherKeys 				= await this.#generateMotherKeys();
 						budgetID 					= motherKeys.budgetIDS[ note.noteType ];
 						var string 				= "SCRIPTBANKFIATEXCHANGEWALLET";
-						this.#currentNote.walletID 	= this.hashed( string );
+						this.#currentNote.walletID 	= await this.hashed( string );
 					}
 					var id 				= await this.generateKey(10);
 					await this.setPrivateKey( budgetID, id );
@@ -38635,7 +38850,6 @@ static Base64 = {
 			}
 			
 			if( ! this.#note || ! this.#note.budgetID ){
-				this.errorMessage(`note not qualified for Scriptbill Budget Investment from the exchange market automatically`)
 				return false;
 			}		
 			var id 				= await this.generateKey(10);
@@ -38754,10 +38968,7 @@ static Base64 = {
 		if( ( ! this.#note && this.s.currentNote ) || ( this.s.currentNote &&    ! this.s.currentNote.includes( this.#note.walletID ) && ! this.s.currentNote.includes( this.#note.noteAddress ) && ! this.#isExchangeMarketMining ) || ( ! this.#isExchangeMarketMining && ! this.#note && this.s.currentNote ))
 			this.#note = await this.#getCurrentNote();
 		
-		if( ! this.#note || ! this.#note.budgetID ){
-			this.errorMessage(`Note data not available or not authorized to get budget blocks`);
-			 return false;
-		}
+		if( ! this.#note || ! this.#note.budgetID ) return false;
 		
 		this.budgetID = this.#note.budgetID;
 		let budgetBlocks = await this.getTransBlock();
@@ -38773,10 +38984,7 @@ static Base64 = {
 	static async monitorScriptbillStock(){
 		//console.log("monitorScriptbillStock running " + this.funcUp[ this.funcUp.length] );
 		this.funcUp[ this.funcUp.length] = "monitorScriptbillStock";
-		if( ( ! this.response || ! this.response.blockID ) && ( ! this.#note || ! this.#note.noteType.includes("STK") && ! this.response.productID ) ) {
-			this.errorMessage("Note data not a stock note or not available", "monitorScriptbillStock");
-			return false;
-		}
+		if( ( ! this.response || ! this.response.blockID ) && ( ! this.#note || ! this.#note.noteType.includes("STK") && ! this.response.productID ) ) return false;
 		
 		let response = JSON.parse( JSON.stringify( this.response ) );
 		
@@ -38843,7 +39051,7 @@ static Base64 = {
 			//the block verifiers will need the stock note to reference the budget in his transactional request to confirm the 
 			//transaction. to do this, we need to provide both the budgetID and stock hashes.
 			var string				= this.#note.stockKey + this.#note.pay + this.#note.noteValue;
-			details.reference	= this.hashed( string );
+			details.reference	= await this.hashed( string );
 			details.budgetID	= budget.budgetID;
 			details.transValue = stockProfit;
 			details.noteType 	= budget.budgetCredit;
@@ -39166,10 +39374,7 @@ static Base64 = {
 		if( ( ! this.#note && this.s.currentNote ) || ( this.s.currentNote &&    ! this.s.currentNote.includes( this.#note.walletID ) && ! this.s.currentNote.includes( this.#note.noteAddress ) && ! this.#isExchangeMarketMining ) || ( ! this.#isExchangeMarketMining && ! this.#note && this.s.currentNote ))
 			this.#note = await this.#getCurrentNote();
 		
-		if( ! this.#note || await this.testNoteType( "BND", this.#note ) ) {
-			this.errorMessage(`Note data not available or note data not a bond note`, 'sellScriptbillBonds');
-			return false;
-		}
+		if( ! this.#note || await this.testNoteType( "BND", this.#note ) ) return false;
 		
 		if( this.#note.noteValue < bondValue ){
 			this.errorMessage("Your Bond note Value is low Compare to What you Applied To Sell!");
@@ -39292,11 +39497,8 @@ static Base64 = {
 		if( currentTime < execTime ){		
 		
 			//the note holds the governmental budget as a priority over other budgets.
-			if( ! this.#note.budgetID || ! this.#note.noteBudgets.length || ! typeof this.#note.noteBudgets == "object" || (this.#note.businesses.length && this.#note.rankPref == "businessManager") ){
-				this.errorMessage(`Note not elegible to be monitored`, 'monitorScriptbillBudget');
+			if( ! this.#note.budgetID || ! this.#note.noteBudgets.length || ! typeof this.#note.noteBudgets == "object" || (this.#note.businesses.length && this.#note.rankPref == "businessManager") )
 				return false;
-			}
-				
 			
 			var id 				= await this.generateKey(10);
 			await this.setPrivateKey( this.#note.budgetID, id );
@@ -39308,10 +39510,7 @@ static Base64 = {
 				budgetID 		= await this.getPublicKey(id);
 				budgetBlock 	= await this.getCurrentBudgetBlock( budgetID );
 				
-				if( ! budgetBlock && ! budgetBlock.blockID ) {
-					this.errorMessage(`no budget block present to process`, `monitorScriptbillBudget`);
-					return false;
-				}
+				if( ! budgetBlock && ! budgetBlock.blockID ) return false;
 				
 				let budget 			= budgetBlock.agreement;
 				let currentTime 	= this.currentTime();
@@ -39493,11 +39692,8 @@ static Base64 = {
 		if( ( ! this.#note && this.s.currentNote ) || ( this.s.currentNote &&    ! this.s.currentNote.includes( this.#note.walletID ) && ! this.s.currentNote.includes( this.#note.noteAddress ) && ! this.#isExchangeMarketMining ) || ( ! this.#isExchangeMarketMining && ! this.#note && this.s.currentNote ))
 			this.#note = await this.#getCurrentNote();
 		
-		if( ! this.#note ){
-			this.errorMessage(`No note data found`, 'secureSend');
+		if( ! this.#note )
 			return false;
-		}
-			
 		
 		let url	= new URL( this.#default_scriptbill_server );
 		url.searchParams.set("getKEY", "");
@@ -39558,20 +39754,14 @@ static Base64 = {
 			this.#note = await this.#getCurrentNote();
 		
 		//
-		if( ! this.#note || this.#note.noteValue > 0 || ! this.response ) {
-			this.errorMessage(`No note or response to process`, "monitorScriptbillBudget");
-			return false;
-		}
+		if( ! this.#note || this.#note.noteValue > 0 || ! this.response ) return false;
 		
 		if( this.#note.noteValue < 0 ) {
 			this.response = await this.getTransBlock();
 			this.response = this.response[0];
 		}
 		
-		if( ! this.response && ! this.response.blockID || ! this.response.noteValue ) {
-			this.errorMessage(`No response to process`);
-			return false;
-		}
+		if( ! this.response && ! this.response.blockID || ! this.response.noteValue ) return false;
 		
 		//first we check the current note value of the block.
 		let noteValue = this.response.noteValue;
@@ -39587,10 +39777,7 @@ static Base64 = {
 		}
 		
 		//non credit holders are not going to be monitored.
-		if( noteValue >= 0 ) {
-			this.errorMessage(`Note note an credit holder`, `monitorScriptbillBudget`);
-			return false;
-		}
+		if( noteValue >= 0 ) return false;
 		
 		//next we check the transaction type. if is related to recieving we take our interest rate.
 		if( this.#transRecieve.includes( transType ) ){			
@@ -39600,7 +39787,7 @@ static Base64 = {
 			//every node that create the nonce. Transactions with the latest transtime and the same nonce
 			//will be honoured by the node using it.
 			var string 			= details.blockID;
-			details.nonce		= this.hashed( string );
+			details.nonce		= await this.hashed( string );
 			//the interest type are written on the transaction block of crediters
 			if( this.response.interestType && this.response.interestType == 'PT' )
 				details.transValue 	= parseFloat( this.response.transValue ) * this.response.interestRate;
@@ -39622,10 +39809,10 @@ static Base64 = {
 			//since the nonce will be the same thing. If the concerned note get'this.s this block, it won't recieve such request again from 
 			//the network
 			var string 			= this.block.blockID;
-			details.nonce 		= this.hashed( string );
+			details.nonce 		= await this.hashed( string );
 			details.transType 	= "INTERESTPAY";
 			var string 			= "SCRIPTBANK";
-			details.recipient	= this.hashed( string );
+			details.recipient	= await this.hashed( string );
 			return await this.generateScriptbillTransactionBlock(details);
 		}
 		
@@ -39718,8 +39905,8 @@ static Base64 = {
 			//for exchange market stocks, the blockSign is the hash of the exchange market
 			//note address.			
 			var string 		= sellMarket.noteAddress;
-			var string 		= this.hashed( string );
-			this.blockSign		= this.hashed( string );
+			var string 		= await this.hashed( string );
+			this.blockSign		= await this.hashed( string );
 			this.transType 		= "QUOTESTOCK";
 			this.budgetID 		= this.#note.budgetID;
 			
@@ -39787,7 +39974,7 @@ static Base64 = {
 				this.block.agreement.subConfig.nextSub = parseInt( time ) + parseInt( this.calculateTime( this.block.agreement.subConfig.subSpread ) );
 				let details 			= this.block;
 				var string 			= this.block.blockID;
-				details.nonce		= this.hashed( string );
+				details.nonce		= await this.hashed( string );
 				details.transValue = this.block.agreement.subConfig.value;
 				details.recipient  = this.block.productID;
 				details.transType 	= "PRODUCTSUB";
